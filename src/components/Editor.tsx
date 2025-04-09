@@ -1,17 +1,16 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect, Fragment } from "react";
 import { Stage, Layer, Shape, Rect, Circle, Line } from "react-konva";
 import { v4 as uuidv4 } from "uuid";
-import * as React from "react";
 
 type Handle = { x: number; y: number };
 type BezierPoint = {
-    id: string;
-    x: number;
-    y: number;
-    handleLeft?: Handle;
-    handleRight?: Handle;
-  };
-  
+  id: string;
+  x: number;
+  y: number;
+  handleLeft?: Handle;
+  handleRight?: Handle;
+};
+
 type Path = {
   id: string;
   points: BezierPoint[];
@@ -27,15 +26,38 @@ export default function Editor() {
   const [currentPoints, setCurrentPoints] = useState<BezierPoint[]>([]);
   const [drawing, setDrawing] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
-const [lastPanPos, setLastPanPos] = useState<{ x: number; y: number } | null>(null);
-const [previewPoint, setPreviewPoint] = useState<BezierPoint | null>(null);
-const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
+  const [lastPanPos, setLastPanPos] = useState<{ x: number; y: number } | null>(null);
+  const [previewPoint, setPreviewPoint] = useState<BezierPoint | null>(null);
+  const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
+  const [draggingAnchorId, setDraggingAnchorId] = useState<string | null>(null);
+  const [draggingHandle, setDraggingHandle] = useState<{
+    pointId: string;
+    handle: "left" | "right";
+  } | null>(null);
 
-const [dragPreview, setDragPreview] = useState<{
+  const [dragPreview, setDragPreview] = useState<{
     start: BezierPoint;
     current: { x: number; y: number };
   } | null>(null);
-  
+
+  const [history, setHistory] = useState<BezierPoint[][]>([]);
+  const [redoStack, setRedoStack] = useState<BezierPoint[][]>([]);
+  const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
+
+
+  const pushToHistory = () => {
+    setHistory((prev) => [...prev, deepCopyPoints(currentPoints)]);
+    setRedoStack([]); // Clear redo stack on new action
+  };
+
+
+  const deepCopyPoints = (points: BezierPoint[]): BezierPoint[] =>
+    points.map((p) => ({
+      ...p,
+      handleLeft: p.handleLeft ? { ...p.handleLeft } : undefined,
+      handleRight: p.handleRight ? { ...p.handleRight } : undefined,
+    }));
+
 
 
   // Zoom and pan
@@ -121,6 +143,41 @@ const [dragPreview, setDragPreview] = useState<{
     setDrawing(false);
   };
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
+      const ctrl = isMac ? e.metaKey : e.ctrlKey;
+
+      // Undo
+      if (ctrl && e.key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        setHistory((prev) => {
+          if (prev.length === 0) return prev;
+          const last = prev[prev.length - 1];
+          setRedoStack((r) => [deepCopyPoints(currentPoints), ...r]);
+          setCurrentPoints(last);
+          return prev.slice(0, -1);
+        });
+      }
+
+      // Redo
+      if (ctrl && (e.key === "Z" || (e.key === "z" && e.shiftKey))) {
+        e.preventDefault();
+        setRedoStack((prev) => {
+          if (prev.length === 0) return prev;
+          const [next, ...rest] = prev;
+          setHistory((h) => [...h, deepCopyPoints(currentPoints)]);
+          setCurrentPoints(next);
+          return rest;
+        });
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [currentPoints]);
+
+
   return (
     <Stage
       width={window.innerWidth}
@@ -130,72 +187,75 @@ const [dragPreview, setDragPreview] = useState<{
       x={stagePosition.x}
       y={stagePosition.y}
       ref={stageRef}
-    onWheel={handleWheel}
-    onMouseDown={(e) => {
+      onWheel={handleWheel}
+      onMouseDown={(e) => {
         if (e.evt.ctrlKey || e.evt.metaKey) {
           setIsPanning(true);
           setLastPanPos({ x: e.evt.clientX, y: e.evt.clientY });
           return;
         }
-      
+
         // ✅ If clicked on a shape (not the background), don't place a point
         if (e.target && e.target.getClassName() !== "Stage") {
           return;
         }
-      
+
         // Otherwise, deselect and place a new point
         setSelectedPointId(null);
-      
+
         const stage = stageRef.current;
         const pointer = stage.getPointerPosition();
         const point = {
           x: (pointer.x - stagePosition.x) / stageScale,
           y: (pointer.y - stagePosition.y) / stageScale,
         };
-      
+
         const newPoint: BezierPoint = {
           id: uuidv4(),
           x: point.x,
           y: point.y,
         };
-      
+
         setPreviewPoint(newPoint);
         setSelectedPointId(newPoint.id); // ✅ Also select it immediately!
-      
+
         if (!drawing) {
           setCurrentPoints([newPoint]);
           setDrawing(true);
         }
       }}
-      
-      
-      
-      
+
+
+
+
       onMouseMove={(e) => {
         const pointer = stageRef.current.getPointerPosition();
+
         const pos = {
           x: (pointer.x - stagePosition.x) / stageScale,
           y: (pointer.y - stagePosition.y) / stageScale,
         };
-      
+        if (pointer) {
+          setMousePos(pos);
+        }
         if (isPanning && lastPanPos) {
           const dx = e.evt.clientX - lastPanPos.x;
           const dy = e.evt.clientY - lastPanPos.y;
           setStagePosition((prev) => ({ x: prev.x + dx, y: prev.y + dy }));
           setLastPanPos({ x: e.evt.clientX, y: e.evt.clientY });
         }
-      
+
         if (previewPoint) {
           const dx = pos.x - previewPoint.x;
           const dy = pos.y - previewPoint.y;
-      
+
           const handleRight = { x: previewPoint.x + dx, y: previewPoint.y + dy };
           const handleLeft = { x: previewPoint.x - dx, y: previewPoint.y - dy };
-      
+
           setPreviewPoint({ ...previewPoint, handleLeft, handleRight });
         }
       }}
-            
+
       onMouseUp={(e) => {
         if (isPanning) {
           setIsPanning(false);
@@ -203,18 +263,17 @@ const [dragPreview, setDragPreview] = useState<{
         } else {
           handleMouseUp(e); // <- You can actually remove this now if it's no longer needed
         }
-      
+
         if (previewPoint && drawing) {
-            setCurrentPoints((prev) => [...prev, previewPoint]);
-            setSelectedPointId(previewPoint.id); // <-- ensures it's selected right after drawing
-          }
-          
-      
+          pushToHistory(); // ← Before state change
+          setCurrentPoints((prev) => [...prev, previewPoint]);
+          setSelectedPointId(previewPoint.id);
+        }
+
         setPreviewPoint(null);
-        setDragPreview(null);
       }}
-      
-    onDblClick={handleDoubleClick}
+
+      onDblClick={handleDoubleClick}
       style={{ background: "#f0f0f0" }}
     >
       <Layer>
@@ -310,83 +369,239 @@ const [dragPreview, setDragPreview] = useState<{
           />
         )}
         {/* Live preview while dragging */}
-{drawing && currentPoints.length > 0 && previewPoint && (
-  <Shape
-    sceneFunc={(ctx, shape) => {
-      const p0 = currentPoints[currentPoints.length - 1];
-      const p1 = previewPoint;
-      ctx.beginPath();
-      ctx.moveTo(p0.x, p0.y);
-      ctx.bezierCurveTo(
-        p0.handleRight?.x ?? p0.x,
-        p0.handleRight?.y ?? p0.y,
-        p1.handleLeft?.x ?? p1.x,
-        p1.handleLeft?.y ?? p1.y,
-        p1.x,
-        p1.y
-      );
-      ctx.strokeShape(shape);
-    }}
-    stroke="blue"
-    strokeWidth={2}
-    dash={[10, 4]}
-  />
-)}
+        {drawing && currentPoints.length > 0 && previewPoint && (
+          <Shape
+            sceneFunc={(ctx, shape) => {
+              const p0 = currentPoints[currentPoints.length - 1];
+              const p1 = previewPoint;
+              ctx.beginPath();
+              ctx.moveTo(p0.x, p0.y);
+              ctx.bezierCurveTo(
+                p0.handleRight?.x ?? p0.x,
+                p0.handleRight?.y ?? p0.y,
+                p1.handleLeft?.x ?? p1.x,
+                p1.handleLeft?.y ?? p1.y,
+                p1.x,
+                p1.y
+              );
+              ctx.strokeShape(shape);
+            }}
+            stroke="blue"
+            strokeWidth={2}
+            dash={[10, 4]}
+          />
+        )}
+
+        {drawing && currentPoints.length > 0 && mousePos && !previewPoint && (
+          <Shape
+            listening={false}
+            sceneFunc={(ctx, shape) => {
+              const lastPoint = currentPoints[currentPoints.length - 1];
+              const lastHandle = lastPoint.handleRight ?? {
+                x: lastPoint.x + 100,
+                y: lastPoint.y,
+              };
+
+              // Direction from last point to its handle
+              const dx = lastHandle.x - lastPoint.x;
+              const dy = lastHandle.y - lastPoint.y;
+
+              // Start handle: follow existing direction
+              const handleStart = {
+                x: lastPoint.x + dx,
+                y: lastPoint.y + dy,
+              };
+
+              // End handle: point back toward the last point (gentle "aiming")
+              const backDx = lastPoint.x - mousePos.x;
+              const backDy = lastPoint.y - mousePos.y;
+              const backLen = Math.sqrt(backDx * backDx + backDy * backDy);
+              const scale = 0.3; // less aggressive handle
+
+              const handleEnd = {
+                x: mousePos.x + (backDx / backLen) * 100 * scale,
+                y: mousePos.y + (backDy / backLen) * 100 * scale,
+              };
+
+              ctx.beginPath();
+              ctx.moveTo(lastPoint.x, lastPoint.y);
+              ctx.bezierCurveTo(
+                handleStart.x,
+                handleStart.y,
+                handleEnd.x,
+                handleEnd.y,
+                mousePos.x,
+                mousePos.y
+              );
+              ctx.strokeShape(shape);
+            }}
+            stroke="orange"
+            strokeWidth={2}
+            dash={[4, 3]}
+          />
+        )}
+
+
+
+
 
         {/* Render handles & points */}
         {[...currentPoints, ...paths.flatMap(p => p.points), ...(previewPoint ? [previewPoint] : [])].map((point, idx) => (
-  <React.Fragment key={`${point.id}-${idx}`}>
-    {/* Anchor point */}
-    <Circle
-      x={point.x}
-      y={point.y}
-      radius={4}
-      fill="blue"
-      onClick={(e) => {
-        e.cancelBubble = true;
-        setSelectedPointId(point.id);
-      }}
-    />
-
-    {/* Handles if selected */}
-    {point.id === selectedPointId && (
-      <>
-        {point.handleLeft && (point.id === selectedPointId || point === previewPoint) && (
-          <>
-            <Line
-              points={[point.x, point.y, point.handleLeft.x, point.handleLeft.y]}
-              stroke="gray"
-            />
+          <Fragment key={`${point.id}-${idx}`}>
+            {/* Anchor point */}
             <Circle
-              x={point.handleLeft.x}
-              y={point.handleLeft.y}
-              radius={3}
-              fill="gray"
+              x={point.x}
+              y={point.y}
+              radius={4}
+              fill="blue"
+              draggable
+              onClick={(e) => {
+                e.cancelBubble = true;
+                setSelectedPointId(point.id);
+              }}
+              onDragStart={() => setDraggingAnchorId(point.id)}
+              onDragEnd={() => setDraggingAnchorId(null)}
+              onDragMove={(e) => {
+                const pos = e.target.position();
+                setCurrentPoints((prev) =>
+                  prev.map((p) =>
+                    p.id === point.id
+                      ? {
+                        ...p,
+                        x: pos.x,
+                        y: pos.y,
+                        handleLeft: p.handleLeft
+                          ? {
+                            x: pos.x + (p.handleLeft.x - p.x),
+                            y: pos.y + (p.handleLeft.y - p.y),
+                          }
+                          : undefined,
+                        handleRight: p.handleRight
+                          ? {
+                            x: pos.x + (p.handleRight.x - p.x),
+                            y: pos.y + (p.handleRight.y - p.y),
+                          }
+                          : undefined,
+                      }
+                      : p
+                  )
+                );
+              }}
             />
-          </>
-        )}
-        {point.handleRight && (point.id === selectedPointId || point === previewPoint) && (
-          <>
-            <Line
-              points={[point.x, point.y, point.handleRight.x, point.handleRight.y]}
-              stroke="gray"
-            />
-            <Circle
-              x={point.handleRight.x}
-              y={point.handleRight.y}
-              radius={3}
-              fill="gray"
-            />
-          </>
-        )}
-      </>
-    )}
-  </React.Fragment>
-))}
 
 
+            {/* Handles if selected */}
+            {point.id === selectedPointId && (
+              <>
+                {point.handleLeft && (point.id === selectedPointId || point === previewPoint) && (
+                  <>
+                    <Line
+                      points={[point.x, point.y, point.handleLeft.x, point.handleLeft.y]}
+                      stroke="gray"
+                    />
+                    <Circle
+                      x={point.handleLeft.x}
+                      y={point.handleLeft.y}
+                      radius={3}
+                      fill="gray"
+                      draggable
+                      onDragStart={() => {
+                        pushToHistory();
+                        setDraggingHandle({ pointId: point.id, handle: "left" })
+                      }}
+                      onDragEnd={() => {
+                        setDraggingHandle(null);
+                      }}
+
+                      onDragMove={(e) => {
+                        const pos = e.target.position();
+                        const altKey = e.evt.altKey;
+
+                        setCurrentPoints((prev) =>
+                          prev.map((p) => {
+                            if (p.id !== point.id) return p;
+
+                            const newHandleLeft = { x: pos.x, y: pos.y };
+
+                            if (altKey || !p.handleRight) {
+                              return { ...p, handleLeft: newHandleLeft };
+                            }
+
+                            // Symmetric mirroring:
+                            const dx = newHandleLeft.x - p.x;
+                            const dy = newHandleLeft.y - p.y;
+                            const mirroredRight = {
+                              x: p.x - dx,
+                              y: p.y - dy,
+                            };
+
+                            return {
+                              ...p,
+                              handleLeft: newHandleLeft,
+                              handleRight: mirroredRight,
+                            };
+                          })
+                        );
+                      }}
+                    />
+                  </>
+                )}
+                {point.handleRight && (point.id === selectedPointId || point === previewPoint) && (
+                  <>
+                    <Line
+                      points={[point.x, point.y, point.handleRight.x, point.handleRight.y]}
+                      stroke="gray"
+                    />
+                    <Circle
+                      x={point.handleRight.x}
+                      y={point.handleRight.y}
+                      radius={3}
+                      fill="gray"
+                      draggable
+                      onDragStart={() => {
+                        pushToHistory();
+                        setDraggingHandle({ pointId: point.id, handle: "right" })
+                      }}
+                      onDragEnd={() => setDraggingHandle(null)}
+                      onDragMove={(e) => {
+                        const pos = e.target.position();
+                        const altKey = e.evt.altKey;
+
+                        setCurrentPoints((prev) =>
+                          prev.map((p) => {
+                            if (p.id !== point.id) return p;
+
+                            const newHandleRight = { x: pos.x, y: pos.y };
+
+                            if (altKey || !p.handleLeft) {
+                              return { ...p, handleRight: newHandleRight };
+                            }
+
+                            // Symmetric mirroring:
+                            const dx = newHandleRight.x - p.x;
+                            const dy = newHandleRight.y - p.y;
+                            const mirroredLeft = {
+                              x: p.x - dx,
+                              y: p.y - dy,
+                            };
+
+                            return {
+                              ...p,
+                              handleRight: newHandleRight,
+                              handleLeft: mirroredLeft,
+                            };
+                          })
+                        );
+                      }}
+                    />
 
 
+                  </>
+                )}
+              </>
+            )}
+          </Fragment>
+        ))}
       </Layer>
     </Stage>
   );
