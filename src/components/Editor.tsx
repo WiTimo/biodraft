@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect, Fragment } from "react";
 import { Stage, Layer, Shape, Rect, Circle, Line } from "react-konva";
 import { v4 as uuidv4 } from "uuid";
+import { HANDLE_COLOR, LINE_COLOR, POINT_COLOR, POINT_OUTLINE_COLOR, PREVIEW_LINE_COLOR } from "../lib/colors";
 
 type Handle = { x: number; y: number };
 type BezierPoint = {
@@ -171,10 +172,28 @@ export default function Editor() {
           return rest;
         });
       }
+        // Delete selected point
+      if ((e.key === "Delete" || e.key === "Backspace") && selectedPointId) {
+        e.preventDefault();
+        setCurrentPoints((prev) =>
+        prev.filter((p) => p.id !== selectedPointId)
+        );
+        setSelectedPointId(null);
+        pushToHistory(); // Optional: store in undo stack
+    }
     };
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    const disableContextMenu = (e: MouseEvent) => {
+        e.preventDefault();
+      };
+
+      window.addEventListener("keydown", handleKeyDown);
+      window.addEventListener("contextmenu", disableContextMenu);
+    
+      return () => {
+        window.removeEventListener("keydown", handleKeyDown);
+        window.removeEventListener("contextmenu", disableContextMenu);
+      };
   }, [currentPoints]);
 
 
@@ -189,43 +208,41 @@ export default function Editor() {
       ref={stageRef}
       onWheel={handleWheel}
       onMouseDown={(e) => {
+        if (e.evt.button === 2) return; // ✅ skip right-clicks
+      
         if (e.evt.ctrlKey || e.evt.metaKey) {
           setIsPanning(true);
           setLastPanPos({ x: e.evt.clientX, y: e.evt.clientY });
           return;
         }
-
-        // ✅ If clicked on a shape (not the background), don't place a point
+      
         if (e.target && e.target.getClassName() !== "Stage") {
           return;
         }
-
-        // Otherwise, deselect and place a new point
+      
         setSelectedPointId(null);
-
+      
         const stage = stageRef.current;
         const pointer = stage.getPointerPosition();
         const point = {
           x: (pointer.x - stagePosition.x) / stageScale,
           y: (pointer.y - stagePosition.y) / stageScale,
         };
-
+      
         const newPoint: BezierPoint = {
           id: uuidv4(),
           x: point.x,
           y: point.y,
         };
-
+      
         setPreviewPoint(newPoint);
-        setSelectedPointId(newPoint.id); // ✅ Also select it immediately!
-
+        setSelectedPointId(newPoint.id);
+      
         if (!drawing) {
           setCurrentPoints([newPoint]);
           setDrawing(true);
         }
       }}
-
-
 
 
       onMouseMove={(e) => {
@@ -363,7 +380,7 @@ export default function Editor() {
               }
               ctx.strokeShape(shape);
             }}
-            stroke="blue"
+            stroke={LINE_COLOR}
             dash={[10, 5]}
             strokeWidth={2}
           />
@@ -386,13 +403,13 @@ export default function Editor() {
               );
               ctx.strokeShape(shape);
             }}
-            stroke="blue"
+            stroke={LINE_COLOR}
             strokeWidth={2}
             dash={[10, 4]}
           />
         )}
 
-        {drawing && currentPoints.length > 0 && mousePos && !previewPoint && (
+        {drawing && currentPoints.length > 0 && mousePos && !previewPoint && !draggingAnchorId && !draggingHandle && (
           <Shape
             listening={false}
             sceneFunc={(ctx, shape) => {
@@ -435,25 +452,28 @@ export default function Editor() {
               );
               ctx.strokeShape(shape);
             }}
-            stroke="orange"
+            stroke={PREVIEW_LINE_COLOR}
             strokeWidth={2}
             dash={[4, 3]}
           />
         )}
-
-
-
-
 
         {/* Render handles & points */}
         {[...currentPoints, ...paths.flatMap(p => p.points), ...(previewPoint ? [previewPoint] : [])].map((point, idx) => (
           <Fragment key={`${point.id}-${idx}`}>
             {/* Anchor point */}
             <Circle
+                x={point.x}
+                y={point.y}
+                radius={6}
+                stroke={selectedPointId === point.id ? POINT_OUTLINE_COLOR : "transparent"}
+                strokeWidth={selectedPointId === point.id ? 1 : 0}
+            />
+            <Circle
               x={point.x}
               y={point.y}
               radius={4}
-              fill="blue"
+              fill={POINT_COLOR}
               draggable
               onClick={(e) => {
                 e.cancelBubble = true;
@@ -497,13 +517,13 @@ export default function Editor() {
                   <>
                     <Line
                       points={[point.x, point.y, point.handleLeft.x, point.handleLeft.y]}
-                      stroke="gray"
+                      stroke={HANDLE_COLOR}
                     />
                     <Circle
                       x={point.handleLeft.x}
                       y={point.handleLeft.y}
                       radius={3}
-                      fill="gray"
+                      fill={HANDLE_COLOR}
                       draggable
                       onDragStart={() => {
                         pushToHistory();
@@ -550,13 +570,13 @@ export default function Editor() {
                   <>
                     <Line
                       points={[point.x, point.y, point.handleRight.x, point.handleRight.y]}
-                      stroke="gray"
+                      stroke={HANDLE_COLOR}
                     />
                     <Circle
                       x={point.handleRight.x}
                       y={point.handleRight.y}
                       radius={3}
-                      fill="gray"
+                      fill={HANDLE_COLOR}
                       draggable
                       onDragStart={() => {
                         pushToHistory();
