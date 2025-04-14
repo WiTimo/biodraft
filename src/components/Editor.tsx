@@ -540,7 +540,6 @@ export default function Editor() {
                         setCurrentPoints((prev) =>
                           prev.map((p) => {
                             if (p.id !== point.id) return p;
-
                             const newHandleLeft = { x: pos.x, y: pos.y };
 
                             if (altKey || !p.handleRight) {
