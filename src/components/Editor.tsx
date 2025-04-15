@@ -2,6 +2,8 @@ import { useRef, useState, useEffect, Fragment } from "react";
 import { Stage, Layer, Shape, Rect, Circle, Line } from "react-konva";
 import { v4 as uuidv4 } from "uuid";
 import { HANDLE_COLOR, LINE_COLOR, POINT_COLOR, POINT_OUTLINE_COLOR, PREVIEW_LINE_COLOR } from "../lib/colors";
+import useImage from "use-image";
+import { Image as KonvaImage } from "react-konva";
 
 type Handle = { x: number; y: number };
 type BezierPoint = {
@@ -22,6 +24,9 @@ export default function Editor() {
   const stageRef = useRef<any>(null);
   const [stageScale, setStageScale] = useState(1);
   const [stagePosition, setStagePosition] = useState({ x: 0, y: 0 });
+  const [backgroundImage, status] = useImage("/test.png");
+  const [imageScale, setImageScale] = useState(1);
+  const [imageOffset, setImageOffset] = useState({ x: 0, y: 0 });
 
   const [paths, setPaths] = useState<Path[]>([]);
   const [currentPoints, setCurrentPoints] = useState<BezierPoint[]>([]);
@@ -45,6 +50,26 @@ export default function Editor() {
   const [redoStack, setRedoStack] = useState<BezierPoint[][]>([]);
   const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
 
+  useEffect(() => {
+    if (status === "loaded" && backgroundImage) {
+      const imageAspect = backgroundImage.width / backgroundImage.height;
+      const canvasAspect = window.innerWidth / window.innerHeight;
+
+      const scale = canvasAspect > imageAspect
+        ? window.innerHeight / backgroundImage.height
+        : window.innerWidth / backgroundImage.width;
+
+      const imgWidth = backgroundImage.width * scale;
+      const imgHeight = backgroundImage.height * scale;
+
+      const offsetX = (window.innerWidth - imgWidth) / 2;
+      const offsetY = (window.innerHeight - imgHeight) / 2;
+
+      setImageScale(scale);
+      setImageOffset({ x: offsetX, y: offsetY });
+    }
+  }, [status, backgroundImage]);
+
 
   const pushToHistory = () => {
     setHistory((prev) => [...prev, deepCopyPoints(currentPoints)]);
@@ -58,8 +83,6 @@ export default function Editor() {
       handleLeft: p.handleLeft ? { ...p.handleLeft } : undefined,
       handleRight: p.handleRight ? { ...p.handleRight } : undefined,
     }));
-
-
 
   // Zoom and pan
   const handleWheel = (e: any) => {
@@ -294,6 +317,17 @@ export default function Editor() {
       style={{ background: "#f0f0f0" }}
     >
       <Layer>
+        {status === "loaded" && backgroundImage && (
+          <KonvaImage
+            image={backgroundImage}
+            x={imageOffset.x}
+            y={imageOffset.y}
+            width={backgroundImage.width * imageScale}
+            height={backgroundImage.height * imageScale}
+            opacity={1}
+            listening={false}
+          />
+        )}
         {/* Grid */}
         {[...Array(100)].map((_, i) => (
           <Rect
