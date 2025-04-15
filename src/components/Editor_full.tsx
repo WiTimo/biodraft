@@ -212,7 +212,8 @@ export default function Editor() {
                 });
             }
             // Delete selected point
-            if ((e.key === "Delete" || e.key === "Backspace") && selectedPointId) {
+            // Delete selected point (only in SELECT mode)
+            if ((e.key === "Delete" || e.key === "Backspace") && selectedPointId && mode === "SELECT") {
                 e.preventDefault();
                 setCurrentPoints((prev) =>
                     prev.filter((p) => p.id !== selectedPointId)
