@@ -18,6 +18,8 @@ export default function Editor() {
   const [imageScale, setImageScale] = useState(1);
   const [imageOffset, setImageOffset] = useState({ x: 0, y: 0 });
 
+  const [mouseDragged, setMouseDragged] = useState(false);
+
   const [paths, setPaths] = useState<Path[]>([]);
   const [currentPoints, setCurrentPoints] = useState<BezierPoint[]>([]);
   const [drawing, setDrawing] = useState(false);
@@ -28,6 +30,7 @@ export default function Editor() {
   const [lastPanPos, setLastPanPos] = useState<{ x: number; y: number } | null>(null);
   const [lockedSnapPoint, setLockedSnapPoint] = useState<BezierPoint | null>(null);
   const [mode, setMode] = useState<Mode>("DRAW");
+  const [drawStartPoint, setDrawStartPoint] = useState<BezierPoint | null>(null);
 
   const {
     selectedPointId,
@@ -68,6 +71,19 @@ export default function Editor() {
   };
 
   useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (mode !== "SELECT") return;
+      if (e.key === "Delete" || e.key === "Backspace") {
+        setCurrentPoints((prev) => prev.filter((p) => p.id !== selectedPointId));
+        setSelectedPointId(null);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [mode, selectedPointId, setCurrentPoints]);
+
+  useEffect(() => {
     if (status === "loaded" && backgroundImage) {
       const imageAspect = backgroundImage.width / backgroundImage.height;
       const canvasAspect = window.innerWidth / window.innerHeight;
@@ -88,13 +104,32 @@ export default function Editor() {
     <>
       <div style={{ position: "absolute", top: 10, right: 10, zIndex: 1000 }}>
         <button
-          onClick={() => setMode("DRAW")}
+          onClick={() => {
+            setMode("DRAW");
+
+            const allPoints = [...currentPoints, ...paths.flatMap(p => p.points)];
+            const selected = allPoints.find(p => p.id === selectedPointId);
+
+            if (selected) {
+              setDrawStartPoint(selected); // ✅ use as override for the preview origin
+            } else {
+              setDrawStartPoint(null); // fallback to default behavior
+            }
+
+            setDrawing(true); // no changes to points, just start drawing
+          }}
           style={{ marginRight: 8, backgroundColor: mode === "DRAW" ? "#666" : "#ccc" }}
         >
           Draw
         </button>
         <button
-          onClick={() => setMode("SELECT")}
+          onClick={() => {
+            setMode("SELECT");
+            setDrawing(false);
+            setMouseDownPoint(null);
+            setPreviewPoint(null);
+            setLockedSnapPoint(null);
+          }}
           style={{ backgroundColor: mode === "SELECT" ? "#666" : "#ccc" }}
         >
           Select
@@ -122,10 +157,33 @@ export default function Editor() {
             x: (pointer.x - stagePosition.x) / stageScale,
             y: (pointer.y - stagePosition.y) / stageScale,
           };
-          setMouseDownPoint(lockedSnapPoint ?? pos);
+
+          const snapped = lockedSnapPoint;
+
+          const targetPoint = snapped
+            ? {
+              id: snapped.id,
+              x: snapped.x,
+              y: snapped.y,
+              // 🔥 override handles so the user defines a new connection shape
+              handleLeft: undefined,
+              handleRight: undefined,
+            }
+            : {
+              id: uuidv4(),
+              x: pos.x,
+              y: pos.y,
+            };
+
+          setMouseDownPoint(targetPoint);
+
+
           if (mode === "DRAW" && !drawing) {
+            if (drawStartPoint) {
+              setCurrentPoints([drawStartPoint]);
+              setDrawStartPoint(null);
+            }
             setDrawing(true);
-            setCurrentPoints([]);
           }
         }}
         onMouseMove={(e) => {
@@ -150,6 +208,11 @@ export default function Editor() {
             if (mouseDownPoint) {
               const dx = pos.x - mouseDownPoint.x;
               const dy = pos.y - mouseDownPoint.y;
+
+              if (Math.hypot(dx, dy) > 1) {
+                setMouseDragged(true);
+              }
+
               setPreviewPoint({
                 id: uuidv4(),
                 x: mouseDownPoint.x,
@@ -157,7 +220,8 @@ export default function Editor() {
                 handleLeft: { x: mouseDownPoint.x - dx, y: mouseDownPoint.y - dy },
                 handleRight: { x: mouseDownPoint.x + dx, y: mouseDownPoint.y + dy },
               });
-            } else if (drawing && currentPoints.length > 0) {
+            } 
+            else if (drawing && currentPoints.length > 0) {
               const potentialSnapPoints = [
                 ...currentPoints,
                 ...paths.flatMap((p) => p.points),
@@ -165,12 +229,15 @@ export default function Editor() {
               const lockedPoint = potentialSnapPoints.find(
                 (p) => Math.hypot(p.x - pos.x, p.y - pos.y) < SNAPPING_THRESHOLD
               );
+
               if (lockedPoint) {
                 setLockedSnapPoint(lockedPoint);
                 setPreviewPoint({
-                  ...lockedPoint,
-                  handleLeft: lockedPoint.handleLeft ? { ...lockedPoint.handleLeft } : undefined,
-                  handleRight: lockedPoint.handleRight ? { ...lockedPoint.handleRight } : undefined,
+                  id: uuidv4(),
+                  x: lockedPoint.x,
+                  y: lockedPoint.y,
+                  handleLeft: undefined,
+                  handleRight: undefined,
                 });
               } else {
                 setLockedSnapPoint(null);
@@ -197,26 +264,43 @@ export default function Editor() {
 
           if (previewPoint) {
             setCurrentPoints((prev) => {
-              const alreadyExists = prev.find(p => p.id === previewPoint.id);
+              let updated = [...prev];
+
+              if (drawStartPoint && updated.length === 0) {
+                updated.push({ ...drawStartPoint });
+              }
+
+              const alreadyExists = updated.find((p) => p.id === previewPoint.id);
+              const shouldAdd = !alreadyExists || mouseDragged;
+
+              if (!shouldAdd) return updated;
+
               if (alreadyExists) {
-                return prev.map(p =>
+                return updated.map((p) =>
                   p.id === previewPoint.id
                     ? {
-                        ...p,
-                        handleLeft: previewPoint.handleLeft,
-                        handleRight: previewPoint.handleRight,
-                      }
+                      ...p,
+                      handleLeft: previewPoint.handleLeft,
+                      handleRight: previewPoint.handleRight,
+                    }
                     : p
                 );
               }
-              return [...prev, {
-                ...previewPoint,
-                handleLeft: previewPoint.handleLeft ? { ...previewPoint.handleLeft } : undefined,
-                handleRight: previewPoint.handleRight ? { ...previewPoint.handleRight } : undefined,
-              }];
+
+              return [
+                ...updated,
+                {
+                  ...previewPoint,
+                  handleLeft: previewPoint.handleLeft ? { ...previewPoint.handleLeft } : undefined,
+                  handleRight: previewPoint.handleRight ? { ...previewPoint.handleRight } : undefined,
+                },
+              ];
             });
+
+            setDrawStartPoint(null); // ✅ reset after use
           }
 
+          setMouseDragged(false); // 🔁 reset
           setPreviewPoint(null);
           setMouseDownPoint(null);
         }}
@@ -251,6 +335,7 @@ export default function Editor() {
             draggingHandle={draggingHandle}
             mousePos={mousePos}
             mode={mode}
+            drawStartPoint={drawStartPoint}
             onAnchorDragMove={onAnchorDragMove}
             onHandleDragMove={onHandleDragMove}
             onAnchorSelect={setSelectedPointId}
