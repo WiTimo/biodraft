@@ -26,6 +26,7 @@ export default function Editor() {
   const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
   const [isPanning, setIsPanning] = useState(false);
   const [lastPanPos, setLastPanPos] = useState<{ x: number; y: number } | null>(null);
+  const [lockedSnapPoint, setLockedSnapPoint] = useState<BezierPoint | null>(null);
   const [mode, setMode] = useState<Mode>("DRAW");
 
   const {
@@ -121,7 +122,7 @@ export default function Editor() {
             x: (pointer.x - stagePosition.x) / stageScale,
             y: (pointer.y - stagePosition.y) / stageScale,
           };
-          setMouseDownPoint(pos);
+          setMouseDownPoint(lockedSnapPoint ?? pos);
           if (mode === "DRAW" && !drawing) {
             setDrawing(true);
             setCurrentPoints([]);
@@ -165,8 +166,14 @@ export default function Editor() {
                 (p) => Math.hypot(p.x - pos.x, p.y - pos.y) < SNAPPING_THRESHOLD
               );
               if (lockedPoint) {
-                setPreviewPoint(lockedPoint); // ✅ Reuse the snapped point
+                setLockedSnapPoint(lockedPoint);
+                setPreviewPoint({
+                  ...lockedPoint,
+                  handleLeft: lockedPoint.handleLeft ? { ...lockedPoint.handleLeft } : undefined,
+                  handleRight: lockedPoint.handleRight ? { ...lockedPoint.handleRight } : undefined,
+                });
               } else {
+                setLockedSnapPoint(null);
                 setPreviewPoint({
                   id: uuidv4(),
                   x: pos.x,
@@ -192,18 +199,21 @@ export default function Editor() {
             setCurrentPoints((prev) => {
               const alreadyExists = prev.find(p => p.id === previewPoint.id);
               if (alreadyExists) {
-                // Update its handles if they were dragged into place
                 return prev.map(p =>
                   p.id === previewPoint.id
                     ? {
-                      ...p,
-                      handleLeft: previewPoint.handleLeft,
-                      handleRight: previewPoint.handleRight,
-                    }
+                        ...p,
+                        handleLeft: previewPoint.handleLeft,
+                        handleRight: previewPoint.handleRight,
+                      }
                     : p
                 );
               }
-              return [...prev, previewPoint];
+              return [...prev, {
+                ...previewPoint,
+                handleLeft: previewPoint.handleLeft ? { ...previewPoint.handleLeft } : undefined,
+                handleRight: previewPoint.handleRight ? { ...previewPoint.handleRight } : undefined,
+              }];
             });
           }
 

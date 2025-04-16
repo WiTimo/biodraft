@@ -40,9 +40,7 @@ export default function PathRenderer({
     <>
       {/* Render existing paths */}
       {paths.map((path) => (
-        <Shape
-          key={path.id}
-          sceneFunc={(ctx, shape) => {
+        <Shape key={path.id} sceneFunc={(ctx, shape) => {
             const points = path.points;
             if (points.length < 2) return;
             ctx.beginPath();
