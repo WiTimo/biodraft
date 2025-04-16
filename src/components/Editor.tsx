@@ -111,12 +111,13 @@ export default function Editor() {
             const selected = allPoints.find(p => p.id === selectedPointId);
 
             if (selected) {
-              setDrawStartPoint(selected); // ✅ use as override for the preview origin
+              console.log('Starting Point when switching to draw')
+              setDrawStartPoint(selected);
             } else {
-              setDrawStartPoint(null); // fallback to default behavior
+              setDrawStartPoint(null);
             }
 
-            setDrawing(true); // no changes to points, just start drawing
+            setDrawing(true);
           }}
           style={{ marginRight: 8, backgroundColor: mode === "DRAW" ? "#666" : "#ccc" }}
         >
@@ -179,11 +180,16 @@ export default function Editor() {
 
 
           if (mode === "DRAW" && !drawing) {
-            if (drawStartPoint) {
-              setCurrentPoints([drawStartPoint]);
-              setDrawStartPoint(null);
-            }
+            const newPoint = {
+              ...targetPoint,
+              handleLeft: undefined,
+              handleRight: undefined,
+            };
+
+            setCurrentPoints([newPoint]);
             setDrawing(true);
+            setMouseDragged(false);
+            return;
           }
         }}
         onMouseMove={(e) => {
