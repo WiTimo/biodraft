@@ -22,6 +22,8 @@ type Path = {
 
 type Mode = 'DRAW' | 'SELECT';
 
+const SNAPPING_THRESHOLD = 20;
+
 export default function Editor() {
     const stageRef = useRef<any>(null);
     const [stageScale, setStageScale] = useState(1);
@@ -212,8 +214,7 @@ export default function Editor() {
                 });
             }
             // Delete selected point
-            // Delete selected point (only in SELECT mode)
-            if ((e.key === "Delete" || e.key === "Backspace") && selectedPointId && mode === "SELECT") {
+            if ((e.key === "Delete" || e.key === "Backspace") && selectedPointId) {
                 e.preventDefault();
                 setCurrentPoints((prev) =>
                     prev.filter((p) => p.id !== selectedPointId)
@@ -300,16 +301,20 @@ export default function Editor() {
                 onWheel={handleWheel}
                 onMouseDown={(e) => {
                     if (e.evt.button === 2) return; // Skip right-click
+
                     if (e.evt.ctrlKey || e.evt.metaKey) {
                         setIsPanning(true);
                         setLastPanPos({ x: e.evt.clientX, y: e.evt.clientY });
                         return;
                     }
+
                     const pointer = stageRef.current.getPointerPosition();
                     const clickedPoint = {
                         x: (pointer.x - stagePosition.x) / stageScale,
                         y: (pointer.y - stagePosition.y) / stageScale,
                     };
+
+                    setMouseDownPoint(clickedPoint);
 
                     if (mode === "SELECT") {
                         if (e.target && e.target.getClassName() === "Circle") {
@@ -318,62 +323,84 @@ export default function Editor() {
                         } else {
                             setSelectedPointId(null);
                         }
-                        return; // In SELECT mode, only select points—do not create new ones.
+                        return;
                     }
-                    if (mode === "DRAW") {
-                        const existingPoint = [
-                            ...currentPoints,
-                            ...paths.flatMap((p) => p.points),
-                        ].find((p) => Math.hypot(p.x - clickedPoint.x, p.y - clickedPoint.y) < 10);
-                        const newPoint: BezierPoint = existingPoint
-                            ? existingPoint
-                            : { id: uuidv4(), x: clickedPoint.x, y: clickedPoint.y };
 
-                        setPreviewPoint(newPoint);
-                        setSelectedPointId(newPoint.id);
-
-                        if (!drawing) {
-                            setCurrentPoints([newPoint]);
-                            setDrawing(true);
-                        }
+                    if (mode === "DRAW" && !drawing) {
+                        setDrawing(true);
+                        setCurrentPoints([]);
                     }
                 }}
+
                 onMouseMove={(e) => {
                     const pointer = stageRef.current.getPointerPosition();
+                    if (!pointer) return;
+
                     const pos = {
                         x: (pointer.x - stagePosition.x) / stageScale,
                         y: (pointer.y - stagePosition.y) / stageScale,
                     };
-                    if (pointer) {
-                        setMousePos(pos);
-                    }
+
+                    setMousePos(pos);
+
                     if (isPanning && lastPanPos) {
                         const dx = e.evt.clientX - lastPanPos.x;
                         const dy = e.evt.clientY - lastPanPos.y;
                         setStagePosition((prev) => ({ x: prev.x + dx, y: prev.y + dy }));
                         setLastPanPos({ x: e.evt.clientX, y: e.evt.clientY });
+                        return;
                     }
-                    if (previewPoint) {
-                        const dx = pos.x - previewPoint.x;
-                        const dy = pos.y - previewPoint.y;
-                        const handleRight = { x: previewPoint.x + dx, y: previewPoint.y + dy };
-                        const handleLeft = { x: previewPoint.x - dx, y: previewPoint.y - dy };
-                        setPreviewPoint({ ...previewPoint, handleLeft, handleRight });
+
+                    if (mode === "DRAW") {
+                        if (mouseDownPoint) {
+                            const dx = pos.x - mouseDownPoint.x;
+                            const dy = pos.y - mouseDownPoint.y;
+
+                            setPreviewPoint({
+                                id: uuidv4(),
+                                x: mouseDownPoint.x,
+                                y: mouseDownPoint.y,
+                                handleLeft: { x: mouseDownPoint.x - dx, y: mouseDownPoint.y - dy },
+                                handleRight: { x: mouseDownPoint.x + dx, y: mouseDownPoint.y + dy },
+                            });
+                        } else if (drawing && currentPoints.length > 0) {
+                            const potentialSnapPoints = [
+                                ...currentPoints,
+                                ...paths.flatMap((p) => p.points),
+                            ];
+
+                            const lockedPoint = potentialSnapPoints.find(
+                                (p) => Math.hypot(p.x - pos.x, p.y - pos.y) < SNAPPING_THRESHOLD
+                            );
+
+                            setPreviewPoint(
+                                lockedPoint
+                                    ? { id: uuidv4(), x: lockedPoint.x, y: lockedPoint.y }
+                                    : { id: uuidv4(), x: pos.x, y: pos.y }
+                            );
+                        }
                     }
                 }}
+
                 onMouseUp={(e) => {
                     if (isPanning) {
                         setIsPanning(false);
                         setLastPanPos(null);
-                    } else {
-                        handleMouseUp(e);
+                        return;
                     }
-                    if (previewPoint && drawing) {
-                        pushToHistory();
+
+                    if (!mouseDownPoint) {
+                        setPreviewPoint(null);
+                        return;
+                    }
+
+                    if (previewPoint) {
                         setCurrentPoints((prev) => [...prev, previewPoint]);
-                        setSelectedPointId(previewPoint.id);
+                        pushToHistory();
                     }
+
                     setPreviewPoint(null);
+                    setMouseDownPoint(null);
                 }}
                 onDblClick={handleDoubleClick}
             >
@@ -465,16 +492,18 @@ export default function Editor() {
                     )}
 
                     {/* Live preview while dragging */}
+                    {/* Live preview while dragging */}
                     {drawing && currentPoints.length > 0 && previewPoint && (
                         <Shape
+                            listening={false}
                             sceneFunc={(ctx, shape) => {
-                                const p0 = currentPoints[currentPoints.length - 1];
+                                const lastPoint = currentPoints[currentPoints.length - 1];
                                 const p1 = previewPoint;
                                 ctx.beginPath();
-                                ctx.moveTo(p0.x, p0.y);
+                                ctx.moveTo(lastPoint.x, lastPoint.y);
                                 ctx.bezierCurveTo(
-                                    p0.handleRight?.x ?? p0.x,
-                                    p0.handleRight?.y ?? p0.y,
+                                    lastPoint.handleRight?.x ?? lastPoint.x,
+                                    lastPoint.handleRight?.y ?? lastPoint.y,
                                     p1.handleLeft?.x ?? p1.x,
                                     p1.handleLeft?.y ?? p1.y,
                                     p1.x,
@@ -482,9 +511,9 @@ export default function Editor() {
                                 );
                                 ctx.strokeShape(shape);
                             }}
-                            stroke={LINE_COLOR}
+                            stroke={PREVIEW_LINE_COLOR}
                             strokeWidth={2}
-                            dash={[10, 4]}
+                            dash={[4, 3]}
                         />
                     )}
 
@@ -603,28 +632,26 @@ export default function Editor() {
                                                 onDragEnd={() => setDraggingAnchorId(null)}
                                                 onDragMove={(e) => {
                                                     const pos = e.target.position();
+                                                    const altKey = e.evt.altKey;
                                                     setCurrentPoints((prev) =>
-                                                        prev.map((p) =>
-                                                            p.id === point.id
-                                                                ? {
-                                                                    ...p,
-                                                                    x: pos.x,
-                                                                    y: pos.y,
-                                                                    handleLeft: p.handleLeft
-                                                                        ? {
-                                                                            x: pos.x + (p.handleLeft.x - p.x),
-                                                                            y: pos.y + (p.handleLeft.y - p.y),
-                                                                        }
-                                                                        : undefined,
-                                                                    handleRight: p.handleRight
-                                                                        ? {
-                                                                            x: pos.x + (p.handleRight.x - p.x),
-                                                                            y: pos.y + (p.handleRight.y - p.y),
-                                                                        }
-                                                                        : undefined,
-                                                                }
-                                                                : p
-                                                        )
+                                                        prev.map((p) => {
+                                                            if (p.id !== point.id) return p;
+                                                            const newHandleRight = { x: pos.x, y: pos.y };
+                                                            if (altKey || !p.handleLeft) {
+                                                                return { ...p, handleRight: newHandleRight };
+                                                            }
+                                                            const dx = newHandleRight.x - p.x;
+                                                            const dy = newHandleRight.y - p.y;
+                                                            const mirroredLeft = {
+                                                                x: p.x - dx,
+                                                                y: p.y - dy,
+                                                            };
+                                                            return {
+                                                                ...p,
+                                                                handleRight: newHandleRight,
+                                                                handleLeft: mirroredLeft,
+                                                            };
+                                                        })
                                                     );
                                                 }}
                                             />
