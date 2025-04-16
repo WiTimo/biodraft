@@ -22,6 +22,8 @@ type Path = {
 
 type Mode = 'DRAW' | 'SELECT';
 
+const SNAPPING_THRESHOLD = 20;
+
 export default function Editor() {
   const stageRef = useRef<any>(null);
   const [stageScale, setStageScale] = useState(1);
@@ -323,7 +325,7 @@ export default function Editor() {
             const existingPoint = [
               ...currentPoints,
               ...paths.flatMap((p) => p.points),
-            ].find((p) => Math.hypot(p.x - clickedPoint.x, p.y - clickedPoint.y) < 10);
+            ].find((p) => Math.hypot(p.x - clickedPoint.x, p.y - clickedPoint.y) < SNAPPING_THRESHOLD);
             const newPoint: BezierPoint = existingPoint
               ? existingPoint
               : { id: uuidv4(), x: clickedPoint.x, y: clickedPoint.y };
@@ -339,25 +341,52 @@ export default function Editor() {
         }}
         onMouseMove={(e) => {
           const pointer = stageRef.current.getPointerPosition();
+          if (!pointer) return;
+
           const pos = {
             x: (pointer.x - stagePosition.x) / stageScale,
             y: (pointer.y - stagePosition.y) / stageScale,
           };
-          if (pointer) {
-            setMousePos(pos);
-          }
+
+          setMousePos(pos);
+
           if (isPanning && lastPanPos) {
             const dx = e.evt.clientX - lastPanPos.x;
             const dy = e.evt.clientY - lastPanPos.y;
             setStagePosition((prev) => ({ x: prev.x + dx, y: prev.y + dy }));
             setLastPanPos({ x: e.evt.clientX, y: e.evt.clientY });
           }
-          if (previewPoint) {
-            const dx = pos.x - previewPoint.x;
-            const dy = pos.y - previewPoint.y;
-            const handleRight = { x: previewPoint.x + dx, y: previewPoint.y + dy };
-            const handleLeft = { x: previewPoint.x - dx, y: previewPoint.y - dy };
-            setPreviewPoint({ ...previewPoint, handleLeft, handleRight });
+
+          if (mode === "DRAW" && drawing) {
+            const potentialSnapPoints = [
+              ...currentPoints,
+              ...paths.flatMap((p) => p.points),
+            ];
+
+            const lockedPoint = potentialSnapPoints.find(
+              (p) => Math.hypot(p.x - pos.x, p.y - pos.y) < SNAPPING_THRESHOLD
+            );
+
+            if (lockedPoint) {
+              // Snap directly to existing point (no handles)
+              setPreviewPoint({
+                id: uuidv4(),
+                x: lockedPoint.x,
+                y: lockedPoint.y,
+              });
+            } else {
+              // No snapping, set previewPoint with handles
+              setPreviewPoint((prev) => {
+                if (!prev) return null;
+                const dx = pos.x - prev.x;
+                const dy = pos.y - prev.y;
+                return {
+                  ...prev,
+                  handleRight: { x: prev.x + dx, y: prev.y + dy },
+                  handleLeft: { x: prev.x - dx, y: prev.y - dy },
+                };
+              });
+            }
           }
         }}
         onMouseUp={(e) => {
