@@ -18,4 +18,10 @@ export type Path = {
 };
 export type Mode = "DRAW" | "SELECT" | "FIT";
 
-export type Link = { a: string; b: string };
+export type Link = { from: LinkSegment; to: LinkSegment };
+
+export interface LinkSegment {
+    pathId: string;
+    a: { x: number; y: number };
+    b: { x: number; y: number };
+}

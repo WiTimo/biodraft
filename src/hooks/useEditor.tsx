@@ -1,11 +1,10 @@
 import { useState, useEffect } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { BezierPoint, Path } from "../types/bezier";
-import { deepCopyPoints } from "../utils/points";
 import { usePanZoom } from "./usePanZoom";
 import { useHistory } from "./useHistory";
 import { Mode } from "../components/Toolbar";
-import { Link } from "../types/types";
+import { LinkSegment } from "../types/types";
 import { samplePath } from "../utils/sampleBezier";
 
 export default function useEditor() {
@@ -36,8 +35,9 @@ export default function useEditor() {
         handle: "left" | "right";
     } | null>(null);
 
-    const [linkCandidates, setLinkCandidates] = useState<string[]>([]);
-    const [links, setLinks] = useState<Link[]>([]);
+    const [linkCandidates, setLinkCandidates] = useState<LinkSegment[]>([]);
+    const [links, setLinks] = useState<{ from: LinkSegment; to: LinkSegment }[]>([]);
+
 
     const onSelectPoint = (id: string) => {
         setSelectedPointId(id);
@@ -114,22 +114,44 @@ export default function useEditor() {
         const evt = e.evt as MouseEvent;
         if (evt.button === 2) return;
         const pointer = screenToStage(evt);
-
-        // ==== LINK MODE HANDLING ====
-        if (mode === "link") {
-            const clickedId = e.target.id();
-            console.log(clickedId)
-            if (clickedId && paths.some(p => p.id === clickedId)) {
-                setLinkCandidates(prev => {
-                    const next = [...prev, clickedId];
+        const cls = e.target.getClassName();
+        // LINK mode
+        if (mode === "link" && cls === "Shape") {
+            const pathId = e.target.id();
+            const path = paths.find((p) => p.id === pathId);
+            const pointer = stageRef.current!.getPointerPosition();
+            if (path && pointer) {
+                // find best segment on this path
+                let bestIdx = 0;
+                let bestDist = Infinity;
+                for (let i = 1; i < path.points.length; i++) {
+                    const p0 = path.points[i - 1], p1 = path.points[i];
+                    // project pointer onto segment p0→p1
+                    const vx = p1.x - p0.x, vy = p1.y - p0.y;
+                    const wx = pointer.x - p0.x, wy = pointer.y - p0.y;
+                    const t = Math.max(0, Math.min(1, (vx * wx + vy * wy) / (vx * vx + vy * vy)));
+                    const cx = p0.x + t * vx, cy = p0.y + t * vy;
+                    const dist = Math.hypot(pointer.x - cx, pointer.y - cy);
+                    if (dist < bestDist) {
+                        bestDist = dist;
+                        bestIdx = i - 1;
+                    }
+                }
+                const seg: LinkSegment = {
+                    pathId,
+                    a: { x: path.points[bestIdx].x, y: path.points[bestIdx].y },
+                    b: { x: path.points[bestIdx + 1].x, y: path.points[bestIdx + 1].y },
+                };
+                setLinkCandidates((prev) => {
+                    const next = [...prev, seg];
                     if (next.length === 2) {
-                        setLinks(links => [...links, { a: next[0], b: next[1] }]);
+                        setLinks((all) => [...all, { from: next[0], to: next[1] }]);
                         return [];
                     }
                     return next;
                 });
             }
-            return;  // stop here
+            return;
         }
 
         if (pointer && mode === "edit") {
@@ -292,6 +314,7 @@ export default function useEditor() {
         setSelectedPointId,
         mousePos,
         links,
+        linkCandidates,
 
         // drag callbacks
         onAnchorDragStart,
