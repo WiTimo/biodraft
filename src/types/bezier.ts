@@ -1,8 +1,4 @@
-export type Handle = {
-    x: number;
-    y: number;
-};
-
+export type Handle = { x: number; y: number };
 export type BezierPoint = {
     id: string;
     x: number;
@@ -10,12 +6,8 @@ export type BezierPoint = {
     handleLeft?: Handle;
     handleRight?: Handle;
 };
-
 export type Path = {
     id: string;
     points: BezierPoint[];
     closed: boolean;
 };
-export type Mode = "DRAW" | "SELECT" | "FIT";
-
-export type Link = { a: string; b: string };
