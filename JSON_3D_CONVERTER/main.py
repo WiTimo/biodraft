@@ -3,11 +3,12 @@ import json
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+from collections import defaultdict
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 file_path = os.path.join(script_dir, "data.json")
 
-# Load your JSON data here (replace with actual file path)
+# Load JSON data
 with open(file_path, "r") as f:
     data = json.load(f)
 
@@ -46,6 +47,36 @@ front_panel = sorted_paths[1]["path"]
 sleeve_1 = sorted_paths[2]["path"]
 sleeve_2 = sorted_paths[3]["path"]
 
+# Step 1: Get center X of each panel
+def get_center_x(panel):
+    xs = [p["x"] for p in panel["points"]]
+    return sum(xs) / len(xs)
+
+back_center_x = get_center_x(back_panel)
+front_center_x = get_center_x(front_panel)
+
+width = abs(front_center_x - back_center_x)
+global_center = (back_center_x + front_center_x) / 2
+
+print(f"Back center X: {back_center_x}")
+print(f"Front center X: {front_center_x}")
+print(f"Computed width: {width}")
+
+def shift_panel_to_x(panel, target_center_x):
+    current_center_x = get_center_x(panel)
+    offset = target_center_x - current_center_x
+    for p in panel["points"]:
+        p["x"] += offset
+
+print(f"Back panel X range before shift: {min([p['x'] for p in back_panel['points']])} to {max([p['x'] for p in back_panel['points']])}")
+print(f"Front panel X range before shift: {min([p['x'] for p in front_panel['points']])} to {max([p['x'] for p in front_panel['points']])}")
+
+shift_panel_to_x(back_panel, -width / 2)
+shift_panel_to_x(front_panel, width / 2)
+
+print(f"Back panel X range after shift: {min([p['x'] for p in back_panel['points']])} to {max([p['x'] for p in back_panel['points']])}")
+print(f"Front panel X range after shift: {min([p['x'] for p in front_panel['points']])} to {max([p['x'] for p in front_panel['points']])}")
+
 # Z-depths
 depth_map = {
     back_panel["id"]: 0,
@@ -75,7 +106,6 @@ for link in links:
     stitch_segments.append(seg)
 
 # Identify sleeve-related seams
-from collections import defaultdict
 pairwise_links = defaultdict(list)
 for seg in stitch_segments:
     pair = tuple(sorted([seg["from_id"], seg["to_id"]]))
