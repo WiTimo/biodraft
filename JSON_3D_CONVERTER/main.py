@@ -157,21 +157,21 @@ for link in links:
     idx_to_a = find_nearest_point_index(to_path, norm_to_a["x"], norm_to_a["y"])
     idx_to_b = find_nearest_point_index(to_path, norm_to_b["x"], norm_to_b["y"])
 
-    # Ensure stitching direction goes forward (increasing indices)
-    if idx_from_a > idx_from_b:
-        idx_from_a, idx_from_b = idx_from_b, idx_from_a
-    if idx_to_a > idx_to_b:
-        idx_to_a, idx_to_b = idx_to_b, idx_to_a
+    from_segment = from_path[idx_from_a:idx_from_b + 1]
+    to_segment = to_path[idx_to_a:idx_to_b + 1]
 
-    length = min(idx_from_b - idx_from_a + 1, idx_to_b - idx_to_a + 1)
+    def resample_segment(segment, count):
+        return [segment[int(i * (len(segment) - 1) / (count - 1))] for i in range(count)]
 
-    for i in range(length):
-        pt_from = from_path[idx_from_a + i]
-        pt_to = to_path[idx_to_a + i]
+    count = min(len(from_segment), len(to_segment), 50)  # Max 50 links for performance
+    resampled_from = resample_segment(from_segment, count)
+    resampled_to = resample_segment(to_segment, count)
+
+    for pf, pt in zip(resampled_from, resampled_to):
         ax.plot(
-            [pt_from["x"], pt_to["x"]],
-            [pt_from["y"], pt_to["y"]],
-            [pt_from["z"], pt_to["z"]],
+            [pf["x"], pt["x"]],
+            [pf["y"], pt["y"]],
+            [pf["z"], pt["z"]],
             color="black", linestyle="-", linewidth=0.5
         )
 
