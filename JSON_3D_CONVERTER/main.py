@@ -28,6 +28,9 @@ for i in range(len(paths)):
     paths[i]["points"] = unwrap_points_safe(paths[i]["points"])
 assert len(paths) >= 4, "Expect at least four paths in your JSON"
 
+# Extract connection links
+links = data.get("links", [])
+
 # 1) Normalize for uniform scale and centering
 all_x = [pt["x"] for path in paths for pt in path["points"]]
 all_y = [pt["y"] for path in paths for pt in path["points"]]
@@ -83,13 +86,34 @@ def wrap_sleeve_around_cylinder(points, arc_angle_deg=270, radius=0.1, z_height=
         wrapped.append({
             "x": new_x,
             "y": new_y,
-            "z": z_height + pt["y"] * 0.5  # preserve vertical shape
+            "z": z_height + pt["y"] * 0.5,  # preserve vertical shape
+            "_originalXY": (pt["x"], pt["y"])  # Save original 2D position
         })
     return wrapped
 
 # Use points from the front and back shoulders as sleeve origins
 paths[2]["points"] = wrap_sleeve_around_cylinder(paths[2]["points"], arc_angle_deg=270, radius=0.08, z_height=0.0)
 paths[3]["points"] = wrap_sleeve_around_cylinder(paths[3]["points"], arc_angle_deg=270, radius=0.08, z_height=-0.05)
+
+def transform_sleeve(points, rotation_deg, translation_vec):
+    angle = np.radians(rotation_deg)
+    rot_matrix = np.array([
+        [np.cos(angle), -np.sin(angle), 0],
+        [np.sin(angle),  np.cos(angle), 0],
+        [0, 0, 1]
+    ])
+    transformed = []
+    for pt in points:
+        vec = np.array([pt["x"], pt["y"], pt["z"]])
+        new_vec = rot_matrix @ vec + translation_vec
+        new_pt = pt.copy()
+        new_pt["x"], new_pt["y"], new_pt["z"] = new_vec
+        transformed.append(new_pt)
+    return transformed
+
+# Apply rotation and offset to sleeves
+paths[2]["points"] = transform_sleeve(paths[2]["points"], rotation_deg=-90, translation_vec=np.array([-0.25, 0.0, 0.0]))
+paths[3]["points"] = transform_sleeve(paths[3]["points"], rotation_deg=90, translation_vec=np.array([0.25, 0.0, -0.05]))
 
 # 5) Plotting
 fig = plt.figure(figsize=(8, 6))
@@ -101,6 +125,55 @@ for i, path in enumerate(paths[:4]):
     ys = [pt["y"] for pt in path["points"]]
     zs = [pt["z"] for pt in path["points"]]
     ax.plot(xs, ys, zs, color=colors[i], label=f"Path {i}")
+
+def find_nearest_point_index(points, x_target, y_target):
+    return min(
+        range(len(points)),
+        key=lambda i: (
+            (points[i].get("_originalXY", (points[i]["x"], points[i]["y"]))[0] - x_target) ** 2 +
+            (points[i].get("_originalXY", (points[i]["x"], points[i]["y"]))[1] - y_target) ** 2
+        )
+    )
+
+path_id_to_index = {path["id"]: idx for idx, path in enumerate(data["paths"]) if "id" in path}
+
+def normalize_xy(p):
+    return {
+        "x": (p["x"] - center_x) / scale,
+        "y": (p["y"] - center_y) / scale
+    }
+
+for link in links:
+    from_path = paths[path_id_to_index[link["from"]["pathId"]]]["points"]
+    to_path = paths[path_id_to_index[link["to"]["pathId"]]]["points"]
+
+    norm_from_a = normalize_xy(link["from"]["a"])
+    norm_from_b = normalize_xy(link["from"]["b"])
+    norm_to_a = normalize_xy(link["to"]["a"])
+    norm_to_b = normalize_xy(link["to"]["b"])
+
+    idx_from_a = find_nearest_point_index(from_path, norm_from_a["x"], norm_from_a["y"])
+    idx_from_b = find_nearest_point_index(from_path, norm_from_b["x"], norm_from_b["y"])
+    idx_to_a = find_nearest_point_index(to_path, norm_to_a["x"], norm_to_a["y"])
+    idx_to_b = find_nearest_point_index(to_path, norm_to_b["x"], norm_to_b["y"])
+
+    # Ensure stitching direction goes forward (increasing indices)
+    if idx_from_a > idx_from_b:
+        idx_from_a, idx_from_b = idx_from_b, idx_from_a
+    if idx_to_a > idx_to_b:
+        idx_to_a, idx_to_b = idx_to_b, idx_to_a
+
+    length = min(idx_from_b - idx_from_a + 1, idx_to_b - idx_to_a + 1)
+
+    for i in range(length):
+        pt_from = from_path[idx_from_a + i]
+        pt_to = to_path[idx_to_a + i]
+        ax.plot(
+            [pt_from["x"], pt_to["x"]],
+            [pt_from["y"], pt_to["y"]],
+            [pt_from["z"], pt_to["z"]],
+            color="black", linestyle="-", linewidth=0.5
+        )
 
 ax.set_xlim(-0.5, 0.5)
 ax.set_ylim(-0.5, 0.5)
