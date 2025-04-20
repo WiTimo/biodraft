@@ -14,7 +14,7 @@ fig = plt.figure(figsize=(8, 6))
 ax  = fig.add_subplot(projection="3d")
 
 # ===============================
-# PART 1 — Plot bottom loop candidates with debug info
+# PART 1 — Plot bottom loop from 3rd path
 # ===============================
 third = data["paths"][2]
 points = third["points"]
@@ -34,25 +34,14 @@ Zc = ys
 dup_idx = np.where((np.diff(xs) == 0) & (np.diff(ys) == 0))[0] + 1
 breaks = np.concatenate(([0], dup_idx, [len(xs)]))
 
-# Plot all candidates with printed stats
+# Plot the bottom loop
 mid_z = (Zc.max() + Zc.min()) / 2
 for i in range(len(breaks) - 1):
     start, end = breaks[i], breaks[i+1]
     theta_span = np.ptp(thetas[start:end])
     avg_z = Zc[start:end].mean()
-    height_range = np.ptp(Zc[start:end])
-
-    print(f"Subpath {i}: θ span = {theta_span:.2f}, avg_z = {avg_z:.2f}, height_range = {height_range:.2f}")
-
     if theta_span >= np.pi and avg_z < mid_z:
-        color = "teal" if height_range < 80 else "gray"
-        ax.plot(Xc[start:end], Yc[start:end], Zc[start:end], linewidth=2, color=color)
-        if height_range < 80:
-            print(f"✓ Plotting subpath {i} (included)")
-        else:
-            print(f"→ Plotting subpath {i} (excluded by height, shown in gray)")
-    else:
-        print(f"✗ Skipping subpath {i} (not loop-like or too high)")
+        ax.plot(Xc[start:end], Yc[start:end], Zc[start:end], linewidth=2, color="teal")
 
 # ===============================
 # PART 2 — Detect top loop, replace with perfect circle
@@ -119,7 +108,7 @@ if best_loop:
 # ===============================
 # Finalize
 # ===============================
-ax.set_title("Bottom Loop Candidates + Replaced Top Circle")
+ax.set_title("Bottom Loop + Replaced Top Circle")
 ax.set_xlabel("Xc (wrapped)")
 ax.set_ylabel("Yc (wrapped)")
 ax.set_zlabel("Original Y (height)")
