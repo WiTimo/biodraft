@@ -138,61 +138,6 @@ if best_loop:
 
     ax.plot(new_X, new_Y, new_Z, linewidth=2, color="orange")
     print(f"Replaced top loop with perfect circle of circumference {best_length:.2f} units")
-        # ===== Wall Construction: From bottom loop to top circle =====
-    # Reuse top circle coordinates
-    top_X = new_X
-    top_Y = new_Y
-    top_Z = new_Z
-
-    # Use the best bottom loop found earlier
-    bottom_X = X_sub
-    bottom_Y = Y_sub
-    bottom_Z = Z_sub
-
-    # Make sure they match in resolution
-    if len(bottom_X) != len(top_X):
-        from scipy.interpolate import interp1d
-        def resample_loop(X, Y, Z, num):
-            t = np.linspace(0, 1, len(X))
-            t_new = np.linspace(0, 1, num)
-            fx = interp1d(t, X, kind='linear')
-            fy = interp1d(t, Y, kind='linear')
-            fz = interp1d(t, Z, kind='linear')
-            return fx(t_new), fy(t_new), fz(t_new)
-        bottom_X, bottom_Y, bottom_Z = resample_loop(bottom_X, bottom_Y, bottom_Z, len(top_X))
-
-        # Align bottom loop to top loop using circular shift that minimizes total distance
-        min_dist = np.inf
-        best_shift = 0
-        for shift in range(len(bottom_X)):
-            rolled_X = np.roll(bottom_X, shift)
-            rolled_Y = np.roll(bottom_Y, shift)
-            dists = np.sqrt((rolled_X - top_X)**2 + (rolled_Y - top_Y)**2)
-            total_dist = np.sum(dists)
-            if total_dist < min_dist:
-                min_dist = total_dist
-                best_shift = shift
-
-        bottom_X = np.roll(bottom_X, best_shift)
-        bottom_Y = np.roll(bottom_Y, best_shift)
-        bottom_Z = np.roll(bottom_Z, best_shift)
-
-    # Create wall as vertical quads between each pair of points using Poly3DCollection for consistent orientation
-    from mpl_toolkits.mplot3d.art3d import Poly3DCollection
- 
-    quads = []
-    for i in range(len(top_X)):
-        j = (i + 1) % len(top_X)
-        quad = [
-            [bottom_X[i], bottom_Y[i], bottom_Z[i]],
-            [bottom_X[j], bottom_Y[j], bottom_Z[j]],
-            [top_X[j], top_Y[j], top_Z[j]],
-            [top_X[i], top_Y[i], top_Z[i]],
-        ]
-        quads.append(quad)
- 
-    poly = Poly3DCollection(quads, facecolors='lightblue', linewidths=0, edgecolors='none', alpha=0.5)
-    ax.add_collection3d(poly)
 
 # ===============================
 # Finalize
