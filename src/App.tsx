@@ -1,10 +1,11 @@
-import './App.css'
-import Editor from './components/Editor'
+import { Canvas } from './canvas/Canvas';
 
 function App() {
   return (
-    <Editor />
-  )
+    <div className="w-screen h-screen overflow-hidden">
+      <Canvas />
+    </div>
+  );
 }
 
-export default App
+export default App;
