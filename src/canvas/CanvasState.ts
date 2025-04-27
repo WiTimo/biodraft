@@ -223,9 +223,9 @@ export const useCanvasState = create<CanvasState>((set, get) => ({
       },
     });
   },
-  startHandleMove: (pointId) => {
-    const { present, saveState } = get();
-    saveState(); // Save BEFORE first move
+  startHandleMove: () => {
+    const { saveState } = get();
+    saveState();
   },
   
 

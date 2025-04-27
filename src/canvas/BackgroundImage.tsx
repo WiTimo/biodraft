@@ -1,5 +1,5 @@
 import { Image as KonvaImage, Transformer } from 'react-konva';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import useImage from 'use-image';
 import { useCanvasState } from './canvasState';
 
@@ -67,7 +67,7 @@ export function BackgroundImage({
         onDragEnd={(e) => {
           moveBackgroundImage(id, e.target.x(), e.target.y());
         }}
-        onTransformEnd={(e) => {
+        onTransformEnd={() => {
             const node = shapeRef.current;
             const scaleX = node.scaleX();
             const scaleY = node.scaleY();
@@ -92,7 +92,7 @@ export function BackgroundImage({
       {selected && currentTool === 'background' && !locked && (
         <Transformer
           ref={trRef}
-          boundBoxFunc={(oldBox, newBox) => newBox}
+          boundBoxFunc={(_, newBox) => newBox}
         />
       )}
     </>

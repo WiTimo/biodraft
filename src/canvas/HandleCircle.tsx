@@ -28,7 +28,7 @@ export function HandleCircle({ pointX, pointY, dx, dy, pointId, type }: HandleCi
         fill="#2196F3"
         draggable
         name='handle'
-        onDragStart={(e) => {
+        onDragStart={() => {
             startHandleMove(pointId);
           }}
         onDragMove={(e) => {
