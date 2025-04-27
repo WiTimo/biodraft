@@ -45,14 +45,17 @@ interface CanvasState {
   };
   past: { paths: Path[]; backgroundImages: BackgroundImage[] }[];
   future: { paths: Path[]; backgroundImages: BackgroundImage[] }[];
+  justPlacedPointId: string | null;
+  isDraggingHandle: boolean;
 
   // Actions
   addPoint: (x: number, y: number, sharp?: boolean) => string;
   finishCurrentPath: () => void;
   movePoint: (id: string, x: number, y: number) => void;
-  moveHandle: (pointId: string, type: 'handleIn' | 'handleOut', dx: number, dy: number, save?: boolean) => void;
+  moveHandle: (pointId: string, type: 'handleIn' | 'handleOut', dx: number, dy: number, save?: boolean, altPressed?: boolean) => void;
   toggleHandlesForPoint: (id: string) => void;
   startHandleMove: (pointId: string) => void;
+  endHandleMove: () => void;
 
   setTool: (tool: Tool) => void;
 
@@ -65,6 +68,7 @@ interface CanvasState {
   deselectBackgroundImages: () => void;
   updateBackgroundImageTransform: (id: string, transform: { scaleX: number; scaleY: number; rotation: number }) => void;
   updateBackgroundImageFullTransform: (id: string, transform: { x: number; y: number; scaleX: number; scaleY: number; rotation: number }) => void;
+  clearJustPlacedPointId: () => void;
 
   saveState: () => void;
   undo: () => void;
@@ -82,7 +86,8 @@ export const useCanvasState = create<CanvasState>((set, get) => ({
   },
   past: [],
   future: [],
-
+  justPlacedPointId: null,
+  isDraggingHandle: false,
   saveState: () => {
     set((state) => ({
       past: [...state.past, JSON.parse(JSON.stringify(state.present))],
@@ -134,19 +139,26 @@ export const useCanvasState = create<CanvasState>((set, get) => ({
       set({
         present: {
           paths: paths.map((p) =>
-            p.id === get().currentPathId ? { ...p, points: [...p.points, point] } : p
+            p.id === get().currentPathId
+              ? { ...p, points: [...p.points, point] }
+              : p
           ),
           backgroundImages,
         },
+        justPlacedPointId: point.id, // 🆕 Mark just placed
       });
     } else {
       const newPathId = crypto.randomUUID();
       set({
         present: {
-          paths: [...paths, { id: newPathId, points: [point], closed: false }],
+          paths: [
+            ...paths,
+            { id: newPathId, points: [point], closed: false },
+          ],
           backgroundImages,
         },
         currentPathId: newPathId,
+        justPlacedPointId: point.id, // 🆕 Mark just placed
       });
     }
 
@@ -184,21 +196,35 @@ export const useCanvasState = create<CanvasState>((set, get) => ({
     });
   },
 
-  moveHandle: (pointId, type, dx, dy, save = true) => {
+  moveHandle: (pointId, type, dx, dy, save = true, altPressed = false) => {
     const { present, saveState } = get();
     if (save) saveState();
+
     set({
       present: {
         ...present,
         paths: present.paths.map((path) => ({
           ...path,
-          points: path.points.map((point) =>
-            point.id === pointId ? { ...point, [type]: { dx, dy } } : point
-          ),
+          points: path.points.map((point) => {
+            if (point.id !== pointId) return point;
+
+            const updatedPoint = {
+              ...point,
+              [type]: { dx, dy },
+            };
+
+            if (!altPressed) {
+              const oppositeType = type === 'handleIn' ? 'handleOut' : 'handleIn';
+              updatedPoint[oppositeType] = { dx: -dx, dy: -dy };
+            }
+
+            return updatedPoint;
+          }),
         })),
       },
     });
   },
+
 
   toggleHandlesForPoint: (id) => {
     const { present, saveState } = get();
@@ -223,11 +249,19 @@ export const useCanvasState = create<CanvasState>((set, get) => ({
       },
     });
   },
-  startHandleMove: () => {
-    const { saveState } = get();
-    saveState();
+  startHandleMove: (pointId) => {
+    const { isDraggingHandle, saveState } = get();
+    if (!isDraggingHandle) {
+      saveState(); // Only save if drag not started yet
+      set({ isDraggingHandle: true });
+    }
   },
-  
+  endHandleMove: () => {
+    set({ isDraggingHandle: false });
+  },
+
+
+
 
   setTool: (tool) => set({ currentTool: tool }),
 
@@ -334,5 +368,9 @@ export const useCanvasState = create<CanvasState>((set, get) => ({
       },
     });
   },
-  
+  clearJustPlacedPointId: () => {
+    set({ justPlacedPointId: null });
+  },
+
+
 }));

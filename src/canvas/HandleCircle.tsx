@@ -11,8 +11,8 @@ interface HandleCircleProps {
 }
 
 export function HandleCircle({ pointX, pointY, dx, dy, pointId, type }: HandleCircleProps) {
-    const moveHandle = useCanvasState((s) => s.moveHandle);
-    const startHandleMove = useCanvasState((s) => s.startHandleMove);
+  const { moveHandle, startHandleMove, endHandleMove } = useCanvasState();
+
   return (
     <>
       <Line
@@ -28,21 +28,23 @@ export function HandleCircle({ pointX, pointY, dx, dy, pointId, type }: HandleCi
         fill="#2196F3"
         draggable
         name='handle'
-        onDragStart={() => {
-            startHandleMove(pointId);
-          }}
+        onDragStart={(e) => {
+          startHandleMove(pointId);
+        }}
         onDragMove={(e) => {
-            const newDx = e.target.x() - pointX;
-            const newDy = e.target.y() - pointY;
-            moveHandle(pointId, type, newDx, newDy, false); // no save here
+          const newDx = e.target.x() - pointX;
+          const newDy = e.target.y() - pointY;
+          const altPressed = e.evt.altKey || e.evt.metaKey;
+          moveHandle(pointId, type, newDx, newDy, false, altPressed);
         }}
         onDragEnd={(e) => {
-            const newDx = e.target.x() - pointX;
-            const newDy = e.target.y() - pointY;
-            moveHandle(pointId, type, newDx, newDy, false); // still no save here
+          const newDx = e.target.x() - pointX;
+          const newDy = e.target.y() - pointY;
+          const altPressed = e.evt.altKey || e.evt.metaKey;
+          moveHandle(pointId, type, newDx, newDy, false, altPressed);
+          endHandleMove(); // Important: reset dragging flag!
         }}
-        />
-
+      />
     </>
   );
 }
