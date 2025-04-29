@@ -3,8 +3,11 @@ import json
 from mathutils import Vector
 
 # === SETTINGS ===
-json_path = "C:/Users/timo/Downloads/patterns_with_handles (5).json"
+json_path = "D:/Buisness/techPack3D/patterns_with_handles (5).json"
 samples_per_segment = 20  # More = smoother Bezier curves
+
+SCALE = 0.005
+
 
 # === LOAD JSON ===
 with open(json_path, 'r') as f:
@@ -19,8 +22,7 @@ def cubic_bezier(p0, p1, p2, p3, t):
     return (
         (1 - t)**3 * p0 +
         3 * (1 - t)**2 * t * p1 +
-        3 * (1 - t) * t**2 * p2 +
-        t**3 * p3
+        3 * (1 - t) * t**2 * p2 +        t**3 * p3
     )
 
 # === SAMPLE BEZIER CURVE ===
@@ -54,9 +56,10 @@ if closed:
     sampled_points.append(sampled_points[0])  # Close the curve
 
 # === CREATE MESH ===
-mesh_data = bpy.data.meshes.new("SimplePattern")
-mesh_obj = bpy.data.objects.new("SimplePattern", mesh_data)
+mesh_data = bpy.data.meshes.new("Pattern")
+mesh_obj = bpy.data.objects.new("Pattern", mesh_data)
 bpy.context.collection.objects.link(mesh_obj)
+mesh_obj.scale = (SCALE, SCALE, SCALE)
 
 verts = sampled_points
 edges = [(i, i + 1) for i in range(len(verts) - 1)]
@@ -74,5 +77,31 @@ bpy.ops.mesh.select_all(action='SELECT')
 bpy.ops.mesh.edge_face_add()  # Fill the edge loop
 bpy.ops.object.mode_set(mode='OBJECT')
 
+# Go to Edit Mode
+bpy.context.view_layer.objects.active = mesh_obj
+mesh_obj.select_set(True)
+bpy.ops.object.mode_set(mode='EDIT')
 
+# Find 3D Viewport and run Quad Swords inside override
+for area in bpy.context.window.screen.areas:
+    if area.type == 'VIEW_3D':
+        for region in area.regions:
+            if region.type == 'WINDOW':
+                with bpy.context.temp_override(
+                    window=bpy.context.window,
+                    area=area,
+                    region=region,
+                    screen=bpy.context.screen,
+                    scene=bpy.context.scene,
+                    active_object=mesh_obj,
+                    object=mesh_obj,
+                    edit_object=mesh_obj,
+                    selected_editable_objects=[mesh_obj]
+                ):
+                    try:
+                        bpy.ops.mesh.quad_swords_operator()
+                        print("✅ Quad Swords executed successfully.")
+                    except Exception as e:
+                        print(f"❌ Quad Swords failed: {e}")
+                break
 print("✅ Done: JSON Bezier converted into filled white mesh!")
