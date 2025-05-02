@@ -73,6 +73,11 @@ interface CanvasState {
   saveState: () => void;
   undo: () => void;
   redo: () => void;
+
+  selectedPointId: string | null;
+  selectPoint: (id: string) => void;
+  deselectPoint: () => void;
+  deleteSelectedPoint: () => void;
 }
 
 export const useCanvasState = create<CanvasState>((set, get) => ({
@@ -94,6 +99,29 @@ export const useCanvasState = create<CanvasState>((set, get) => ({
       future: [],
     }));
   },
+
+  selectedPointId: null,
+
+selectPoint: (id) => set({ selectedPointId: id }),
+deselectPoint: () => set({ selectedPointId: null }),
+
+deleteSelectedPoint: () => {
+  const { selectedPointId, present, saveState } = get();
+  if (!selectedPointId) return;
+
+  saveState();
+  set({
+    present: {
+      ...present,
+      paths: present.paths.map((path) => ({
+        ...path,
+        points: path.points.filter((p) => p.id !== selectedPointId),
+      })),
+    },
+    selectedPointId: null,
+  });
+},
+
 
   undo: () => {
     set((state) => {

@@ -12,6 +12,9 @@ interface HandleCircleProps {
 
 export function HandleCircle({ pointX, pointY, dx, dy, pointId, type }: HandleCircleProps) {
   const { moveHandle, startHandleMove, endHandleMove } = useCanvasState();
+  const selectedPointId = useCanvasState((s) => s.selectedPointId);
+
+  if (pointId !== selectedPointId) return null; // Only render if selected
 
   return (
     <>
@@ -42,7 +45,7 @@ export function HandleCircle({ pointX, pointY, dx, dy, pointId, type }: HandleCi
           const newDy = e.target.y() - pointY;
           const altPressed = e.evt.altKey || e.evt.metaKey;
           moveHandle(pointId, type, newDx, newDy, false, altPressed);
-          endHandleMove(); // Important: reset dragging flag!
+          endHandleMove();
         }}
       />
     </>

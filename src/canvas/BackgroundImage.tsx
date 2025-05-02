@@ -51,6 +51,7 @@ export function BackgroundImage({
         scaleY={scaleY}
         rotation={rotation}
         opacity={opacity}
+        name='background-image'
         draggable={!locked && currentTool === 'background'}
         onClick={(e) => {
           if (currentTool === 'background' && !locked) {

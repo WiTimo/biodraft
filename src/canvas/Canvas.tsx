@@ -1,5 +1,5 @@
 import { Stage, Layer } from 'react-konva';
-import { useCanvasState } from './canvasState';
+import { useCanvasState } from './CanvasState';
 import { PointCircle } from './PointCircle';
 import { LinePath } from './LinePath';
 import { HandleCircle } from './HandleCircle';
@@ -7,12 +7,13 @@ import { useEffect, useState } from 'react';
 import { BackgroundImage } from './BackgroundImage';
 
 export function Canvas() {
-    const { present, addPoint, finishCurrentPath, currentTool, deselectBackgroundImages, moveHandle, setTool } = useCanvasState();
+    const { present, addPoint, finishCurrentPath, selectPoint, currentTool, deselectBackgroundImages, moveHandle, setTool } = useCanvasState();
     const { paths, backgroundImages } = present;
     const [isDraggingNewPoint, setIsDraggingNewPoint] = useState(false);
   const [newPointId, setNewPointId] = useState<string | null>(null);
 
   const { undo, redo } = useCanvasState();
+  const deleteSelectedPoint = useCanvasState((s) => s.deleteSelectedPoint);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -25,10 +26,18 @@ export function Canvas() {
           undo();
         }
       }
+  
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        deleteSelectedPoint();
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [undo, redo]);
+  }, [undo, redo, deleteSelectedPoint]);
+
+
+
 
   return (
     <div className="w-full h-full">
@@ -43,12 +52,18 @@ export function Canvas() {
             const pointerPosition = stage.getPointerPosition();
             if (!pointerPosition) return;
           
-            const clickedEmpty = e.target === stage || ['background', 'canvas'].includes(e.target.name());
+            const targetName = e.target.name(); // undefined if click on Stage
+            const clickedOnEmptyCanvasOrBackground = 
+              !targetName || 
+              targetName === 'background' || 
+              targetName === 'canvas' || 
+              targetName === 'background-image';
           
             if (currentTool === 'background') {
-              if (clickedEmpty) {
-                deselectBackgroundImages();
-              }
+                if (clickedOnEmptyCanvasOrBackground) {
+                    deselectBackgroundImages();
+                    useCanvasState.getState().deselectPoint();
+                  }
               return;
             }
           
@@ -58,17 +73,18 @@ export function Canvas() {
                 return;
               }
           
-              if (!clickedEmpty) {
-                // Clicked on handle or point ➔ don't create point
+              if (!clickedOnEmptyCanvasOrBackground) {
+                // Clicked on point or handle ➔ don't place point
                 return;
               }
           
               const id = addPoint(pointerPosition.x, pointerPosition.y, true);
               setNewPointId(id);
               setIsDraggingNewPoint(true);
+              selectPoint(id);
             }
           }}
-              
+                
         onMouseMove={(e) => {
           if (!isDraggingNewPoint || !newPointId) return;
 
@@ -172,7 +188,37 @@ export function Canvas() {
     zIndex: 1000,
   }}
 />
+<button onClick={() => {
+  const { paths } = useCanvasState.getState().present;
+  const exportData = paths.map((path) => ({
+    id: path.id,
+    points: path.points.map((p) => ({
+      x: p.x,
+      y: p.y,
+      handleIn: {
+        dx: p.handleIn.dx,
+        dy: p.handleIn.dy,
+      },
+      handleOut: {
+        dx: p.handleOut.dx,
+        dy: p.handleOut.dy,
+      }
+    })),
+    closed: path.closed
+  }));
 
+  const blob = new Blob(
+    [JSON.stringify({ patterns: exportData }, null, 2)],
+    { type: 'application/json' }
+  );
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'patterns_with_handles.json';
+  a.click();
+  URL.revokeObjectURL(url);
+}}>Export JSON</button>
     </div>
+    
   );
 }
