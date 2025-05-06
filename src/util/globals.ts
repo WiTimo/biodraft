@@ -1,0 +1,1 @@
+export const CANVAS_SIZE = 5000; // 5000x5000 pixels

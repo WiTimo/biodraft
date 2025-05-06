@@ -68,7 +68,6 @@ export function ImageTransformPanel() {
                     type="number"
                     step="0.01"
                     min={0}
-                    max={1}
                     value={Math.round(image.scaleX * 100) / 100}
                     onChange={(e) => handleChange('scaleX', parseFloat(e.target.value))}
                     style={{ width: '100%' }}
@@ -81,7 +80,6 @@ export function ImageTransformPanel() {
                     type="number"
                     step="0.01"
                     min={0}
-                    max={1}
                     value={Math.round(image.scaleY * 100) / 100}
                     onChange={(e) => handleChange('scaleY', parseFloat(e.target.value))}
                     style={{ width: '100%' }}

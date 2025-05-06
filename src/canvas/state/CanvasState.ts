@@ -57,6 +57,11 @@ interface CanvasState {
   startHandleMove: (pointId: string) => void;
   endHandleMove: () => void;
 
+  zoom: number;
+  setZoom: (zoom: number) => void;
+  offset: { x: number; y: number };
+  setOffset: (offset: { x: number; y: number }) => void;
+
   setTool: (tool: Tool) => void;
 
   addBackgroundImage: (src: string, id?: string) => void;
@@ -102,6 +107,11 @@ export const useCanvasState = create<CanvasState>((set, get) => ({
       future: [],
     }));
   },
+
+  setZoom: (zoom) => set({ zoom }),
+  zoom: 1,
+  offset: { x: 0, y: 0 },
+  setOffset: (offset) => set({ offset }),
 
   selectedPointId: null,
   selectedPointIds: [],
