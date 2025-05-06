@@ -32,7 +32,7 @@ interface BackgroundImage {
 }
 
 // TOOLS
-export type Tool = 'pen' | 'background';
+export type Tool = 'pen' | 'background' | 'select';
 
 interface CanvasState {
   currentPathId: string | null;
@@ -69,6 +69,9 @@ interface CanvasState {
   updateBackgroundImageTransform: (id: string, transform: { scaleX: number; scaleY: number; rotation: number }) => void;
   updateBackgroundImageFullTransform: (id: string, transform: { x: number; y: number; scaleX: number; scaleY: number; rotation: number }) => void;
   clearJustPlacedPointId: () => void;
+  selectedPointIds: string[];
+setSelectedPointIds: (ids: string[]) => void;
+clearSelectedPointIds: () => void;
 
   saveState: () => void;
   undo: () => void;
@@ -101,7 +104,9 @@ export const useCanvasState = create<CanvasState>((set, get) => ({
   },
 
   selectedPointId: null,
-
+  selectedPointIds: [],
+  setSelectedPointIds: (ids) => set({ selectedPointIds: ids }),
+  clearSelectedPointIds: () => set({ selectedPointIds: [] }),
 selectPoint: (id) => set({ selectedPointId: id }),
 deselectPoint: () => set({ selectedPointId: null }),
 

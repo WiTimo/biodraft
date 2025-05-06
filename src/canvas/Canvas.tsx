@@ -1,4 +1,4 @@
-import { Stage, Layer } from 'react-konva';
+import { Stage, Layer, Rect } from 'react-konva';
 import { useCanvasState } from './CanvasState';
 import { PointCircle } from './PointCircle';
 import { LinePath } from './LinePath';
@@ -6,15 +6,58 @@ import { HandleCircle } from './HandleCircle';
 import { useEffect, useState } from 'react';
 import { BackgroundImage } from './BackgroundImage';
 import { importFromJson } from './importExport';
+import { SelectionBox } from './SelectionBox';
+
+const STATIC_MAN_IMAGE_ID = 'static-man';
 
 export function Canvas() {
   const { present, addPoint, finishCurrentPath, selectPoint, currentTool, deselectBackgroundImages, moveHandle, setTool } = useCanvasState();
   const { paths, backgroundImages } = present;
   const [isDraggingNewPoint, setIsDraggingNewPoint] = useState(false);
   const [newPointId, setNewPointId] = useState<string | null>(null);
+  const [selectionRect, setSelectionRect] = useState<null | { x: number; y: number; width: number; height: number }>(null);
+  const [selectionStart, setSelectionStart] = useState<null | { x: number; y: number }>(null);
 
   const { undo, redo } = useCanvasState();
   const deleteSelectedPoint = useCanvasState((s) => s.deleteSelectedPoint);
+
+
+  useEffect(() => {
+    const manImageAlreadyPresent = useCanvasState.getState().present.backgroundImages.some(
+      img => img.id === STATIC_MAN_IMAGE_ID
+    );
+    if (!manImageAlreadyPresent) {
+      const img = new Image();
+      img.src = '/images/man_front.png';
+      img.onload = () => {
+        const canvasWidth = window.innerWidth;
+        const canvasHeight = window.innerHeight;
+  
+        const imgWidth = img.width;
+        const imgHeight = img.height;
+  
+        const scale = 0.8; // 👈 adjust this to make it smaller or bigger
+  
+        const scaledWidth = imgWidth * scale;
+        const scaledHeight = imgHeight * scale;
+  
+        const x = (canvasWidth - scaledWidth) / 2;
+        const y = (canvasHeight - scaledHeight) / 2;
+  
+        const state = useCanvasState.getState();
+        state.addBackgroundImage('/images/man_front.png', STATIC_MAN_IMAGE_ID);
+        state.moveBackgroundImage(STATIC_MAN_IMAGE_ID, x, y);
+        state.updateBackgroundImageTransform(STATIC_MAN_IMAGE_ID, {
+          scaleX: scale,
+          scaleY: scale,
+          rotation: 0
+        });
+        state.toggleLockBackgroundImage(STATIC_MAN_IMAGE_ID); // lock it
+      };
+    }
+  }, []);
+  
+  
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -68,12 +111,21 @@ export function Canvas() {
             return;
           }
 
+          if (currentTool === 'select') {
+            if (clickedOnEmptyCanvasOrBackground) {
+              setSelectionStart(pointerPosition);
+              setSelectionRect(null);
+              useCanvasState.getState().clearSelectedPointIds();
+              useCanvasState.getState().deselectPoint();
+            }
+          }
+
           if (currentTool === 'pen') {
             if (e.evt.detail === 2) {
               finishCurrentPath();
               return;
             }
-
+            
             if (!clickedOnEmptyCanvasOrBackground) {
               // Clicked on point or handle ➔ don't place point
               return;
@@ -87,26 +139,62 @@ export function Canvas() {
         }}
 
         onMouseMove={(e) => {
-          if (!isDraggingNewPoint || !newPointId) return;
-
           const stage = e.target.getStage();
           if (!stage) return;
+        
           const pointerPosition = stage.getPointerPosition();
           if (!pointerPosition) return;
-
-          const path = paths.find((p) => p.points.find(pt => pt.id === newPointId));
-          const point = path?.points.find(pt => pt.id === newPointId);
-          if (!point) return;
-
-          const dx = pointerPosition.x - point.x;
-          const dy = pointerPosition.y - point.y;
-
-          moveHandle(newPointId, 'handleOut', dx, dy);
-          moveHandle(newPointId, 'handleIn', -dx, -dy);
+        
+          if (currentTool === 'select' && selectionStart) {
+            const width = pointerPosition.x - selectionStart.x;
+            const height = pointerPosition.y - selectionStart.y;
+            setSelectionRect({
+              x: selectionStart.x,
+              y: selectionStart.y,
+              width,
+              height
+            });
+            return;
+          }
+        
+          if (isDraggingNewPoint && newPointId) {
+            const path = paths.find((p) => p.points.find(pt => pt.id === newPointId));
+            const point = path?.points.find(pt => pt.id === newPointId);
+            if (!point) return;
+        
+            const dx = pointerPosition.x - point.x;
+            const dy = pointerPosition.y - point.y;
+        
+            moveHandle(newPointId, 'handleOut', dx, dy);
+            moveHandle(newPointId, 'handleIn', -dx, -dy);
+          }
         }}
+        
         onMouseUp={() => {
           setIsDraggingNewPoint(false);
           setNewPointId(null);
+
+          if (currentTool === 'select' && selectionStart && selectionRect) {
+            const rect = {
+              x: Math.min(selectionStart.x, selectionStart.x + selectionRect.width),
+              y: Math.min(selectionStart.y, selectionStart.y + selectionRect.height),
+              width: Math.abs(selectionRect.width),
+              height: Math.abs(selectionRect.height),
+            };
+          
+            const allPoints = useCanvasState.getState().present.paths.flatMap(p => p.points);
+            const ids = allPoints.filter(p =>
+              p.x >= rect.x &&
+              p.x <= rect.x + rect.width &&
+              p.y >= rect.y &&
+              p.y <= rect.y + rect.height
+            ).map(p => p.id);
+          
+            useCanvasState.getState().setSelectedPointIds(ids);
+            setSelectionStart(null);
+            setSelectionRect(null);
+          }
+          
         }}
       >
         <Layer>
@@ -158,11 +246,26 @@ export function Canvas() {
             ))
           )}
 
+          {selectionRect && currentTool === 'select' && (
+            <Rect
+              x={Math.min(selectionRect.x, selectionRect.x + selectionRect.width)}
+              y={Math.min(selectionRect.y, selectionRect.y + selectionRect.height)}
+              width={Math.abs(selectionRect.width)}
+              height={Math.abs(selectionRect.height)}
+              stroke="blue"
+              strokeWidth={1}
+              dash={[4, 4]}
+              listening={false}
+            />
+          )}
+
+          {currentTool === 'select' && <SelectionBox />}
         </Layer>
       </Stage>
       <div style={{ position: 'absolute', top: 10, right: 10, zIndex: 1000 }}>
-        <button onClick={() => setTool('pen')}>Pen Tool</button>
-        <button onClick={() => setTool('background')}>Background Tool</button>
+      <button onClick={() => setTool('pen')}>Pen Tool</button>
+      <button onClick={() => setTool('background')}>Background Tool</button>
+      <button onClick={() => setTool('select')}>Select Tool</button>
       </div>
       <input
         type="file"
