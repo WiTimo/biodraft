@@ -1,5 +1,5 @@
 import { Circle, Line } from 'react-konva';
-import { useCanvasState } from './CanvasState';
+import { useCanvasState } from './canvasState';
 
 interface HandleCircleProps {
   pointX: number;

@@ -55,8 +55,8 @@ export function BackgroundImage({
         draggable={!locked && currentTool === 'background'}
         onClick={(e) => {
           if (currentTool === 'background' && !locked) {
-            selectBackgroundImage(id); // Always select this image
-            e.cancelBubble = true; // Stop click from bubbling
+            selectBackgroundImage(id);
+            e.cancelBubble = true;
           }
         }}
         onTap={(e) => {
@@ -84,7 +84,6 @@ export function BackgroundImage({
               rotation,
             });
           
-            // Reset Konva internal scaling
             node.scaleX(1);
             node.scaleY(1);
           }}

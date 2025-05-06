@@ -1,5 +1,5 @@
 import { Stage, Layer } from 'react-konva';
-import { useCanvasState } from './CanvasState';
+import { useCanvasState } from './canvasState';
 import { PointCircle } from './PointCircle';
 import { LinePath } from './LinePath';
 import { HandleCircle } from './HandleCircle';

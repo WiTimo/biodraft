@@ -1,5 +1,5 @@
 
-import { useCanvasState } from './CanvasState';
+import { useCanvasState } from './canvasState';
 
 export function exportToJson() {
     const { paths } = useCanvasState.getState().present;
