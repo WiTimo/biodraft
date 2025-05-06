@@ -1,6 +1,6 @@
 import { Circle } from 'react-konva';
 import { useCanvasState } from '../state/CanvasState';
-import { useEffect, useRef, useState } from 'react';
+import { useRef } from 'react';
 import React from 'react';
 
 interface PointCircleProps {
