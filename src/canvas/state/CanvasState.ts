@@ -70,9 +70,9 @@ interface CanvasState {
   updateBackgroundImageFullTransform: (id: string, transform: { x: number; y: number; scaleX: number; scaleY: number; rotation: number }) => void;
   clearJustPlacedPointId: () => void;
   selectedPointIds: string[];
-setSelectedPointIds: (ids: string[]) => void;
-clearSelectedPointIds: () => void;
-
+  setSelectedPointIds: (ids: string[]) => void;
+  clearSelectedPointIds: () => void;
+  deleteSelectedBackgroundImage: () => void;
   saveState: () => void;
   undo: () => void;
   redo: () => void;
@@ -85,7 +85,7 @@ clearSelectedPointIds: () => void;
 
 export const useCanvasState = create<CanvasState>((set, get) => ({
   currentPathId: null,
-  currentTool: 'pen',
+  currentTool: 'select',
   selectedBackgroundId: null,
 
   present: {
@@ -107,25 +107,38 @@ export const useCanvasState = create<CanvasState>((set, get) => ({
   selectedPointIds: [],
   setSelectedPointIds: (ids) => set({ selectedPointIds: ids }),
   clearSelectedPointIds: () => set({ selectedPointIds: [] }),
-selectPoint: (id) => set({ selectedPointId: id }),
-deselectPoint: () => set({ selectedPointId: null }),
+  selectPoint: (id) => set({ selectedPointId: id }),
+  deselectPoint: () => set({ selectedPointId: null }),
 
-deleteSelectedPoint: () => {
-  const { selectedPointId, present, saveState } = get();
-  if (!selectedPointId) return;
+  deleteSelectedPoint: () => {
+    const { selectedPointId, present, saveState } = get();
+    if (!selectedPointId) return;
 
-  saveState();
-  set({
-    present: {
-      ...present,
-      paths: present.paths.map((path) => ({
-        ...path,
-        points: path.points.filter((p) => p.id !== selectedPointId),
-      })),
-    },
-    selectedPointId: null,
-  });
-},
+    saveState();
+    set({
+      present: {
+        ...present,
+        paths: present.paths.map((path) => ({
+          ...path,
+          points: path.points.filter((p) => p.id !== selectedPointId),
+        })),
+      },
+      selectedPointId: null,
+    });
+  },
+  deleteSelectedBackgroundImage: () => {
+    const { selectedBackgroundId, present, saveState } = get();
+    if (!selectedBackgroundId) return;
+
+    saveState();
+    set({
+      present: {
+        ...present,
+        backgroundImages: present.backgroundImages.filter((img) => img.id !== selectedBackgroundId),
+      },
+      selectedBackgroundId: null,
+    });
+  },
 
 
   undo: () => {
@@ -214,46 +227,31 @@ deleteSelectedPoint: () => {
   },
 
   movePoint: (id, x, y) => {
-    const { present, saveState } = get();
-    saveState();
+    const { present } = get();
     set({
       present: {
         ...present,
-        paths: present.paths.map((path) => ({
-          ...path,
-          points: path.points.map((point) =>
-            point.id === id ? { ...point, x, y } : point
-          ),
-        })),
+        paths: updatePointInPath(present.paths, id, p => ({ ...p, x, y })),
       },
     });
   },
 
-  moveHandle: (pointId, type, dx, dy, save = true, altPressed = false) => {
-    const { present, saveState } = get();
-    if (save) saveState();
-
+  moveHandle: (pointId, type, dx, dy, _save, altPressed = false) => {
+    const { present } = get();
     set({
       present: {
         ...present,
-        paths: present.paths.map((path) => ({
-          ...path,
-          points: path.points.map((point) => {
-            if (point.id !== pointId) return point;
-
-            const updatedPoint = {
-              ...point,
-              [type]: { dx, dy },
-            };
-
-            if (!altPressed) {
-              const oppositeType = type === 'handleIn' ? 'handleOut' : 'handleIn';
-              updatedPoint[oppositeType] = { dx: -dx, dy: -dy };
-            }
-
-            return updatedPoint;
-          }),
-        })),
+        paths: updatePointInPath(present.paths, pointId, (point) => {
+          const updated = {
+            ...point,
+            [type]: { dx, dy },
+          };
+          if (!altPressed) {
+            const other = type === 'handleIn' ? 'handleOut' : 'handleIn';
+            updated[other] = { dx: -dx, dy: -dy };
+          }
+          return updated;
+        }),
       },
     });
   },
@@ -282,10 +280,10 @@ deleteSelectedPoint: () => {
       },
     });
   },
-  startHandleMove: (pointId) => {
+  startHandleMove: () => {
     const { isDraggingHandle, saveState } = get();
     if (!isDraggingHandle) {
-      saveState(); // Only save if drag not started yet
+      saveState();
       set({ isDraggingHandle: true });
     }
   },
@@ -407,3 +405,16 @@ deleteSelectedPoint: () => {
 
 
 }));
+
+
+
+function updatePointInPath(paths: Path[], pointId: string, update: (pt: Point) => Point): Path[] {
+  return paths.map(path => {
+    const found = path.points.find(p => p.id === pointId);
+    if (!found) return path;
+    return {
+      ...path,
+      points: path.points.map(p => p.id === pointId ? update(p) : p),
+    };
+  });
+}
