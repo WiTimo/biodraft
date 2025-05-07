@@ -1,6 +1,6 @@
-import { Circle, Line } from 'react-konva';
 import { useCanvasState } from '../state/CanvasState';
 import { useEffect, useState } from 'react';
+import { Circle, Line } from 'react-konva';
 import React from 'react';
 
 interface HandleCircleProps {
@@ -23,6 +23,10 @@ export const HandleCircle = React.memo(function HandleCircle({
   const { currentTool, endHandleMove, startHandleMove, selectedPointId, moveHandle } = useCanvasState();
   const isVisible = pointId === selectedPointId;
   const [pos, setPos] = useState({ x: pointX + dx, y: pointY + dy });
+  const zoom = useCanvasState((s) => s.zoom);
+
+  const adjustedRadius = Math.min(8, Math.max(2, 4 / zoom));
+  const adjustedStrokeWidth = Math.min(2, Math.max(0.5, 1 / zoom));
 
   useEffect(() => {
     setPos({ x: pointX + dx, y: pointY + dy });
@@ -35,14 +39,14 @@ export const HandleCircle = React.memo(function HandleCircle({
       <Line
         points={[pointX, pointY, pos.x, pos.y]}
         stroke="gray"
-        strokeWidth={1}
+        strokeWidth={adjustedStrokeWidth}
         dash={[4, 4]}
         listening={false}
       />
       <Circle
         x={pos.x}
         y={pos.y}
-        radius={4}
+        radius={adjustedRadius}
         fill="#2196F3"
         draggable={currentTool === 'select' || currentTool === 'pen'}
         name="handle"
@@ -63,7 +67,7 @@ export const HandleCircle = React.memo(function HandleCircle({
           const dx = newX - pointX;
           const dy = newY - pointY;
           const altPressed = e.evt.altKey || e.evt.metaKey;
-          moveHandle(pointId, type, dx, dy, false, altPressed); // don't save in real time
+          moveHandle(pointId, type, dx, dy, false, altPressed);
         }}
         onDragEnd={(e) => {
           const finalDx = e.target.x() - pointX;

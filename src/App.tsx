@@ -1,9 +1,9 @@
-import ZoomPanCanvas from './canvas/ZoomPanCanvas';
+import { Canvas } from './canvas/Canvas';
 
 function App() {
   return (
     <main className="w-screen h-screen overflow-hidden">
-      <ZoomPanCanvas />
+      <Canvas />
     </main>
   );
 }

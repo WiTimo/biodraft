@@ -66,8 +66,6 @@ export function BackgroundImage({
         image={image}
         x={x ?? 0}
         y={y ?? 0}
-        offsetX={image?.width ? image.width / 2 : 0}
-        offsetY={image?.height ? image.height / 2 : 0}
         scaleX={scaleX}
         scaleY={scaleY}
         rotation={rotation}

@@ -1,4 +1,5 @@
 import { Shape } from 'react-konva';
+import { useCanvasState } from '../state/CanvasState';
 
 interface LinePathProps {
   points: {
@@ -13,6 +14,13 @@ interface LinePathProps {
 
 export function LinePath({ points, closed = false }: LinePathProps) {
   if (points.length < 2) return null;
+
+  const zoom = useCanvasState((s) => s.zoom);
+  const baseStrokeWidth = 2;
+  const minStroke = 0.5;
+  const maxStroke = 4;
+
+  const adjustedStrokeWidth = Math.min(maxStroke, Math.max(minStroke, baseStrokeWidth / zoom));
 
   return (
     <Shape
@@ -50,7 +58,7 @@ export function LinePath({ points, closed = false }: LinePathProps) {
         context.strokeShape(shape);
       }}
       stroke="black"
-      strokeWidth={2}
+      strokeWidth={adjustedStrokeWidth}
     />
   );
 }

@@ -15,7 +15,14 @@ export function Toolbar() {
                 if (reader.result) {
                     const id = crypto.randomUUID();
                     useCanvasState.getState().addBackgroundImage(reader.result as string, id);
-                    useCanvasState.getState().moveBackgroundImage(id, CANVAS_SIZE / 2, CANVAS_SIZE / 2);
+                    // get image dimensions
+                    const img = new Image();
+                    img.src = reader.result as string;
+                    img.onload = () => {
+                        const width = img.width;
+                        const height = img.height;
+                        useCanvasState.getState().moveBackgroundImage(id, window.innerWidth / 2 - width / 2, window.innerHeight / 2 - height / 2);
+                    };
                     useCanvasState.getState().setTool('background');
                     useCanvasState.getState().selectBackgroundImage(id);
 

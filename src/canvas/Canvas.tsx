@@ -1,12 +1,15 @@
 import { Stage, Layer, Rect } from 'react-konva';
 import { useCanvasState } from './state/CanvasState';
-import { useEffect, useState } from 'react';
+import { useContext, useEffect, useState } from 'react';
 import { BackgroundImage } from './BackgroundImage/BackgroundImage';
+import { ImageTransformPanel } from './UI/ImageTransformPanel';
 import { PathsLayer } from './Layers/PathsLayer';
 import { PointsLayer } from './Layers/PointsLayer';
+import { Toolbar } from './UI/Toolbar';
 import Konva from 'konva';
-import { CANVAS_SIZE } from '../util/globals';
 Konva.showWarnings = false;
+
+let lastZoomUpdate: number | null = null;
 
 const STATIC_MAN_IMAGE_ID = 'static-man';
 
@@ -17,7 +20,11 @@ export function Canvas() {
   const [newPointId, setNewPointId] = useState<string | null>(null);
   const [selectionRect, setSelectionRect] = useState<null | { x: number; y: number; width: number; height: number }>(null);
   const [selectionStart, setSelectionStart] = useState<null | { x: number; y: number }>(null);
-
+  const {zoom, offset} = useCanvasState();
+  const [isSpacePressed, setIsSpacePressed] = useState(false);
+  const [isPanning, setIsPanning] = useState(false);
+  const [lastPointerPos, setLastPointerPos] = useState<{ x: number; y: number } | null>(null);
+  
   useEffect(() => {
     const manImageAlreadyPresent = useCanvasState.getState().present.backgroundImages.some(
       img => img.id === STATIC_MAN_IMAGE_ID
@@ -26,11 +33,23 @@ export function Canvas() {
       const img = new Image();
       img.src = '/images/man_front.png';
       img.onload = () => {
+        const canvasWidth = window.innerWidth;
+        const canvasHeight = window.innerHeight;
+
+        const imgWidth = img.width;
+        const imgHeight = img.height;
+
         const scale = 0.8;
+
+        const scaledWidth = imgWidth * scale;
+        const scaledHeight = imgHeight * scale;
+
+        const x = (canvasWidth - scaledWidth) / 2;
+        const y = (canvasHeight - scaledHeight) / 2;
 
         const state = useCanvasState.getState();
         state.addBackgroundImage('/images/man_front.png', STATIC_MAN_IMAGE_ID);
-        state.moveBackgroundImage(STATIC_MAN_IMAGE_ID, CANVAS_SIZE / 2, CANVAS_SIZE / 2);
+        state.moveBackgroundImage(STATIC_MAN_IMAGE_ID, x, y);
         state.updateBackgroundImageTransform(STATIC_MAN_IMAGE_ID, {
           scaleX: scale,
           scaleY: scale,
@@ -43,174 +62,239 @@ export function Canvas() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.code === 'Space') setIsSpacePressed(true);
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
-        if (e.shiftKey) {
-          e.preventDefault();
-          redo();
-        } else {
-          e.preventDefault();
-          undo();
-        }
+        e.preventDefault();
+        e.shiftKey ? redo() : undo();
       }
-
+  
       if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
         deleteSelectedPoint();
         if (selectedBackgroundId) deleteSelectedBackgroundImage();
       }
     };
+  
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.code === 'Space') setIsSpacePressed(false);
+    };
+  
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
   }, [undo, redo, deleteSelectedPoint, selectedBackgroundId]);
 
 
 
   return (
-    <Stage
-      width={CANVAS_SIZE}
-      height={CANVAS_SIZE}
-      style={{ background: '#f0f0f0' }}
-      onMouseDown={(e) => {
-        const stage = e.target.getStage();
-        if (!stage) return;
-
-        const pointerPosition = stage.getPointerPosition();
-        if (!pointerPosition) return;
-
-        const target = e.target;
-        const targetName = target.name();
-        const isStageClick = target === stage;
-        const isBackgroundClick = targetName === 'background-image';
-
-        if (currentTool === 'background') {
-          // If clicked on stage OR on the background image itself, deselect
-          if (isStageClick || isBackgroundClick) {
-            deselectBackgroundImages();
-            useCanvasState.getState().deselectPoint();
-          }
-          return;
-        }
-
-        if (currentTool === 'select') {
-          if (isStageClick) {
-            setSelectionStart(pointerPosition);
-            setSelectionRect(null);
-            useCanvasState.getState().clearSelectedPointIds();
-            useCanvasState.getState().deselectPoint();
-          }
-        }
-
-        if (currentTool === 'pen') {
-          if (e.evt.detail === 2) {
-            finishCurrentPath();
-            return;
-          }
-
-          if (!isStageClick && targetName !== 'background-image' && targetName !== 'background') {
-            // Clicked on point or handle ➔ don't place point
-            return;
-          }
-
-          const id = addPoint(pointerPosition.x, pointerPosition.y, true);
-          useCanvasState.getState().selectPoint(id);
-          setNewPointId(id);
-          setIsDraggingNewPoint(true);
-        }
-      }}
-
-
-      onMouseMove={(e) => {
-        const stage = e.target.getStage();
-        if (!stage) return;
-
-        const pointerPosition = stage.getPointerPosition();
-        if (!pointerPosition) return;
-
-        if (currentTool === 'select' && selectionStart) {
-          const width = pointerPosition.x - selectionStart.x;
-          const height = pointerPosition.y - selectionStart.y;
-          setSelectionRect({
-            x: selectionStart.x,
-            y: selectionStart.y,
-            width,
-            height
-          });
-          return;
-        }
-
-        if (isDraggingNewPoint && newPointId) {
-          const path = paths.find((p) => p.points.find(pt => pt.id === newPointId));
-          const point = path?.points.find(pt => pt.id === newPointId);
-          if (!point) return;
-
-          const dx = pointerPosition.x - point.x;
-          const dy = pointerPosition.y - point.y;
-
-          moveHandle(newPointId, 'handleOut', dx, dy);
-          moveHandle(newPointId, 'handleIn', -dx, -dy);
-        }
-      }}
-
-      onMouseUp={() => {
-        setIsDraggingNewPoint(false);
-        setNewPointId(null);
-
-        if (currentTool === 'select' && selectionStart && selectionRect) {
-          const rect = {
-            x: Math.min(selectionStart.x, selectionStart.x + selectionRect.width),
-            y: Math.min(selectionStart.y, selectionStart.y + selectionRect.height),
-            width: Math.abs(selectionRect.width),
-            height: Math.abs(selectionRect.height),
+    <div className="w-full h-full">
+      <ImageTransformPanel />
+      <Stage
+        scale={{x: zoom, y: zoom}}
+        x={offset.x}
+        y={offset.y}
+        width={window.innerWidth}
+        height={window.innerHeight}
+        style={{ background: '#f0f0f0' }}
+        onMouseDown={(e) => {
+          const stage = e.target.getStage();
+          if (!stage) return;
+        
+          const pointer = stage.getPointerPosition();
+          const { zoom, offset } = useCanvasState.getState();
+          if (!pointer) return;
+        
+          const world = {
+            x: (pointer.x - offset.x) / zoom,
+            y: (pointer.y - offset.y) / zoom,
           };
+        
+          const target = e.target;
+          const targetName = target.name();
+          const isStageClick = target === stage;
+          const isBackgroundClick = targetName === 'background-image';
+        
+          if (currentTool === 'background') {
+            if (isStageClick || isBackgroundClick) {
+              deselectBackgroundImages();
+              useCanvasState.getState().deselectPoint();
+            }
+            return;
+          }
+        
+          if (currentTool === 'select') {
+            if (isStageClick) {
+              setSelectionStart(world);
+              setSelectionRect(null);
+              useCanvasState.getState().clearSelectedPointIds();
+              useCanvasState.getState().deselectPoint();
+            }
+          }
+        
+          if (currentTool === 'pen') {
+            if (e.evt.detail === 2) {
+              finishCurrentPath();
+              return;
+            }
+        
+            if (!isStageClick && targetName !== 'background-image' && targetName !== 'background') {
+              return;
+            }
+        
+            const id = addPoint(world.x, world.y, true);
+            useCanvasState.getState().selectPoint(id);
+            setNewPointId(id);
+            setIsDraggingNewPoint(true);
+          }
+        }}
+        
 
-          const allPoints = useCanvasState.getState().present.paths.flatMap(p => p.points);
-          const ids = allPoints.filter(p =>
-            p.x >= rect.x &&
-            p.x <= rect.x + rect.width &&
-            p.y >= rect.y &&
-            p.y <= rect.y + rect.height
-          ).map(p => p.id);
+        onMouseMove={(e) => {
+          const stage = e.target.getStage();
+          if (!stage) return;
+        
+          const pointer = stage.getPointerPosition();
+          const { zoom, offset } = useCanvasState.getState();
+          if (!pointer) return;
+        
+          const world = {
+            x: (pointer.x - offset.x) / zoom,
+            y: (pointer.y - offset.y) / zoom,
+          };
+        
+          if (currentTool === 'select' && selectionStart) {
+            const width = world.x - selectionStart.x;
+            const height = world.y - selectionStart.y;
+            setSelectionRect({
+              x: selectionStart.x,
+              y: selectionStart.y,
+              width,
+              height,
+            });
+            return;
+          }
+        
+          if (isDraggingNewPoint && newPointId) {
+            const path = paths.find((p) => p.points.find((pt) => pt.id === newPointId));
+            const point = path?.points.find((pt) => pt.id === newPointId);
+            if (!point) return;
+        
+            const dx = world.x - point.x;
+            const dy = world.y - point.y;
+        
+            moveHandle(newPointId, 'handleOut', dx, dy);
+            moveHandle(newPointId, 'handleIn', -dx, -dy);
+          }
+        }}
+        
+        onMouseUp={() => {
+          setIsPanning(false);
+          setLastPointerPos(null);
+          setIsDraggingNewPoint(false);
+          setNewPointId(null);
 
-          useCanvasState.getState().setSelectedPointIds(ids);
-          setSelectionStart(null);
-          setSelectionRect(null);
-        }
+          if (currentTool === 'select' && selectionStart && selectionRect) {
+            const rect = {
+              x: Math.min(selectionStart.x, selectionStart.x + selectionRect.width),
+              y: Math.min(selectionStart.y, selectionStart.y + selectionRect.height),
+              width: Math.abs(selectionRect.width),
+              height: Math.abs(selectionRect.height),
+            };
 
-      }}
-    >
-      <Layer>
-        {backgroundImages.map((img) => (
-          <BackgroundImage
-            key={img.id}
-            id={img.id}
-            src={img.src}
-            x={img.x}
-            y={img.y}
-            scaleX={img.scaleX}
-            scaleY={img.scaleY}
-            rotation={img.rotation}
-            opacity={img.opacity}
-            locked={img.locked}
-          />
-        ))}
+            const allPoints = useCanvasState.getState().present.paths.flatMap(p => p.points);
+            const ids = allPoints.filter(p =>
+              p.x >= rect.x &&
+              p.x <= rect.x + rect.width &&
+              p.y >= rect.y &&
+              p.y <= rect.y + rect.height
+            ).map(p => p.id);
 
-        <PathsLayer />
+            useCanvasState.getState().setSelectedPointIds(ids);
+            setSelectionStart(null);
+            setSelectionRect(null);
+          }
 
-        <PointsLayer />
+        }}
 
-        {selectionRect && currentTool === 'select' && (
-          <Rect
-            x={Math.min(selectionRect.x, selectionRect.x + selectionRect.width)}
-            y={Math.min(selectionRect.y, selectionRect.y + selectionRect.height)}
-            width={Math.abs(selectionRect.width)}
-            height={Math.abs(selectionRect.height)}
-            stroke="blue"
-            strokeWidth={1}
-            dash={[4, 4]}
-            listening={false}
-          />
-        )}
-      </Layer>
-    </Stage>
+        onWheel={(e) => {
+          const evt = e.evt;
+        
+          // Only zoom when CTRL or META is pressed
+          if (!evt.ctrlKey && !evt.metaKey) return;
+        
+          evt.preventDefault();
+        
+          const stage = e.target.getStage();
+          const pointer = stage?.getPointerPosition();
+          if (!stage || !pointer) return;
+        
+          const state = useCanvasState.getState();
+          const zoom = state.zoom;
+          const offset = state.offset;
+        
+          const sensitivity = 0.0025;
+          const minZoom = 0.1;
+          const maxZoom = 5;
+        
+          // Compute new zoom
+          const delta = evt.deltaY;
+          const newZoom = Math.min(maxZoom, Math.max(minZoom, zoom - delta * sensitivity));
+        
+          // Adjust offset so zoom centers on cursor
+          const mouse = {
+            x: (pointer.x - offset.x) / zoom,
+            y: (pointer.y - offset.y) / zoom,
+          };
+        
+          const newOffset = {
+            x: pointer.x - mouse.x * newZoom,
+            y: pointer.y - mouse.y * newZoom,
+          };
+        
+          state.setZoom(newZoom);
+          state.setOffset(newOffset);
+        }}
+        
+      >
+        <Layer>
+          {backgroundImages.map((img) => (
+            <BackgroundImage
+              key={img.id}
+              id={img.id}
+              src={img.src}
+              x={img.x}
+              y={img.y}
+              scaleX={img.scaleX}
+              scaleY={img.scaleY}
+              rotation={img.rotation}
+              opacity={img.opacity}
+              locked={img.locked}
+            />
+          ))}
+
+          <PathsLayer />
+
+          <PointsLayer />
+
+          {selectionRect && currentTool === 'select' && (
+            <Rect
+              x={Math.min(selectionRect.x, selectionRect.x + selectionRect.width)}
+              y={Math.min(selectionRect.y, selectionRect.y + selectionRect.height)}
+              width={Math.abs(selectionRect.width)}
+              height={Math.abs(selectionRect.height)}
+              stroke="blue"
+              strokeWidth={1}
+              dash={[4, 4]}
+              listening={false}
+            />
+          )}
+        </Layer>
+      </Stage>
+      <Toolbar />
+    </div>
+
   );
 }

@@ -9,19 +9,26 @@ interface PointCircleProps {
   id: string;
 }
 
+const baseRadius = 6;
+const minRadius = 2;
+const maxRadius = 10;
+
+
 export const PointCircle = React.memo(function PointCircle({ x, y, id }: PointCircleProps) {
   const { movePoint, toggleHandlesForPoint, selectPoint, selectedPointId, selectedPointIds, currentTool } = useCanvasState();
 
   const isSelected = id === selectedPointId || selectedPointIds.includes(id);
 
   const shapeRef = useRef<any>(null);
+  const zoom = useCanvasState((s) => s.zoom);
+
 
   return (
     <Circle
+      radius={Math.min(maxRadius, Math.max(minRadius, baseRadius / zoom))}
       ref={shapeRef}
       x={x}
       y={y}
-      radius={6}
       fill={isSelected ? '#00C853' : '#FF5722'}
       stroke="black"
       strokeWidth={1}
