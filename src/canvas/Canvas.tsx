@@ -7,6 +7,7 @@ import { PathsLayer } from './Layers/PathsLayer';
 import { PointsLayer } from './Layers/PointsLayer';
 import { Toolbar } from './UI/Toolbar';
 import Konva from 'konva';
+import { SelectionTransformer } from './Layers/SelectionTransformer';
 
 Konva.showWarnings = false;
 
@@ -28,6 +29,7 @@ export function Canvas() {
     zoom,
     offset,
     setOffset,
+    selectedPointIds
   } = useCanvasState();
   const { paths, backgroundImages } = present;
 
@@ -254,21 +256,27 @@ export function Canvas() {
               height: Math.abs(height),
             };
         
-            const allPoints = useCanvasState.getState().present.paths.flatMap((p) => p.points);
-            const ids = allPoints
-              .filter(
+            const allPaths = useCanvasState.getState().present.paths;
+        
+            // ✅ Only select full paths whose points are entirely inside the rectangle
+            const fullyInsidePaths = allPaths.filter((path) =>
+              path.points.every(
                 (p) =>
                   p.x >= rect.x &&
                   p.x <= rect.x + rect.width &&
                   p.y >= rect.y &&
                   p.y <= rect.y + rect.height
               )
-              .map((p) => p.id);
+            );
         
-            useCanvasState.getState().setSelectedPointIds(ids);
+            const allPointIds = fullyInsidePaths.flatMap((p) => p.points.map((pt) => pt.id));
+        
+            useCanvasState.getState().setSelectedPointIds(allPointIds);
             setSelectionStart(null);
+            setSelectionRect(null);
           }
         }}
+        
         onWheel={(e) => {
           const evt = e.evt;
           if (!evt.ctrlKey && !evt.metaKey) return;
@@ -321,54 +329,23 @@ export function Canvas() {
           <PathsLayer />
           <PointsLayer />
 
-          {selectionRect && currentTool === 'select' && (
-            <Rect
-              x={Math.min(selectionRect.x, selectionRect.x + selectionRect.width)}
-              y={Math.min(selectionRect.y, selectionRect.y + selectionRect.height)}
-              width={Math.abs(selectionRect.width)}
-              height={Math.abs(selectionRect.height)}
-              stroke="blue"
-              strokeWidth={1}
-              dash={[4, 4]}
-              draggable
-              onMouseDown={(e) => {
-                e.cancelBubble = true;
-              }}
-              onDragStart={(e) => {
-                e.cancelBubble = true;
-                useCanvasState.getState().saveState();
-                setDragStartBox({ x: e.target.x(), y: e.target.y() });
-              }}
-              onDragMove={(e) => {
-                if (!dragStartBox || !selectionRect) return;
+{/* 👇 Show selection box only during drag (visual aid) */}
+{selectionRect && selectionStart && currentTool === 'select' && (
+  <Rect
+    x={Math.min(selectionRect.x, selectionRect.x + selectionRect.width)}
+    y={Math.min(selectionRect.y, selectionRect.y + selectionRect.height)}
+    width={Math.abs(selectionRect.width)}
+    height={Math.abs(selectionRect.height)}
+    stroke="blue"
+    strokeWidth={1}
+    dash={[4, 4]}
+  />
+)}
 
-                const dx = e.target.x() - dragStartBox.x;
-                const dy = e.target.y() - dragStartBox.y;
-
-                const selectedIds = useCanvasState.getState().selectedPointIds;
-                const allPoints = useCanvasState.getState().present.paths.flatMap((p) => p.points);
-
-                selectedIds.forEach((id) => {
-                  const point = allPoints.find((p) => p.id === id);
-                  if (!point) return;
-                  useCanvasState.getState().movePoint(id, point.x + dx, point.y + dy);
-                });
-
-                setSelectionRect({
-                  ...selectionRect,
-                  x: selectionRect.x + dx,
-                  y: selectionRect.y + dy,
-                });
-
-                setDragStartBox({ x: e.target.x(), y: e.target.y() });
-              }}
-              onDragEnd={() => {
-                setDragStartBox(null);
-              }}
-          />
-
-          )}
-
+{/* 👇 Replace with Transformer once points are selected */}
+{!selectionStart && currentTool === 'select' && selectedPointIds.length > 0 && (
+  <SelectionTransformer />
+)}
         </Layer>
       </Stage>
       <Toolbar />
