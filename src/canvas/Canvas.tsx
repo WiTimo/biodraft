@@ -128,20 +128,15 @@ export function Canvas() {
           const pointer = stage.getPointerPosition();
           if (!pointer) return;
 
-          if (isSpacePressed) {
-            setIsPanning(true);
-            setLastPointerPos(pointer);
-            document.body.style.cursor = 'grabbing';
-            return;
-          }
-
+          const target = e.target;
+          const targetName = target.name();
           const world = {
             x: (pointer.x - offset.x) / zoom,
             y: (pointer.y - offset.y) / zoom,
           };
+          // ✅ Don't deselect when clicking a transformer handle
+          if (targetName?.includes('transform-handle')) return;
 
-          const target = e.target;
-          const targetName = target.name();
           const isStageClick = target === stage;
           const isBackgroundClick = targetName === 'background-image';
 
@@ -154,23 +149,23 @@ export function Canvas() {
           }
 
           if (currentTool === 'select') {
-            const isClickingOnEmpty = e.target === stage || e.target.name() === '';
+            const isClickingOnEmpty = isStageClick || targetName === '';
             const clickedInsideBox =
               selectionRect &&
-              world.x >= selectionRect.x &&
-              world.x <= selectionRect.x + selectionRect.width &&
-              world.y >= selectionRect.y &&
-              world.y <= selectionRect.y + selectionRect.height;
-          
+              pointer.x >= selectionRect.x &&
+              pointer.x <= selectionRect.x + selectionRect.width &&
+              pointer.y >= selectionRect.y &&
+              pointer.y <= selectionRect.y + selectionRect.height;
+
             if (isClickingOnEmpty && !clickedInsideBox) {
-              setPendingSelectionStart(world); // ✅ only store it
+              setPendingSelectionStart(world);
               setSelectionRect(null);
               useCanvasState.getState().clearSelectedPointIds();
               useCanvasState.getState().deselectPoint();
             }
           }
-          
-          
+
+
 
           if (currentTool === 'pen') {
             if (e.evt.detail === 2) {
@@ -210,12 +205,12 @@ export function Canvas() {
             const distX = world.x - pendingSelectionStart.x;
             const distY = world.y - pendingSelectionStart.y;
             const distance = Math.sqrt(distX * distX + distY * distY);
-          
+
             if (!selectionStart && distance > 4) {
               // ✅ start actual box drawing only after dragging
               setSelectionStart(pendingSelectionStart);
             }
-          
+
             if (selectionStart || distance > 4) {
               setSelectionRect({
                 x: pendingSelectionStart.x,
@@ -225,7 +220,7 @@ export function Canvas() {
               });
             }
           }
-          
+
 
           if (isDraggingNewPoint && newPointId) {
             const path = paths.find(p => p.points.some(pt => pt.id === newPointId));
@@ -246,7 +241,7 @@ export function Canvas() {
           setLastPointerPos(null);
           setIsPanning(false);
           document.body.style.cursor = 'default';
-        
+
           if (currentTool === 'select' && selectionStart && selectionRect) {
             const { x, y, width, height } = selectionRect;
             const rect = {
@@ -255,9 +250,9 @@ export function Canvas() {
               width: Math.abs(width),
               height: Math.abs(height),
             };
-        
+
             const allPaths = useCanvasState.getState().present.paths;
-        
+
             // ✅ Only select full paths whose points are entirely inside the rectangle
             const fullyInsidePaths = allPaths.filter((path) =>
               path.points.every(
@@ -268,15 +263,15 @@ export function Canvas() {
                   p.y <= rect.y + rect.height
               )
             );
-        
+
             const allPointIds = fullyInsidePaths.flatMap((p) => p.points.map((pt) => pt.id));
-        
+
             useCanvasState.getState().setSelectedPointIds(allPointIds);
             setSelectionStart(null);
             setSelectionRect(null);
           }
         }}
-        
+
         onWheel={(e) => {
           const evt = e.evt;
           if (!evt.ctrlKey && !evt.metaKey) return;
@@ -329,23 +324,23 @@ export function Canvas() {
           <PathsLayer />
           <PointsLayer />
 
-{/* 👇 Show selection box only during drag (visual aid) */}
-{selectionRect && selectionStart && currentTool === 'select' && (
-  <Rect
-    x={Math.min(selectionRect.x, selectionRect.x + selectionRect.width)}
-    y={Math.min(selectionRect.y, selectionRect.y + selectionRect.height)}
-    width={Math.abs(selectionRect.width)}
-    height={Math.abs(selectionRect.height)}
-    stroke="blue"
-    strokeWidth={1}
-    dash={[4, 4]}
-  />
-)}
+          {/* 👇 Show selection box only during drag (visual aid) */}
+          {selectionRect && selectionStart && currentTool === 'select' && (
+            <Rect
+              x={Math.min(selectionRect.x, selectionRect.x + selectionRect.width)}
+              y={Math.min(selectionRect.y, selectionRect.y + selectionRect.height)}
+              width={Math.abs(selectionRect.width)}
+              height={Math.abs(selectionRect.height)}
+              stroke="blue"
+              strokeWidth={1}
+              dash={[4, 4]}
+            />
+          )}
 
-{/* 👇 Replace with Transformer once points are selected */}
-{!selectionStart && currentTool === 'select' && selectedPointIds.length > 0 && (
-  <SelectionTransformer />
-)}
+          {/* 👇 Replace with Transformer once points are selected */}
+          {!selectionStart && currentTool === 'select' && selectedPointIds.length > 0 && (
+            <SelectionTransformer />
+          )}
         </Layer>
       </Stage>
       <Toolbar />
