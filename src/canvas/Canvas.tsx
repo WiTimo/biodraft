@@ -32,7 +32,7 @@ export function Canvas() {
     selectedPointIds
   } = useCanvasState();
   const { paths, backgroundImages } = present;
-
+  console.log("Canvas re-rendered");
   const [isDraggingNewPoint, setIsDraggingNewPoint] = useState(false);
   const [newPointId, setNewPointId] = useState<string | null>(null);
   const selectionRect = useCanvasState(s => s.selectionRect);

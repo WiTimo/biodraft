@@ -10,7 +10,12 @@ function sampleCubicBezier(p0, p1, p2, p3, t) {
     y: (1 - t) ** 3 * p0.y + 3 * (1 - t) ** 2 * t * p1.y + 3 * (1 - t) * t ** 2 * p2.y + t ** 3 * p3.y,
   };
 }
-
+function toWorldPos(pointer: { x: number; y: number }, zoom: number, offset: { x: number; y: number }) {
+  return {
+    x: (pointer.x - offset.x) / zoom,
+    y: (pointer.y - offset.y) / zoom,
+  };
+}
 function getCenterAndBounds(points) {
   const xs = points.map((p) => p.x);
   const ys = points.map((p) => p.y);
@@ -113,13 +118,11 @@ export function SelectionTransformer() {
     { x: minX, y: (minY + maxY) / 2 },
   ];
 
-  const handleRadius = 6;
+  const zoom = useCanvasState((s) => s.zoom);
+  const handleRadius = Math.min(10, Math.max(4, 8 / zoom));
 
 
-  const onHandleDragStart = (e: Konva.KonvaEventObject<DragEvent>, cornerIndex: number) => {
-    const pointer = e.target.getStage()?.getPointerPosition();
-    if (!pointer) return;
-
+  const onHandleDragStart = (_: any, cornerIndex: number) => {
     const corner = cornerPoints[cornerIndex];
     const centerVec = { x: corner.x - center.x, y: corner.y - center.y };
 
@@ -145,47 +148,35 @@ export function SelectionTransformer() {
   const onHandleDragMove = (e: Konva.KonvaEventObject<DragEvent>, _cornerIndex: number) => {
     if (!dragState.current) return;
 
+    const zoom = useCanvasState.getState().zoom;
+    const offset = useCanvasState.getState().offset;
+
     const pointer = e.target.getStage()?.getPointerPosition();
     if (!pointer) return;
+
+    const worldPointer = toWorldPos(pointer, zoom, offset);
 
     const {
       center,
       originalPoints,
-      startVec,
       startDistance,
-      startAngle
     } = dragState.current;
 
-    const currentVec = { x: pointer.x - center.x, y: pointer.y - center.y };
+    const currentVec = { x: worldPointer.x - center.x, y: worldPointer.y - center.y };
     const currentDistance = Math.sqrt(currentVec.x ** 2 + currentVec.y ** 2);
-    const currentAngle = Math.atan2(currentVec.y, currentVec.x);
 
     const scale = currentDistance / startDistance;
-    const rotation = currentAngle - startAngle;
-
-    const cos = Math.cos(rotation);
-    const sin = Math.sin(rotation);
-
-    const rotateAndScale = (x: number, y: number) => {
-      return {
-        x: scale * (x * cos - y * sin),
-        y: scale * (x * sin + y * cos),
-      };
-    };
 
     originalPoints.forEach((orig) => {
       const localX = orig.x - center.x;
       const localY = orig.y - center.y;
-      const transformed = rotateAndScale(localX, localY);
-      movePoint(orig.id, center.x + transformed.x, center.y + transformed.y);
 
-      const hIn = rotateAndScale(orig.handleIn.dx, orig.handleIn.dy);
-      const hOut = rotateAndScale(orig.handleOut.dx, orig.handleOut.dy);
-
-      moveHandle(orig.id, 'handleIn', hIn.x, hIn.y, false, true);
-      moveHandle(orig.id, 'handleOut', hOut.x, hOut.y, false, true);
+      movePoint(orig.id, center.x + localX * scale, center.y + localY * scale);
+      moveHandle(orig.id, 'handleIn', orig.handleIn.dx * scale, orig.handleIn.dy * scale, false, true);
+      moveHandle(orig.id, 'handleOut', orig.handleOut.dx * scale, orig.handleOut.dy * scale, false, true);
     });
   };
+
 
   const onRotateDragStart = (e: Konva.KonvaEventObject<DragEvent>) => {
     const pointer = e.target.getStage()?.getPointerPosition();
