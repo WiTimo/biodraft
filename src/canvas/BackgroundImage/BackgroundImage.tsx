@@ -70,6 +70,7 @@ export function BackgroundImage({
         scaleY={scaleY}
         rotation={rotation}
         opacity={opacity}
+        listening={currentTool !== 'select'}
         name='background-image'
         draggable={!locked && currentTool === 'background'}
         onClick={(e) => {

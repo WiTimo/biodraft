@@ -82,6 +82,11 @@ interface CanvasState {
   undo: () => void;
   redo: () => void;
 
+  selectionRect: { x: number; y: number; width: number; height: number } | null;
+  selectionStart: { x: number; y: number } | null;
+  setSelectionRect: (rect: { x: number; y: number; width: number; height: number } | null) => void;
+  setSelectionStart: (start: { x: number; y: number } | null) => void;
+
   selectedPointId: string | null;
   selectPoint: (id: string) => void;
   deselectPoint: () => void;
@@ -107,6 +112,11 @@ export const useCanvasState = create<CanvasState>((set, get) => ({
       future: [],
     }));
   },
+
+  selectionRect: null,
+  selectionStart: null,
+  setSelectionRect: (rect) => set({ selectionRect: rect }),
+  setSelectionStart: (start) => set({ selectionStart: start }),
 
   setZoom: (zoom) => set({ zoom }),
   zoom: 1,
@@ -304,7 +314,17 @@ export const useCanvasState = create<CanvasState>((set, get) => ({
 
 
 
-  setTool: (tool) => set({ currentTool: tool }),
+  setTool: (tool) => {
+    set({ currentTool: tool });
+  
+    get().clearSelectedPointIds();
+    get().deselectPoint();
+    get().deselectBackgroundImages();
+    set({
+      selectionRect: null,
+      selectionStart: null,
+    });
+  },
 
   addBackgroundImage: (src, id) => {
     const { present, saveState } = get();
