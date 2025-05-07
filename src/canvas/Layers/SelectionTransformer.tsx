@@ -2,6 +2,8 @@ import { Group, Line, Rect, Circle } from 'react-konva';
 import React, { useMemo, useRef, useState } from 'react';
 import { useCanvasState } from '../state/CanvasState';
 
+const cornerCursors = ['nwse-resize', 'nesw-resize', 'nwse-resize', 'nesw-resize'];
+
 function sampleCubicBezier(p0, p1, p2, p3, t) {
   return {
     x: (1 - t) ** 3 * p0.x + 3 * (1 - t) ** 2 * t * p1.x + 3 * (1 - t) * t ** 2 * p2.x + t ** 3 * p3.x,
@@ -51,6 +53,18 @@ export function SelectionTransformer() {
     startVec: { x: number; y: number };
     startDistance: number;
     startAngle: number;
+  } | null>(null);
+
+  const rotateState = useRef<{
+    center: { x: number; y: number };
+    startAngle: number;
+    originalPoints: {
+      id: string;
+      x: number;
+      y: number;
+      handleIn: { dx: number; dy: number };
+      handleOut: { dx: number; dy: number };
+    }[];
   } | null>(null);
 
   const selectedPoints = useMemo(
@@ -173,6 +187,63 @@ export function SelectionTransformer() {
     });
   };
 
+  const onRotateDragStart = (e: Konva.KonvaEventObject<DragEvent>) => {
+    const pointer = e.target.getStage()?.getPointerPosition();
+    if (!pointer) return;
+
+    const dx = pointer.x - center.x;
+    const dy = pointer.y - center.y;
+    const angle = Math.atan2(dy, dx);
+
+    rotateState.current = {
+      center: { ...center },
+      startAngle: angle,
+      originalPoints: selectedPoints.map((p) => ({
+        id: p.id,
+        x: p.x,
+        y: p.y,
+        handleIn: { ...p.handleIn },
+        handleOut: { ...p.handleOut },
+      })),
+    };
+
+    saveState();
+  };
+
+  const onRotateDragMove = (e: Konva.KonvaEventObject<DragEvent>) => {
+    const pointer = e.target.getStage()?.getPointerPosition();
+    if (!pointer || !rotateState.current) return;
+
+    const {
+      center,
+      startAngle,
+      originalPoints,
+    } = rotateState.current;
+
+    const currentAngle = Math.atan2(pointer.y - center.y, pointer.x - center.x);
+    const rotation = currentAngle - startAngle;
+
+    const cos = Math.cos(rotation);
+    const sin = Math.sin(rotation);
+
+    const rotate = (x: number, y: number) => ({
+      x: x * cos - y * sin,
+      y: x * sin + y * cos,
+    });
+
+    originalPoints.forEach((orig) => {
+      const dx = orig.x - center.x;
+      const dy = orig.y - center.y;
+      const rotated = rotate(dx, dy);
+      movePoint(orig.id, center.x + rotated.x, center.y + rotated.y);
+
+      const hIn = rotate(orig.handleIn.dx, orig.handleIn.dy);
+      const hOut = rotate(orig.handleOut.dx, orig.handleOut.dy);
+      moveHandle(orig.id, 'handleIn', hIn.x, hIn.y, false, true);
+      moveHandle(orig.id, 'handleOut', hOut.x, hOut.y, false, true);
+    });
+  };
+
 
   return (
     <>
@@ -185,22 +256,62 @@ export function SelectionTransformer() {
         fill="rgba(0,0,0,0.001)"
         draggable
         name="transform-handle"
-        onDragStart={() => {
-          saveState();
+        onMouseEnter={(e) => {
+          e.target.getStage()?.container().style.setProperty('cursor', 'move');
         }}
+        onMouseLeave={(e) => {
+          e.target.getStage()?.container().style.setProperty('cursor', 'default');
+        }}
+        onDragStart={() => saveState()}
         onDragMove={(e) => {
           const dx = e.target.x() - minX;
           const dy = e.target.y() - minY;
-
-          selectedPoints.forEach((p) => {
-            movePoint(p.id, p.x + dx, p.y + dy);
-          });
-
+          selectedPoints.forEach((p) => movePoint(p.id, p.x + dx, p.y + dy));
           e.target.x(minX);
           e.target.y(minY);
         }}
+        onDragEnd={(e) => {
+          e.target.getStage()?.container().style.setProperty('cursor', 'default');
+          saveState();
+        }}
       />
 
+      {/* Rotation handle connector */}
+      <Line
+        points={[
+          (minX + maxX) / 2, minY,
+          (minX + maxX) / 2, minY - 40
+        ]}
+        stroke="gray"
+        dash={[4, 4]}
+        strokeWidth={1}
+      />
+
+      {/* Rotation handle */}
+      <Circle
+        x={(minX + maxX) / 2}
+        y={minY - 40}
+        radius={handleRadius}
+        fill="#9C27B0"
+        draggable
+        name="transform-handle"
+        onMouseEnter={(e) => {
+          e.target.getStage()?.container().style.setProperty('cursor', 'crosshair');
+        }}
+        onMouseLeave={(e) => {
+          e.target.getStage()?.container().style.setProperty('cursor', 'default');
+        }}
+        onDragStart={(e) => {
+          e.target.getStage()?.container().style.setProperty('cursor', 'grabbing');
+          onRotateDragStart(e);
+        }}
+        onDragMove={onRotateDragMove}
+        onDragEnd={(e) => {
+          saveState();
+          rotateState.current = null;
+          e.target.getStage()?.container().style.setProperty('cursor', 'default');
+        }}
+      />
 
       {/* Outline box */}
       <Line
@@ -222,11 +333,23 @@ export function SelectionTransformer() {
           fill="#2196F3"
           draggable
           name="transform-handle"
-          onDragStart={(e) => onHandleDragStart(e, idx)}
+          onMouseEnter={(e) => {
+            const stage = e.target.getStage();
+            if (stage) stage.container().style.cursor = cornerCursors[idx];; // or pick based on corner
+          }}
+          onMouseLeave={(e) => {
+            const stage = e.target.getStage();
+            if (stage) stage.container().style.cursor = 'default';
+          }}
+          onDragStart={(e) => {
+            e.target.getStage()?.container().style.setProperty('cursor', 'grabbing');
+            onHandleDragStart(e, idx);
+          }}
           onDragMove={(e) => onHandleDragMove(e, idx)}
-          onDragEnd={() => {
+          onDragEnd={(e) => {
             saveState();
             dragState.current = null;
+            e.target.getStage()?.container().style.setProperty('cursor', 'default');
           }}
         />
       ))}
