@@ -253,20 +253,18 @@ export function Canvas() {
 
             const allPaths = useCanvasState.getState().present.paths;
 
-            // ✅ Only select full paths whose points are entirely inside the rectangle
-            const fullyInsidePaths = allPaths.filter((path) =>
-              path.points.every(
-                (p) =>
+            const individuallySelectedPoints = allPaths.flatMap((path) =>
+              path.points
+                .filter(p =>
                   p.x >= rect.x &&
                   p.x <= rect.x + rect.width &&
                   p.y >= rect.y &&
                   p.y <= rect.y + rect.height
-              )
+                )
+                .map(p => p.id)
             );
 
-            const allPointIds = fullyInsidePaths.flatMap((p) => p.points.map((pt) => pt.id));
-
-            useCanvasState.getState().setSelectedPointIds(allPointIds);
+            useCanvasState.getState().setSelectedPointIds(individuallySelectedPoints);
             setSelectionStart(null);
             setSelectionRect(null);
           }
