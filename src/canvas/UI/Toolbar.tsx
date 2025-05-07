@@ -1,4 +1,3 @@
-import { CANVAS_SIZE } from '../../util/globals';
 import { useCanvasState } from '../state/CanvasState';
 import { importFromJson, exportToJson } from '../util/importExport';
 import ZoomControls from './ZoomControls';

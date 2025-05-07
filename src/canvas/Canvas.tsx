@@ -1,6 +1,6 @@
 import { Stage, Layer, Rect } from 'react-konva';
 import { useCanvasState } from './state/CanvasState';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { BackgroundImage } from './BackgroundImage/BackgroundImage';
 import { ImageTransformPanel } from './UI/ImageTransformPanel';
 import { PathsLayer } from './Layers/PathsLayer';
@@ -42,8 +42,7 @@ export function Canvas() {
   const [isSpacePressed, setIsSpacePressed] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
   const [lastPointerPos, setLastPointerPos] = useState<{ x: number; y: number } | null>(null);
-  const [dragStartBox, setDragStartBox] = useState<{ x: number; y: number } | null>(null);
-  const [pendingSelectionStart, setPendingSelectionStart] = useState<null | { x: number; y: number }>(null);
+  const pendingSelectionStart = useRef<any>(null);
 
   useEffect(() => {
     const manImageAlreadyPresent = useCanvasState.getState().present.backgroundImages.some(
@@ -158,7 +157,7 @@ export function Canvas() {
               pointer.y <= selectionRect.y + selectionRect.height;
 
             if (isClickingOnEmpty && !clickedInsideBox) {
-              setPendingSelectionStart(world);
+              pendingSelectionStart.current = world;
               setSelectionRect(null);
               useCanvasState.getState().clearSelectedPointIds();
               useCanvasState.getState().deselectPoint();
@@ -201,22 +200,22 @@ export function Canvas() {
             y: (pointer.y - offset.y) / zoom,
           };
 
-          if (currentTool === 'select' && pendingSelectionStart) {
-            const distX = world.x - pendingSelectionStart.x;
-            const distY = world.y - pendingSelectionStart.y;
+          if (currentTool === 'select' && pendingSelectionStart.current) {
+            const distX = world.x - pendingSelectionStart.current.x;
+            const distY = world.y - pendingSelectionStart.current.y;
             const distance = Math.sqrt(distX * distX + distY * distY);
 
             if (!selectionStart && distance > 4) {
               // ✅ start actual box drawing only after dragging
-              setSelectionStart(pendingSelectionStart);
+              setSelectionStart(pendingSelectionStart.current);
             }
 
             if (selectionStart || distance > 4) {
               setSelectionRect({
-                x: pendingSelectionStart.x,
-                y: pendingSelectionStart.y,
-                width: world.x - pendingSelectionStart.x,
-                height: world.y - pendingSelectionStart.y,
+                x: pendingSelectionStart.current.x,
+                y: pendingSelectionStart.current.y,
+                width: world.x - pendingSelectionStart.current.x,
+                height: world.y - pendingSelectionStart.current.y,
               });
             }
           }
@@ -235,7 +234,7 @@ export function Canvas() {
           }
         }}
         onMouseUp={() => {
-          setPendingSelectionStart(null);
+          pendingSelectionStart.current = null;
           setIsDraggingNewPoint(false);
           setNewPointId(null);
           setLastPointerPos(null);

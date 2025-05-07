@@ -1,42 +1,30 @@
-import { Group, Line, Rect, Circle } from 'react-konva';
-import React, { useMemo, useRef, useState } from 'react';
+import { Line, Rect, Circle } from 'react-konva';
+import { useMemo, useRef } from 'react';
 import { useCanvasState } from '../state/CanvasState';
 
 const cornerCursors = ['nwse-resize', 'nesw-resize', 'nwse-resize', 'nesw-resize'];
 
-function sampleCubicBezier(p0, p1, p2, p3, t) {
+function sampleCubicBezier(p0: any, p1: any, p2: any, p3: any, t: any) {
   return {
     x: (1 - t) ** 3 * p0.x + 3 * (1 - t) ** 2 * t * p1.x + 3 * (1 - t) * t ** 2 * p2.x + t ** 3 * p3.x,
     y: (1 - t) ** 3 * p0.y + 3 * (1 - t) ** 2 * t * p1.y + 3 * (1 - t) * t ** 2 * p2.y + t ** 3 * p3.y,
   };
 }
-function toWorldPos(pointer, zoom, offset) {
+function toWorldPos(pointer: any, zoom: any, offset: any) {
   return {
     x: (pointer.x - offset.x) / zoom,
     y: (pointer.y - offset.y) / zoom,
   };
 }
-function getCenterAndBounds(points) {
-  const xs = points.map((p) => p.x);
-  const ys = points.map((p) => p.y);
+function getCenterAndBounds(points: any) {
+  const xs = points.map((p: any) => p.x);
+  const ys = points.map((p: any) => p.y);
   const minX = Math.min(...xs);
   const maxX = Math.max(...xs);
   const minY = Math.min(...ys);
   const maxY = Math.max(...ys);
   const center = { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
   return { minX, minY, maxX, maxY, center, width: maxX - minX, height: maxY - minY };
-}
-
-function rotatePoint(p, center, angleDeg) {
-  const rad = (angleDeg * Math.PI) / 180;
-  const cos = Math.cos(rad);
-  const sin = Math.sin(rad);
-  const dx = p.x - center.x;
-  const dy = p.y - center.y;
-  return {
-    x: center.x + dx * cos - dy * sin,
-    y: center.y + dx * sin + dy * cos,
-  };
 }
 
 export function SelectionTransformer() {
@@ -54,8 +42,12 @@ export function SelectionTransformer() {
     [paths, selectedIds]
   );
 
+  if (selectedIds.length === 1) {
+    return null;
+  }
+
   const sampledPoints = useMemo(() => {
-    const points = [];
+    const points: any = [];
 
     paths.forEach((path) => {
       const pts = path.points;
@@ -102,6 +94,7 @@ export function SelectionTransformer() {
     const selectedPoints = paths
       .flatMap((p) => p.points)
       .filter((pt) => selectedIds.includes(pt.id));
+    //@ts-ignore
     dragState.current = {
       center: { ...center },
       originalPoints: selectedPoints.map((p) => ({
@@ -119,7 +112,7 @@ export function SelectionTransformer() {
     saveState();
   };
 
-  const onHandleDragMove = (e, _cornerIndex) => {
+  const onHandleDragMove = (e: any, _cornerIndex: any) => {
     if (!dragState.current) return;
 
     const zoom = useCanvasState.getState().zoom;
@@ -129,13 +122,12 @@ export function SelectionTransformer() {
     if (!pointer) return;
 
     const worldPointer = toWorldPos(pointer, zoom, offset);
-    const { center, originalPoints, startDistance } = dragState.current;
+    const { center, originalPoints, startDistance } = dragState.current as any;
 
     const currentVec = { x: worldPointer.x - center.x, y: worldPointer.y - center.y };
     const currentDistance = Math.sqrt(currentVec.x ** 2 + currentVec.y ** 2);
     const scale = currentDistance / startDistance;
-
-    originalPoints.forEach((orig) => {
+    originalPoints.forEach((orig: any) => {
       const localX = orig.x - center.x;
       const localY = orig.y - center.y;
 
@@ -145,14 +137,14 @@ export function SelectionTransformer() {
     });
   };
 
-  const onRotateDragStart = (e) => {
+  const onRotateDragStart = (e: any) => {
     const pointer = e.target.getStage()?.getPointerPosition();
     if (!pointer) return;
 
     const dx = pointer.x - center.x;
     const dy = pointer.y - center.y;
     const angle = Math.atan2(dy, dx);
-
+    //@ts-ignore
     rotateState.current = {
       center: { ...center },
       startAngle: angle,
@@ -168,18 +160,19 @@ export function SelectionTransformer() {
     saveState();
   };
 
-  const onRotateDragMove = (e) => {
+  const onRotateDragMove = (e: any) => {
     const pointer = e.target.getStage()?.getPointerPosition();
     if (!pointer || !rotateState.current) return;
 
-    const { center, startAngle, originalPoints } = rotateState.current;
+    const { center, startAngle, originalPoints } = rotateState.current as any;
     const currentAngle = Math.atan2(pointer.y - center.y, pointer.x - center.x);
     const rotation = currentAngle - startAngle;
 
     const cos = Math.cos(rotation);
     const sin = Math.sin(rotation);
-    const rotate = (x, y) => ({ x: x * cos - y * sin, y: x * sin + y * cos });
+    const rotate = (x: any, y: any) => ({ x: x * cos - y * sin, y: x * sin + y * cos });
 
+    //@ts-ignore
     originalPoints.forEach((orig) => {
       const dx = orig.x - center.x;
       const dy = orig.y - center.y;
