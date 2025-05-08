@@ -190,13 +190,20 @@ export function SelectionTransformer({ isVisible }: { isVisible: boolean }) {
     if (!pointer || !rotateState.current) return;
 
     const worldPointer = toWorldPos(pointer, zoom, offset);
-
     const { center, originalPointerAngle, originalPoints } = rotateState.current;
 
     const dx = worldPointer.x - center.x;
     const dy = worldPointer.y - center.y;
-    const currentPointerAngle = Math.atan2(dy, dx);
-    const rotation = currentPointerAngle - originalPointerAngle;
+    let currentPointerAngle = Math.atan2(dy, dx);
+    let rotation = currentPointerAngle - originalPointerAngle;
+
+    // SNAP TO 15° increments if Shift is held
+    if (e.evt.shiftKey) {
+      const degrees = (rotation * 180) / Math.PI;
+      const snappedDegrees = Math.round(degrees / 15) * 15;
+      rotation = (snappedDegrees * Math.PI) / 180;
+      currentPointerAngle = originalPointerAngle + rotation;
+    }
 
     const cos = Math.cos(rotation);
     const sin = Math.sin(rotation);
@@ -218,13 +225,6 @@ export function SelectionTransformer({ isVisible }: { isVisible: boolean }) {
     });
   };
 
-
-
-  if (!isVisible) return null;
-  if (sampledPoints.length === 0) return null;
-  if (selectedIds.length === 1) {
-    return null;
-  }
 
   return (
     <>
