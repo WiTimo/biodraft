@@ -109,10 +109,24 @@ export function Canvas() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.code === 'Space') setIsSpacePressed(true);
+    
+      const toolKeys = {
+        KeyW: 'select',
+        KeyE: 'pen',
+        KeyG: 'background',
+      } as const;
+    
+      const selectedTool = toolKeys[e.code as keyof typeof toolKeys];
+      if (selectedTool) {
+        e.preventDefault();
+        useCanvasState.getState().setTool(selectedTool);
+      }
+    
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
         e.preventDefault();
         e.shiftKey ? redo() : undo();
       }
+    
       if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
         if (selectedPointIds.length > 0) {
@@ -123,6 +137,7 @@ export function Canvas() {
         if (selectedBackgroundId) deleteSelectedBackgroundImage();
       }
     };
+    
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.code === 'Space') {
         setIsSpacePressed(false);
@@ -311,16 +326,16 @@ export function Canvas() {
 
             const allPaths = useCanvasState.getState().present.paths;
 
-            const individuallySelectedPoints = allPaths.flatMap((path) =>
-              path.points
-                .filter(p =>
-                  p.x >= rect.x &&
-                  p.x <= rect.x + rect.width &&
-                  p.y >= rect.y &&
-                  p.y <= rect.y + rect.height
-                )
-                .map(p => p.id)
-            );
+            const allPoints = allPaths.flatMap(p => p.points);
+
+            const individuallySelectedPoints = allPoints
+              .filter(p =>
+                p.x >= rect.x &&
+                p.x <= rect.x + rect.width &&
+                p.y >= rect.y &&
+                p.y <= rect.y + rect.height
+              )
+              .map(p => p.id);
 
             useCanvasState.getState().setSelectedPointIds(individuallySelectedPoints);
             setSelectionStart(null);

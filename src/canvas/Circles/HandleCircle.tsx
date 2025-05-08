@@ -43,41 +43,55 @@ export const HandleCircle = React.memo(function HandleCircle({
         dash={[4, 4]}
         listening={false}
       />
-      <Circle
-        x={pos.x}
-        y={pos.y}
-        radius={adjustedRadius}
-        fill="#2196F3"
-        draggable={currentTool === 'select' || currentTool === 'pen'}
-        name="handle"
-        perfectDrawEnabled={false}
-        onDragStart={(e) => {
-          const currentTool = useCanvasState.getState().currentTool;
-          if (currentTool !== 'select' && currentTool !== 'pen') {
-            e.cancelBubble = true;
-            return;
-          }
-          startHandleMove(pointId);
-        }}
-        onDragMove={(e) => {
-          const newX = e.target.x();
-          const newY = e.target.y();
-          setPos({ x: newX, y: newY });
+      <>
+  {/* Invisible larger hit area */}
+  <Circle
+    x={pos.x}
+    y={pos.y}
+    radius={adjustedRadius * 2.5} // ⬅️ increase size of hit zone
+    fill="transparent"
+    stroke="transparent"
+    hitStrokeWidth={20}
+    draggable={currentTool === 'select' || currentTool === 'pen'}
+    name="handle"
+    onDragStart={(e) => {
+      if (currentTool !== 'select' && currentTool !== 'pen') {
+        e.cancelBubble = true;
+        return;
+      }
+      startHandleMove(pointId);
+    }}
+    onDragMove={(e) => {
+      const newX = e.target.x();
+      const newY = e.target.y();
+      setPos({ x: newX, y: newY });
 
-          const dx = newX - pointX;
-          const dy = newY - pointY;
-          const altPressed = e.evt.altKey || e.evt.metaKey;
-          moveHandle(pointId, type, dx, dy, false, altPressed);
-        }}
-        onDragEnd={(e) => {
-          const finalDx = e.target.x() - pointX;
-          const finalDy = e.target.y() - pointY;
-          const altPressed = e.evt.altKey || e.evt.metaKey;
-          useCanvasState.getState().saveState();
-          moveHandle(pointId, type, finalDx, finalDy, true, altPressed);
-          endHandleMove();
-        }}
-      />
+      const dx = newX - pointX;
+      const dy = newY - pointY;
+      const altPressed = e.evt.altKey || e.evt.metaKey;
+      moveHandle(pointId, type, dx, dy, false, altPressed);
+    }}
+    onDragEnd={(e) => {
+      const finalDx = e.target.x() - pointX;
+      const finalDy = e.target.y() - pointY;
+      const altPressed = e.evt.altKey || e.evt.metaKey;
+      useCanvasState.getState().saveState();
+      moveHandle(pointId, type, finalDx, finalDy, true, altPressed);
+      endHandleMove();
+    }}
+  />
+
+  {/* Visible handle dot */}
+  <Circle
+    x={pos.x}
+    y={pos.y}
+    radius={adjustedRadius}
+    fill="#2196F3"
+    listening={false}
+    perfectDrawEnabled={false}
+  />
+</>
+
     </>
   );
 });
