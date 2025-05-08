@@ -42,7 +42,6 @@ export function SelectionTransformer({isVisible}: {isVisible: boolean}) {
     [paths, selectedIds]
   );
 
-
   const sampledPoints = useMemo(() => {
     const points: any = [];
 
@@ -61,18 +60,46 @@ export function SelectionTransformer({isVisible}: {isVisible: boolean}) {
                 { x: p2.x + p2.handleIn.dx, y: p2.y + p2.handleIn.dy },
                 { x: p2.x, y: p2.y },
                 t
-              ) 
+              )
             );
           }
         }
       }
     });
 
+    // Include all selected individual points if no adjacent pair was found
+    if (points.length === 0) {
+      return paths.flatMap((p) => p.points.filter(pt => selectedIds.includes(pt.id)));
+    }
+
     return points;
   }, [paths, selectedIds]);
 
+  const allBoundingPoints = [...selectedPoints];
 
-  const { minX, minY, maxX, maxY, center, width, height } = getCenterAndBounds(sampledPoints);
+paths.forEach((path) => {
+  const pts = path.points;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+
+    if (selectedIds.includes(p1.id) && selectedIds.includes(p2.id)) {
+      for (let t = 0; t <= 1.0; t += 0.05) {
+        //@ts-ignore
+        allBoundingPoints.push(sampleCubicBezier(
+          { x: p1.x, y: p1.y },
+          { x: p1.x + p1.handleOut.dx, y: p1.y + p1.handleOut.dy },
+          { x: p2.x + p2.handleIn.dx, y: p2.y + p2.handleIn.dy },
+          { x: p2.x, y: p2.y },
+          t
+        ));
+      }
+    }
+  }
+});
+
+const { minX, minY, maxX, maxY, center, width, height } = getCenterAndBounds(allBoundingPoints);
+
 
   const cornerPoints = [
     { x: minX, y: minY },
@@ -182,7 +209,7 @@ export function SelectionTransformer({isVisible}: {isVisible: boolean}) {
     });
   };
 
-  if(!isVisible) return null;
+  if (!isVisible) return null;
   if (sampledPoints.length === 0) return null;
   if (selectedIds.length === 1) {
     return null;

@@ -121,6 +121,10 @@ export function Canvas() {
         e.preventDefault();
         useCanvasState.getState().setTool(selectedTool);
       }
+      if(e.key === "Escape"){
+        e.preventDefault();
+        useCanvasState.getState().setTool("select");
+      }
     
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
         e.preventDefault();
@@ -237,10 +241,20 @@ export function Canvas() {
               finishCurrentPath();
               return;
             }
-
+          
             if (!isStageClick && targetName !== 'background-image' && targetName !== 'background') return;
-
-            const id = addPoint(world.x, world.y, true);
+          
+            const SNAP_RADIUS = 20 / zoom;
+            const nearbyPoint = paths.flatMap(p => p.points).find(pt => {
+              const dx = pt.x - world.x;
+              const dy = pt.y - world.y;
+              return Math.sqrt(dx * dx + dy * dy) < SNAP_RADIUS;
+            });
+          
+            const snapX = nearbyPoint?.x ?? world.x;
+            const snapY = nearbyPoint?.y ?? world.y;
+          
+            const id = addPoint(snapX, snapY, true);
             useCanvasState.getState().selectPoint(id);
             setNewPointId(id);
             setIsDraggingNewPoint(true);
@@ -301,20 +315,19 @@ export function Canvas() {
           }
         }}
         onMouseUp={() => {
-
           if (isPanning) {
             setIsPanning(false);
             document.body.style.cursor = 'default';
             return;
           }
-
+        
           pendingSelectionStart.current = null;
           setIsDraggingNewPoint(false);
           setNewPointId(null);
           setLastPointerPos(null);
           setIsPanning(false);
           document.body.style.cursor = 'default';
-
+        
           if (currentTool === 'select' && selectionStart && selectionRect) {
             const { x, y, width, height } = selectionRect;
             const rect = {
@@ -323,11 +336,10 @@ export function Canvas() {
               width: Math.abs(width),
               height: Math.abs(height),
             };
-
+        
             const allPaths = useCanvasState.getState().present.paths;
-
             const allPoints = allPaths.flatMap(p => p.points);
-
+        
             const individuallySelectedPoints = allPoints
               .filter(p =>
                 p.x >= rect.x &&
@@ -336,12 +348,21 @@ export function Canvas() {
                 p.y <= rect.y + rect.height
               )
               .map(p => p.id);
-
+        
             useCanvasState.getState().setSelectedPointIds(individuallySelectedPoints);
+        
+            // ✅ If exactly one point is selected, set it as the primary selection
+            if (individuallySelectedPoints.length === 1) {
+              useCanvasState.getState().selectPoint(individuallySelectedPoints[0]);
+            } else {
+              useCanvasState.getState().deselectPoint();
+            }
+        
             setSelectionStart(null);
             setSelectionRect(null);
           }
         }}
+        
 
         onMouseLeave={() => {
           useCanvasState.getState().setMousePosition(null);
