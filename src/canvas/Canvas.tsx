@@ -141,6 +141,17 @@ export function Canvas() {
         }
         if (selectedBackgroundId) deleteSelectedBackgroundImage();
       }
+
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
+        e.preventDefault();
+        useCanvasState.getState().copySelectedPoints();
+      }
+
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
+        e.preventDefault();
+        useCanvasState.getState().pasteClipboardPoints();
+      }
+
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {

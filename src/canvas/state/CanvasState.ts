@@ -101,7 +101,10 @@ interface CanvasState {
 
   snapGuides: { x: number | null; y: number | null };
   setSnapGuides: (guides: { x: number | null; y: number | null }) => void;
-
+  clipboard: Path[] | null;
+  setClipboard: (paths: Path[]) => void;
+  copySelectedPoints: () => void;
+  pasteClipboardPoints: () => void;
 }
 export const useCanvasState = create<CanvasState>()(
   persist(
@@ -111,6 +114,62 @@ export const useCanvasState = create<CanvasState>()(
       selectedBackgroundId: null,
       snapGuides: { x: null, y: null },
       setSnapGuides: (guides) => set({ snapGuides: guides }),
+      clipboard: null,
+      setClipboard: (points) => set({ clipboard: points }),
+      copySelectedPoints: () => {
+        const { selectedPointIds, present, setClipboard } = get();
+        const matchingPaths = present.paths.filter(path =>
+          path.points.some(p => selectedPointIds.includes(p.id))
+        );
+
+        // Filter only the selected points from each path, but preserve `closed` if fully selected
+        const copiedPaths = matchingPaths.map(path => {
+          const selectedPoints = path.points.filter(p => selectedPointIds.includes(p.id));
+          const isFullySelected = selectedPoints.length === path.points.length;
+          return {
+            id: crypto.randomUUID(),
+            closed: isFullySelected ? path.closed : false,
+            points: JSON.parse(JSON.stringify(selectedPoints)),
+          };
+        });
+
+        setClipboard(copiedPaths);
+      },
+
+
+      pasteClipboardPoints: () => {
+        const { clipboard, present, saveState } = get();
+        if (!clipboard || clipboard.length === 0) return;
+
+        const offsetAmount = 30;
+        const newPaths: Path[] = clipboard.map(path => {
+          const newPoints = path.points.map(p => ({
+            ...p,
+            id: crypto.randomUUID(),
+            x: p.x + offsetAmount,
+            y: p.y + offsetAmount,
+          }));
+          return {
+            id: crypto.randomUUID(),
+            closed: path.closed,
+            points: newPoints,
+          };
+        });
+
+        const allNewPointIds = newPaths.flatMap(p => p.points.map(pt => pt.id));
+
+        saveState();
+        set({
+          present: {
+            ...present,
+            paths: [...present.paths, ...newPaths],
+          },
+          selectedPointIds: allNewPointIds,
+          selectedPointId: allNewPointIds.length === 1 ? allNewPointIds[0] : null,
+        });
+      },
+
+
       present: {
         paths: [],
         backgroundImages: [],

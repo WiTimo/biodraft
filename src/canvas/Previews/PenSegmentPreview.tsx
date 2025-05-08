@@ -1,4 +1,4 @@
-import { Shape, Line, Circle } from 'react-konva';
+import { Shape, Circle } from 'react-konva';
 import { useCanvasState } from '../state/CanvasState';
 import { useMemo } from 'react';
 
