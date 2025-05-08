@@ -1,3 +1,4 @@
+import { useCanvasState } from "../state/CanvasState";
 
 interface ZoomControlsProps {
     zoom: number;
@@ -25,6 +26,13 @@ export default function ZoomControls({ zoom, onZoomChange, onReset }: ZoomContro
                 title="Reset Zoom"
             >
                 <img src="/svg/reset.svg" className="h-5 w-5" />
+            </button>
+            <button
+                onClick={() => useCanvasState.getState().resetCanvas()}
+                className="ml-2 text-sm px-2 py-1 text-red-500"
+                title="Clear Saved Canvas"
+            >
+                🗑
             </button>
         </div>
     );

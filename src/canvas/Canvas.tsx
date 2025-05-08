@@ -8,10 +8,12 @@ import { PointsLayer } from './Layers/PointsLayer';
 import { Toolbar } from './UI/Toolbar';
 import Konva from 'konva';
 import { SelectionTransformer } from './Layers/SelectionTransformer';
+import { PenSegmentPreview } from './Previews/PenSegmentPreview';
 
 Konva.showWarnings = false;
 
 const STATIC_MAN_IMAGE_ID = 'static-man';
+const STATIC_MAN_BACK_IMAGE_ID = "static-man-back"
 
 export function Canvas() {
   const {
@@ -32,7 +34,6 @@ export function Canvas() {
     selectedPointIds
   } = useCanvasState();
   const { paths, backgroundImages } = present;
-  console.log("Canvas re-rendered");
   const [isDraggingNewPoint, setIsDraggingNewPoint] = useState(false);
   const [newPointId, setNewPointId] = useState<string | null>(null);
   const selectionRect = useCanvasState(s => s.selectionRect);
@@ -45,37 +46,65 @@ export function Canvas() {
   const pendingSelectionStart = useRef<any>(null);
 
   useEffect(() => {
-    const manImageAlreadyPresent = useCanvasState.getState().present.backgroundImages.some(
+    const state = useCanvasState.getState();
+  
+    const manFrontExists = state.present.backgroundImages.some(
       img => img.id === STATIC_MAN_IMAGE_ID
     );
-    if (!manImageAlreadyPresent) {
-      const img = new Image();
-      img.src = '/images/man_front.png';
-      img.onload = () => {
-        const canvasWidth = window.innerWidth;
-        const canvasHeight = window.innerHeight;
-        const imgWidth = img.width;
-        const imgHeight = img.height;
-        const scale = 0.8;
-
-        const scaledWidth = imgWidth * scale;
-        const scaledHeight = imgHeight * scale;
-
-        const x = (canvasWidth - scaledWidth) / 2;
-        const y = (canvasHeight - scaledHeight) / 2;
-
-        const state = useCanvasState.getState();
-        state.addBackgroundImage('/images/man_front.png', STATIC_MAN_IMAGE_ID);
-        state.moveBackgroundImage(STATIC_MAN_IMAGE_ID, x, y);
-        state.updateBackgroundImageTransform(STATIC_MAN_IMAGE_ID, {
-          scaleX: scale,
-          scaleY: scale,
-          rotation: 0
-        });
-        state.toggleLockBackgroundImage(STATIC_MAN_IMAGE_ID);
+    const manBackExists = state.present.backgroundImages.some(
+      img => img.id === STATIC_MAN_BACK_IMAGE_ID
+    );
+  
+    if (!manFrontExists || !manBackExists) {
+      const frontImg = new Image();
+      frontImg.src = '/images/man_front.png';
+  
+      const backImg = new Image();
+      backImg.src = '/images/man_back.png';
+  
+      frontImg.onload = () => {
+        backImg.onload = () => {
+          const canvasWidth = window.innerWidth;
+          const canvasHeight = window.innerHeight;
+  
+          const scale = 0.8;
+  
+          const frontWidth = frontImg.width * scale;
+          const frontHeight = frontImg.height * scale;
+  
+          const backWidth = backImg.width * scale;
+          const backHeight = backImg.height * scale;
+  
+          const totalWidth = frontWidth + backWidth + 40;
+  
+          const startX = (canvasWidth - totalWidth) / 2;
+          const centerY = (canvasHeight - Math.max(frontHeight, backHeight)) / 2;
+  
+          // Front image
+          state.addBackgroundImage('/images/man_front.png', STATIC_MAN_IMAGE_ID);
+          state.moveBackgroundImage(STATIC_MAN_IMAGE_ID, startX, centerY);
+          state.updateBackgroundImageTransform(STATIC_MAN_IMAGE_ID, {
+            scaleX: scale,
+            scaleY: scale,
+            rotation: 0,
+          });
+          state.toggleLockBackgroundImage(STATIC_MAN_IMAGE_ID);
+  
+          // Back image
+          const backX = startX + frontWidth + 40; 
+          state.addBackgroundImage('/images/man_back.png', STATIC_MAN_BACK_IMAGE_ID);
+          state.moveBackgroundImage(STATIC_MAN_BACK_IMAGE_ID, backX, centerY);
+          state.updateBackgroundImageTransform(STATIC_MAN_BACK_IMAGE_ID, {
+            scaleX: scale,
+            scaleY: scale,
+            rotation: 0,
+          });
+          state.toggleLockBackgroundImage(STATIC_MAN_BACK_IMAGE_ID);
+        };
       };
     }
   }, []);
+  
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -86,7 +115,11 @@ export function Canvas() {
       }
       if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
-        deleteSelectedPoint();
+        if (selectedPointIds.length > 0) {
+          useCanvasState.getState().deleteSelectedPoints();
+        } else {
+          deleteSelectedPoint();
+        }
         if (selectedBackgroundId) deleteSelectedBackgroundImage();
       }
     };
@@ -105,7 +138,7 @@ export function Canvas() {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [undo, redo, deleteSelectedPoint, selectedBackgroundId, isPanning]);
+  }, [undo, redo, deleteSelectedPoint, selectedBackgroundId, isPanning, selectedPointIds]);
 
   return (
     <div className="w-full h-full">
@@ -118,22 +151,40 @@ export function Canvas() {
         height={window.innerHeight}
         style={{
           background: '#f0f0f0',
-          cursor: isPanning ? 'grabbing' : isSpacePressed ? 'grab' : 'default',
+          cursor:
+            isPanning
+              ? 'grabbing'
+              : isSpacePressed
+              ? 'grab'
+              : currentTool === 'pen'
+              ? 'url(/cursors/pen.svg) 0 0, auto'
+              : currentTool === "select"
+              ? 'url(/cursors/select.svg) 0 0, auto'
+              : 'default',
         }}
+      
         onMouseDown={(e) => {
           const stage = e.target.getStage();
           if (!stage) return;
-
+        
           const pointer = stage.getPointerPosition();
           if (!pointer) return;
-
+        
+          const isMiddleMouse = e.evt.button === 1;
+          const isSpacePressedNow = isSpacePressed;
+        
+          if (isMiddleMouse || isSpacePressedNow) {
+            setIsPanning(true);
+            setLastPointerPos(pointer);
+            document.body.style.cursor = 'grabbing';
+            return; 
+          }
           const target = e.target;
           const targetName = target.name();
           const world = {
             x: (pointer.x - offset.x) / zoom,
             y: (pointer.y - offset.y) / zoom,
           };
-          // ✅ Don't deselect when clicking a transformer handle
           if (targetName?.includes('transform-handle')) return;
 
           const isStageClick = target === stage;
@@ -199,6 +250,7 @@ export function Canvas() {
             x: (pointer.x - offset.x) / zoom,
             y: (pointer.y - offset.y) / zoom,
           };
+          useCanvasState.getState().setMousePosition(world);
 
           if (currentTool === 'select' && pendingSelectionStart.current) {
             const distX = world.x - pendingSelectionStart.current.x;
@@ -234,6 +286,13 @@ export function Canvas() {
           }
         }}
         onMouseUp={() => {
+
+          if (isPanning) {
+            setIsPanning(false);
+            document.body.style.cursor = 'default';
+            return;
+          }
+
           pendingSelectionStart.current = null;
           setIsDraggingNewPoint(false);
           setNewPointId(null);
@@ -267,6 +326,10 @@ export function Canvas() {
             setSelectionStart(null);
             setSelectionRect(null);
           }
+        }}
+
+        onMouseLeave={() => {
+          useCanvasState.getState().setMousePosition(null);
         }}
 
         onWheel={(e) => {
@@ -320,7 +383,7 @@ export function Canvas() {
 
           <PathsLayer />
           <PointsLayer />
-
+          {currentTool === 'pen' && <PenSegmentPreview />}
           {/* 👇 Show selection box only during drag (visual aid) */}
           {selectionRect && selectionStart && currentTool === 'select' && (
             <Rect
@@ -334,10 +397,7 @@ export function Canvas() {
             />
           )}
 
-          {/* 👇 Replace with Transformer once points are selected */}
-          {!selectionStart && currentTool === 'select' && selectedPointIds.length > 0 && (
-            <SelectionTransformer />
-          )}
+        <SelectionTransformer isVisible={selectedPointIds.length > 0 && !selectionStart} />
         </Layer>
       </Stage>
       <Toolbar />

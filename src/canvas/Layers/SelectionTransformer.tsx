@@ -27,7 +27,7 @@ function getCenterAndBounds(points: any) {
   return { minX, minY, maxX, maxY, center, width: maxX - minX, height: maxY - minY };
 }
 
-export function SelectionTransformer() {
+export function SelectionTransformer({isVisible}: {isVisible: boolean}) {
   const selectedIds = useCanvasState((s) => s.selectedPointIds);
   const paths = useCanvasState((s) => s.present.paths);
   const movePoint = useCanvasState((s) => s.movePoint);
@@ -42,9 +42,6 @@ export function SelectionTransformer() {
     [paths, selectedIds]
   );
 
-  if (selectedIds.length === 1) {
-    return null;
-  }
 
   const sampledPoints = useMemo(() => {
     const points: any = [];
@@ -64,7 +61,7 @@ export function SelectionTransformer() {
                 { x: p2.x + p2.handleIn.dx, y: p2.y + p2.handleIn.dy },
                 { x: p2.x, y: p2.y },
                 t
-              )
+              ) 
             );
           }
         }
@@ -74,7 +71,6 @@ export function SelectionTransformer() {
     return points;
   }, [paths, selectedIds]);
 
-  if (sampledPoints.length === 0) return null;
 
   const { minX, minY, maxX, maxY, center, width, height } = getCenterAndBounds(sampledPoints);
 
@@ -185,6 +181,12 @@ export function SelectionTransformer() {
       moveHandle(orig.id, 'handleOut', hOut.x, hOut.y, false, true);
     });
   };
+
+  if(!isVisible) return null;
+  if (sampledPoints.length === 0) return null;
+  if (selectedIds.length === 1) {
+    return null;
+  }
 
   return (
     <>

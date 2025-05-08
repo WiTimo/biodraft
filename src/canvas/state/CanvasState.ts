@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 
 interface Handle {
   dx: number;
@@ -91,10 +92,17 @@ interface CanvasState {
   selectPoint: (id: string) => void;
   deselectPoint: () => void;
   deleteSelectedPoint: () => void;
-}
+  deleteSelectedPoints: () => void;
 
-export const useCanvasState = create<CanvasState>((set, get) => ({
-  currentPathId: null,
+  resetCanvas: () => void;
+
+  mousePosition: { x: number; y: number } | null,
+  setMousePosition: (pos: { x: number; y: number } | null) => void,
+}
+export const useCanvasState = create<CanvasState>()(
+  persist(
+    (set, get) => ({
+      currentPathId: null,
   currentTool: 'select',
   selectedBackgroundId: null,
 
@@ -111,6 +119,30 @@ export const useCanvasState = create<CanvasState>((set, get) => ({
       past: [...state.past, JSON.parse(JSON.stringify(state.present))],
       future: [],
     }));
+  },
+
+  mousePosition: null,
+setMousePosition: (pos) => set({ mousePosition: pos }),
+
+  deleteSelectedPoints: () => {
+    const { selectedPointIds, present, saveState } = get();
+    if (selectedPointIds.length === 0) return;
+  
+    saveState();
+  
+    set({
+      present: {
+        ...present,
+        paths: present.paths.map((path) => ({
+          ...path,
+          points: path.points.filter((p) => !selectedPointIds.includes(p.id)),
+        })),
+      },
+      selectedPointIds: [],
+      selectedPointId: null,
+      selectionRect: null,
+      selectionStart: null,
+    });
   },
 
   selectionRect: null,
@@ -433,9 +465,30 @@ export const useCanvasState = create<CanvasState>((set, get) => ({
     set({ justPlacedPointId: null });
   },
 
-
-}));
-
+  resetCanvas: () => {
+    set({
+      present: { paths: [], backgroundImages: [] },
+      past: [],
+      future: [],
+      selectedPointId: null,
+      selectedPointIds: [],
+      selectedBackgroundId: null,
+      selectionRect: null,
+      selectionStart: null,
+    });
+    window.location.reload()
+  },
+    }),
+    {
+      name: 'techpack-canvas-state',
+      partialize: (state) => ({
+        present: state.present,
+        zoom: state.zoom,
+        offset: state.offset,
+      }),
+    }
+  )
+);
 
 
 function updatePointInPath(paths: Path[], pointId: string, update: (pt: Point) => Point): Path[] {
