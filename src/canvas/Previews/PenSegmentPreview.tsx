@@ -70,15 +70,6 @@ export function PenSegmentPreview() {
         listening={false}
       />
 
-      {/* Optional: ghost handle line */}
-      <Line
-        points={[drawToX, drawToY, handleInX, handleInY]}
-        stroke="gray"
-        strokeWidth={1}
-        dash={[4, 4]}
-        listening={false}
-      />
-
       {/* Snap highlight */}
       {snapTarget && (
         <Circle

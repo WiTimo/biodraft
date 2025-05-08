@@ -29,10 +29,10 @@ export default function ZoomControls({ zoom, onZoomChange, onReset }: ZoomContro
             </button>
             <button
                 onClick={() => useCanvasState.getState().resetCanvas()}
-                className="ml-2 text-sm px-2 py-1 text-red-500"
+                className="ml-2 text-sm px-2 py-1 text-red-500 cursor-pointer"
                 title="Clear Saved Canvas"
             >
-                🗑
+                <img src="/svg/delete.svg" className="h-5 w-5" />
             </button>
         </div>
     );

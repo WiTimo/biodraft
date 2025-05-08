@@ -1,4 +1,4 @@
-import { Stage, Layer, Rect } from 'react-konva';
+import { Stage, Layer, Rect, Line } from 'react-konva';
 import { useCanvasState } from './state/CanvasState';
 import { useEffect, useRef, useState } from 'react';
 import { BackgroundImage } from './BackgroundImage/BackgroundImage';
@@ -31,7 +31,8 @@ export function Canvas() {
     zoom,
     offset,
     setOffset,
-    selectedPointIds
+    selectedPointIds,
+    snapGuides
   } = useCanvasState();
   const { paths, backgroundImages } = present;
   const [isDraggingNewPoint, setIsDraggingNewPoint] = useState(false);
@@ -47,39 +48,39 @@ export function Canvas() {
 
   useEffect(() => {
     const state = useCanvasState.getState();
-  
+
     const manFrontExists = state.present.backgroundImages.some(
       img => img.id === STATIC_MAN_IMAGE_ID
     );
     const manBackExists = state.present.backgroundImages.some(
       img => img.id === STATIC_MAN_BACK_IMAGE_ID
     );
-  
+
     if (!manFrontExists || !manBackExists) {
       const frontImg = new Image();
       frontImg.src = '/images/man_front.png';
-  
+
       const backImg = new Image();
       backImg.src = '/images/man_back.png';
-  
+
       frontImg.onload = () => {
         backImg.onload = () => {
           const canvasWidth = window.innerWidth;
           const canvasHeight = window.innerHeight;
-  
+
           const scale = 0.8;
-  
+
           const frontWidth = frontImg.width * scale;
           const frontHeight = frontImg.height * scale;
-  
+
           const backWidth = backImg.width * scale;
           const backHeight = backImg.height * scale;
-  
+
           const totalWidth = frontWidth + backWidth + 40;
-  
+
           const startX = (canvasWidth - totalWidth) / 2;
           const centerY = (canvasHeight - Math.max(frontHeight, backHeight)) / 2;
-  
+
           // Front image
           state.addBackgroundImage('/images/man_front.png', STATIC_MAN_IMAGE_ID);
           state.moveBackgroundImage(STATIC_MAN_IMAGE_ID, startX, centerY);
@@ -89,9 +90,9 @@ export function Canvas() {
             rotation: 0,
           });
           state.toggleLockBackgroundImage(STATIC_MAN_IMAGE_ID);
-  
+
           // Back image
-          const backX = startX + frontWidth + 40; 
+          const backX = startX + frontWidth + 40;
           state.addBackgroundImage('/images/man_back.png', STATIC_MAN_BACK_IMAGE_ID);
           state.moveBackgroundImage(STATIC_MAN_BACK_IMAGE_ID, backX, centerY);
           state.updateBackgroundImageTransform(STATIC_MAN_BACK_IMAGE_ID, {
@@ -104,33 +105,33 @@ export function Canvas() {
       };
     }
   }, []);
-  
+
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.code === 'Space') setIsSpacePressed(true);
-    
+
       const toolKeys = {
         KeyW: 'select',
         KeyE: 'pen',
         KeyG: 'background',
       } as const;
-    
+
       const selectedTool = toolKeys[e.code as keyof typeof toolKeys];
       if (selectedTool) {
         e.preventDefault();
         useCanvasState.getState().setTool(selectedTool);
       }
-      if(e.key === "Escape"){
+      if (e.key === "Escape") {
         e.preventDefault();
         useCanvasState.getState().setTool("select");
       }
-    
+
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
         e.preventDefault();
         e.shiftKey ? redo() : undo();
       }
-    
+
       if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
         if (selectedPointIds.length > 0) {
@@ -141,7 +142,7 @@ export function Canvas() {
         if (selectedBackgroundId) deleteSelectedBackgroundImage();
       }
     };
-    
+
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.code === 'Space') {
         setIsSpacePressed(false);
@@ -174,36 +175,38 @@ export function Canvas() {
             isPanning
               ? 'grabbing'
               : isSpacePressed
-              ? 'grab'
-              : currentTool === 'pen'
-              ? 'url(/cursors/pen.svg) 0 0, auto'
-              : currentTool === "select"
-              ? 'url(/cursors/select.svg) 0 0, auto'
-              : 'default',
+                ? 'grab'
+                : currentTool === 'pen'
+                  ? 'url(/cursors/pen.svg) 0 0, auto'
+                  : currentTool === "select"
+                    ? 'url(/cursors/select.svg) 0 0, auto'
+                    : 'default',
         }}
-      
+
         onMouseDown={(e) => {
           const stage = e.target.getStage();
           if (!stage) return;
-        
+
           const pointer = stage.getPointerPosition();
           if (!pointer) return;
-        
+
           const isMiddleMouse = e.evt.button === 1;
           const isSpacePressedNow = isSpacePressed;
-        
+
           if (isMiddleMouse || isSpacePressedNow) {
             setIsPanning(true);
             setLastPointerPos(pointer);
             document.body.style.cursor = 'grabbing';
-            return; 
+            return;
           }
+
           const target = e.target;
           const targetName = target.name();
           const world = {
             x: (pointer.x - offset.x) / zoom,
             y: (pointer.y - offset.y) / zoom,
           };
+
           if (targetName?.includes('transform-handle')) return;
 
           const isStageClick = target === stage;
@@ -232,40 +235,54 @@ export function Canvas() {
               useCanvasState.getState().clearSelectedPointIds();
               useCanvasState.getState().deselectPoint();
             }
+            return;
           }
-
-
 
           if (currentTool === 'pen') {
             if (e.evt.detail === 2) {
               finishCurrentPath();
               return;
             }
-          
+
             if (!isStageClick && targetName !== 'background-image' && targetName !== 'background') return;
-          
-            const SNAP_RADIUS = 20 / zoom;
-            const nearbyPoint = paths.flatMap(p => p.points).find(pt => {
-              const dx = pt.x - world.x;
-              const dy = pt.y - world.y;
-              return Math.sqrt(dx * dx + dy * dy) < SNAP_RADIUS;
-            });
-          
-            const snapX = nearbyPoint?.x ?? world.x;
-            const snapY = nearbyPoint?.y ?? world.y;
-          
-            const id = addPoint(snapX, snapY, true);
+
+            const guides = useCanvasState.getState().snapGuides;
+            const finalX = guides.x ?? world.x;
+            const finalY = guides.y ?? world.y;
+
+            const id = addPoint(finalX, finalY, true);
             useCanvasState.getState().selectPoint(id);
             setNewPointId(id);
             setIsDraggingNewPoint(true);
           }
         }}
+
         onMouseMove={(e) => {
           const stage = e.target.getStage();
           if (!stage) return;
 
           const pointer = stage.getPointerPosition();
           if (!pointer) return;
+
+          if (currentTool === 'pen') {
+            const world = {
+              x: (pointer.x - offset.x) / zoom,
+              y: (pointer.y - offset.y) / zoom,
+            };
+
+            const SNAP_RADIUS = 10 / zoom;
+            const allPoints = paths.flatMap(p => p.points);
+
+            let snapX: number | null = null;
+            let snapY: number | null = null;
+
+            for (const pt of allPoints) {
+              if (Math.abs(world.x - pt.x) < SNAP_RADIUS) snapX = pt.x;
+              if (Math.abs(world.y - pt.y) < SNAP_RADIUS) snapY = pt.y;
+            }
+
+            useCanvasState.getState().setSnapGuides({ x: snapX, y: snapY });
+          }
 
           if (isPanning && lastPointerPos) {
             const dx = pointer.x - lastPointerPos.x;
@@ -320,14 +337,15 @@ export function Canvas() {
             document.body.style.cursor = 'default';
             return;
           }
-        
+
           pendingSelectionStart.current = null;
           setIsDraggingNewPoint(false);
           setNewPointId(null);
           setLastPointerPos(null);
           setIsPanning(false);
           document.body.style.cursor = 'default';
-        
+          useCanvasState.getState().setSnapGuides({ x: null, y: null });
+
           if (currentTool === 'select' && selectionStart && selectionRect) {
             const { x, y, width, height } = selectionRect;
             const rect = {
@@ -336,10 +354,10 @@ export function Canvas() {
               width: Math.abs(width),
               height: Math.abs(height),
             };
-        
+
             const allPaths = useCanvasState.getState().present.paths;
             const allPoints = allPaths.flatMap(p => p.points);
-        
+
             const individuallySelectedPoints = allPoints
               .filter(p =>
                 p.x >= rect.x &&
@@ -348,24 +366,25 @@ export function Canvas() {
                 p.y <= rect.y + rect.height
               )
               .map(p => p.id);
-        
+
             useCanvasState.getState().setSelectedPointIds(individuallySelectedPoints);
-        
+
             // ✅ If exactly one point is selected, set it as the primary selection
             if (individuallySelectedPoints.length === 1) {
               useCanvasState.getState().selectPoint(individuallySelectedPoints[0]);
             } else {
               useCanvasState.getState().deselectPoint();
             }
-        
+
             setSelectionStart(null);
             setSelectionRect(null);
           }
         }}
-        
+
 
         onMouseLeave={() => {
           useCanvasState.getState().setMousePosition(null);
+          useCanvasState.getState().setSnapGuides({ x: null, y: null });
         }}
 
         onWheel={(e) => {
@@ -419,7 +438,7 @@ export function Canvas() {
 
           <PathsLayer />
           <PointsLayer />
-          {currentTool === 'pen' && <PenSegmentPreview />}
+          {currentTool === 'pen' && !isDraggingNewPoint && !useCanvasState.getState().isDraggingHandle && <PenSegmentPreview />}
           {/* 👇 Show selection box only during drag (visual aid) */}
           {selectionRect && selectionStart && currentTool === 'select' && (
             <Rect
@@ -433,7 +452,27 @@ export function Canvas() {
             />
           )}
 
-        <SelectionTransformer isVisible={selectedPointIds.length > 0 && !selectionStart} />
+
+          {snapGuides.x !== null && (
+            <Line
+              points={[snapGuides.x, -10000, snapGuides.x, 10000]}
+              stroke="deepskyblue"
+              strokeWidth={1}
+              dash={[4, 4]}
+              listening={false}
+            />
+          )}
+          {snapGuides.y !== null && (
+            <Line
+              points={[-10000, snapGuides.y, 10000, snapGuides.y]}
+              stroke="deepskyblue"
+              strokeWidth={1}
+              dash={[4, 4]}
+              listening={false}
+            />
+          )}
+
+          <SelectionTransformer isVisible={selectedPointIds.length > 0 && !selectionStart} />
         </Layer>
       </Stage>
       <Toolbar />
