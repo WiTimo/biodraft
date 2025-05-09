@@ -2,13 +2,12 @@ import { Shape, Circle } from 'react-konva';
 import { useCanvasState } from '../state/CanvasState';
 import { useMemo } from 'react';
 
-const SNAP_DISTANCE = 20;
-
 export function PenSegmentPreview() {
   const currentPathId = useCanvasState(s => s.currentPathId);
   const paths = useCanvasState(s => s.present.paths);
   const mouse = useCanvasState(s => s.mousePosition);
   const zoom = useCanvasState(s => s.zoom);
+  const snapGuides = useCanvasState(s => s.snapGuides);
 
   const allPoints = useMemo(() => {
     return paths.flatMap(p => p.points);
@@ -22,30 +21,19 @@ export function PenSegmentPreview() {
   const last = path.points[path.points.length - 1];
   const strokeWidth = Math.min(4, Math.max(0.5, 2 / zoom));
 
-  // Snap logic (purely local)
-  let snapTarget = null;
-  for (const point of allPoints) {
-    const dx = point.x - mouse.x;
-    const dy = point.y - mouse.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist < SNAP_DISTANCE / zoom) {
-      snapTarget = point;
-      break;
-    }
-  }
-
-  const drawToX = snapTarget ? snapTarget.x : mouse.x;
-  const drawToY = snapTarget ? snapTarget.y : mouse.y;
+  // Use snapGuides from global state
+  const snappedX = snapGuides.x ?? mouse.x;
+  const snappedY = snapGuides.y ?? mouse.y;
 
   // Ghost handle direction
   const targetX = last.x + last.handleOut.dx;
   const targetY = last.y + last.handleOut.dy;
-  const dx = targetX - drawToX;
-  const dy = targetY - drawToY;
+  const dx = targetX - snappedX;
+  const dy = targetY - snappedY;
   const length = Math.min(Math.sqrt(dx * dx + dy * dy), 80);
   const angle = Math.atan2(dy, dx);
-  const handleInX = drawToX + Math.cos(angle) * length;
-  const handleInY = drawToY + Math.sin(angle) * length;
+  const handleInX = snappedX + Math.cos(angle) * length;
+  const handleInY = snappedY + Math.sin(angle) * length;
 
   return (
     <>
@@ -59,8 +47,8 @@ export function PenSegmentPreview() {
             last.y + last.handleOut.dy,
             handleInX,
             handleInY,
-            drawToX,
-            drawToY
+            snappedX,
+            snappedY
           );
           ctx.strokeShape(shape);
         }}
@@ -70,11 +58,11 @@ export function PenSegmentPreview() {
         listening={false}
       />
 
-      {/* Snap highlight */}
-      {snapTarget && (
+      {/* Optional visual snap highlight */}
+      {(snapGuides.x !== null || snapGuides.y !== null) && (
         <Circle
-          x={snapTarget.x}
-          y={snapTarget.y}
+          x={snappedX}
+          y={snappedY}
           radius={6 / zoom}
           stroke="deepskyblue"
           strokeWidth={1.5}

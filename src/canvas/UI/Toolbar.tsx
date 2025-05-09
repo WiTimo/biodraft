@@ -70,7 +70,7 @@ export function Toolbar() {
                 </label>
 
                 <label className="h-10 w-10 rounded-md p-1 cursor-pointer">
-                    <img src='/svg/import.svg' />
+                    <img src='/svg/export.svg' />
                     <input
                         type="file"
                         accept="application/json"
@@ -83,7 +83,7 @@ export function Toolbar() {
                 </label>
 
                 <button onClick={exportToJson} className="border-none h-10 w-10 rounded-md p-1 cursor-pointer">
-                    <img src='/svg/export.svg' />
+                    <img src='/svg/import.svg' />
                 </button>
 
             </div>

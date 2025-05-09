@@ -42,39 +42,6 @@ export function SelectionTransformer({ isVisible }: { isVisible: boolean }) {
     [paths, selectedIds]
   );
 
-  const sampledPoints = useMemo(() => {
-    const points: any = [];
-
-    paths.forEach((path) => {
-      const pts = path.points;
-      for (let i = 0; i < pts.length - 1; i++) {
-        const p1 = pts[i];
-        const p2 = pts[i + 1];
-
-        if (selectedIds.includes(p1.id) && selectedIds.includes(p2.id)) {
-          for (let t = 0; t <= 1.0; t += 0.1) {
-            points.push(
-              sampleCubicBezier(
-                { x: p1.x, y: p1.y },
-                { x: p1.x + p1.handleOut.dx, y: p1.y + p1.handleOut.dy },
-                { x: p2.x + p2.handleIn.dx, y: p2.y + p2.handleIn.dy },
-                { x: p2.x, y: p2.y },
-                t
-              )
-            );
-          }
-        }
-      }
-    });
-
-    // Include all selected individual points if no adjacent pair was found
-    if (points.length === 0) {
-      return paths.flatMap((p) => p.points.filter(pt => selectedIds.includes(pt.id)));
-    }
-
-    return points;
-  }, [paths, selectedIds]);
-
   const allBoundingPoints = [...selectedPoints];
 
   paths.forEach((path) => {
@@ -161,70 +128,7 @@ export function SelectionTransformer({ isVisible }: { isVisible: boolean }) {
     });
   };
 
-  const onRotateDragStart = (e: any) => {
-    const pointer = e.target.getStage()?.getPointerPosition();
-    if (!pointer) return;
-
-    const worldPointer = toWorldPos(pointer, zoom, offset);
-    const dx = worldPointer.x - center.x;
-    const dy = worldPointer.y - center.y;
-    const angle = Math.atan2(dy, dx);
-
-    rotateState.current = {
-      center: { ...center },
-      originalPointerAngle: angle,
-      originalPoints: selectedPoints.map((p) => ({
-        id: p.id,
-        x: p.x,
-        y: p.y,
-        handleIn: { ...p.handleIn },
-        handleOut: { ...p.handleOut },
-      })),
-    };
-
-    saveState();
-  };
-
-  const onRotateDragMove = (e: any) => {
-    const pointer = e.target.getStage()?.getPointerPosition();
-    if (!pointer || !rotateState.current) return;
-
-    const worldPointer = toWorldPos(pointer, zoom, offset);
-    const { center, originalPointerAngle, originalPoints } = rotateState.current;
-
-    const dx = worldPointer.x - center.x;
-    const dy = worldPointer.y - center.y;
-    let currentPointerAngle = Math.atan2(dy, dx);
-    let rotation = currentPointerAngle - originalPointerAngle;
-
-    // SNAP TO 15° increments if Shift is held
-    if (e.evt.shiftKey) {
-      const degrees = (rotation * 180) / Math.PI;
-      const snappedDegrees = Math.round(degrees / 15) * 15;
-      rotation = (snappedDegrees * Math.PI) / 180;
-      currentPointerAngle = originalPointerAngle + rotation;
-    }
-
-    const cos = Math.cos(rotation);
-    const sin = Math.sin(rotation);
-    const rotate = (x: number, y: number) => ({
-      x: x * cos - y * sin,
-      y: x * sin + y * cos,
-    });
-
-    originalPoints.forEach((orig) => {
-      const dx = orig.x - center.x;
-      const dy = orig.y - center.y;
-      const rotated = rotate(dx, dy);
-      movePoint(orig.id, center.x + rotated.x, center.y + rotated.y);
-
-      const hIn = rotate(orig.handleIn.dx, orig.handleIn.dy);
-      const hOut = rotate(orig.handleOut.dx, orig.handleOut.dy);
-      moveHandle(orig.id, 'handleIn', hIn.x, hIn.y, false, true);
-      moveHandle(orig.id, 'handleOut', hOut.x, hOut.y, false, true);
-    });
-  };
-
+  if(!isVisible) return null;
 
   return (
     <>
@@ -256,26 +160,101 @@ export function SelectionTransformer({ isVisible }: { isVisible: boolean }) {
         strokeWidth={1}
       />
 
-      <Circle
-        x={(minX + maxX) / 2}
-        y={minY - 40}
-        radius={handleRadius}
-        fill="#9C27B0"
-        draggable
-        name="transform-handle"
-        onMouseEnter={(e) => e.target.getStage()?.container().style.setProperty('cursor', 'crosshair')}
-        onMouseLeave={(e) => e.target.getStage()?.container().style.setProperty('cursor', 'default')}
-        onDragStart={(e) => {
-          e.target.getStage()?.container().style.setProperty('cursor', 'grabbing');
-          onRotateDragStart(e);
-        }}
-        onDragMove={onRotateDragMove}
-        onDragEnd={(e) => {
-          saveState();
-          rotateState.current = null;
-          e.target.getStage()?.container().style.setProperty('cursor', 'default');
-        }}
-      />
+<Circle
+  x={(minX + maxX) / 2}
+  y={minY - 40}
+  radius={handleRadius}
+  fill="#9C27B0"
+  name="transform-handle"
+  onMouseEnter={(e) =>
+    e.target.getStage()?.container().style.setProperty('cursor', 'crosshair')
+  }
+  onMouseLeave={(e) =>
+    e.target.getStage()?.container().style.setProperty('cursor', 'default')
+  }
+  onMouseDown={(e) => {
+    const pointer = e.target.getStage()?.getPointerPosition();
+    if (!pointer) return;
+
+    const worldPointer = toWorldPos(pointer, zoom, offset);
+    const dx = worldPointer.x - center.x;
+    const dy = worldPointer.y - center.y;
+    const angle = Math.atan2(dy, dx);
+
+    rotateState.current = {
+      center: { ...center },
+      originalPointerAngle: angle,
+      originalPoints: selectedPoints.map((p) => ({
+        id: p.id,
+        x: p.x,
+        y: p.y,
+        handleIn: { ...p.handleIn },
+        handleOut: { ...p.handleOut },
+      })),
+    };
+
+    saveState();
+
+    const stage = e.target.getStage();
+    if (!stage) return;
+
+    const handleMouseMove = (ev: MouseEvent) => {
+      const stagePointer = stage.getPointerPosition();
+      if (!stagePointer || !rotateState.current) return;
+
+      const wp = toWorldPos(stagePointer, zoom, offset);
+      const { center, originalPointerAngle, originalPoints } = rotateState.current;
+
+      const dx = wp.x - center.x;
+      const dy = wp.y - center.y;
+      let currentAngle = Math.atan2(dy, dx);
+      let rotation = currentAngle - originalPointerAngle;
+
+      // Snap to 15°
+      if (ev.shiftKey) {
+        const deg = (rotation * 180) / Math.PI;
+        const snapped = Math.round(deg / 15) * 15;
+        rotation = (snapped * Math.PI) / 180;
+        currentAngle = originalPointerAngle + rotation;
+      }
+
+      const cos = Math.cos(rotation);
+      const sin = Math.sin(rotation);
+
+      originalPoints.forEach((orig) => {
+        const localX = orig.x - center.x;
+        const localY = orig.y - center.y;
+
+        const rotatedX = localX * cos - localY * sin;
+        const rotatedY = localX * sin + localY * cos;
+
+        movePoint(orig.id, center.x + rotatedX, center.y + rotatedY);
+
+        const hIn = {
+          x: orig.handleIn.dx * cos - orig.handleIn.dy * sin,
+          y: orig.handleIn.dx * sin + orig.handleIn.dy * cos,
+        };
+        const hOut = {
+          x: orig.handleOut.dx * cos - orig.handleOut.dy * sin,
+          y: orig.handleOut.dx * sin + orig.handleOut.dy * cos,
+        };
+
+        moveHandle(orig.id, 'handleIn', hIn.x, hIn.y, false, true);
+        moveHandle(orig.id, 'handleOut', hOut.x, hOut.y, false, true);
+      });
+    };
+
+    const handleMouseUp = () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      rotateState.current = null;
+      document.body.style.cursor = 'default';
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  }}
+/>
 
       <Line
         points={[...cornerPoints, cornerPoints[0]].flatMap((p) => [p.x, p.y])}
