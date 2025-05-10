@@ -2,57 +2,61 @@ import { Line } from 'react-konva';
 import { useCanvasState } from '../state/CanvasState';
 import { useMemo } from 'react';
 
-function getLineBetweenPoints(p1: any, p2: any) {
-    return [p1.x, p1.y, p2.x, p2.y];
+function getLine(p1: any, p2: any) {
+  return [p1.x, p1.y, p2.x, p2.y];
 }
 
-function getRandomColor(seed: string) {
-    let hash = 0;
-    for (let i = 0; i < seed.length; i++) {
-        hash = seed.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    const hue = hash % 360;
-    return `hsl(${hue}, 100%, 60%)`;
+function findPoint(paths: any[], id: string) {
+  for (const path of paths) {
+    const found = path.points.find(p => p.id === id);
+    if (found) return found;
+  }
+  return null;
+}
+
+function getColor(seed: string) {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = seed.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const hue = hash % 360;
+  return `hsl(${hue}, 100%, 60%)`;
 }
 
 export function SeamLayer() {
-    const seams = useCanvasState((s) => s.seams);
-    const paths = useCanvasState((s) => s.present.paths);
+  const paths = useCanvasState(s => s.present.paths);
+  const seams = useCanvasState(s => s.present.seams);
 
-    const seamLines = useMemo(() => {
-        return seams.map((seam) => {
-            const [aId, bId] = seam;
-            const findPoint = (id: string) => {
-                for (const path of paths) {
-                    for (const point of path.points) {
-                        if (point.id === id) return point;
-                    }
-                }
-                return null;
-            };
-            const a = findPoint(aId);
-            const b = findPoint(bId);
-            if (!a || !b) return null;
-            return {
-                id: seam.join('-'),
-                points: getLineBetweenPoints(a, b),
-                color: getRandomColor(seam.join('-')),
-            };
-        }).filter(Boolean);
-    }, [seams, paths]);
+  const seamLines = useMemo(() => {
+    return seams.flatMap(([[a1, b1], [a2, b2]], i) => {
+      const pA1 = findPoint(paths, a1);
+      const pA2 = findPoint(paths, a2);
+      const pB1 = findPoint(paths, b1);
+      const pB2 = findPoint(paths, b2);
+      if (!pA1 || !pA2 || !pB1 || !pB2) return [];
 
-    return (
-        <>
-            {seamLines.map((line) => (
-                <Line
-                    key={line!.id}
-                    points={line!.points}
-                    stroke={line!.color}
-                    strokeWidth={2}
-                    dash={[10, 5]}
-                    listening={false}
-                />
-            ))}
-        </>
-    );
-} 
+      const color = getColor(`${a1}-${b1}-${a2}-${b2}`);
+
+      return [
+        <Line
+          key={`seam-${i}-1`}
+          points={getLine(pA1, pA2)}
+          stroke={color}
+          strokeWidth={2}
+          dash={[10, 5]}
+          listening={false}
+        />,
+        <Line
+          key={`seam-${i}-2`}
+          points={getLine(pB1, pB2)}
+          stroke={color}
+          strokeWidth={2}
+          dash={[10, 5]}
+          listening={false}
+        />,
+      ];
+    }).filter(Boolean);
+  }, [paths, seams]);
+
+  return <>{seamLines}</>;
+}

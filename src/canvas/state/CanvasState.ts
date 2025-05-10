@@ -32,10 +32,9 @@ interface BackgroundImage {
   locked: boolean;
 }
 
-interface Seam {
-  from: string;
-  to: string;
-}
+type Segment = [string, string]; // pointId, pointId
+type SegmentSeam = [Segment, Segment]; // segment A -> segment B
+
 
 interface CanvasPresent {
   paths: Path[];
@@ -115,12 +114,19 @@ interface CanvasState {
   copySelectedPoints: () => void;
   pasteClipboardPoints: () => void;
 
-  seams: [string, string][];
+  seams: SegmentSeam[];
   addSeam: (pointId1: string, pointId2: string) => void;
   removeSeam: (pointId1: string, pointId2: string) => void;
   isSeam: (pointId1: string, pointId2: string) => boolean;
 
   addPathSeam: (pathAId: string, pathBId: string) => void;
+
+
+  seamSelection: [string, string][];
+  setSeamSelection: (selection: [string, string][]) => void;
+  selectedSeamSegment: [string, string] | null;
+  setSelectedSeamSegment: (segment: [string, string] | null) => void;
+
 }
 export const useCanvasState = create<CanvasState>()(
   persist(
@@ -131,36 +137,60 @@ export const useCanvasState = create<CanvasState>()(
       snapGuides: { x: null, y: null },
       setSnapGuides: (guides) => set({ snapGuides: guides }),
 
+      seamSelection: [] as [string, string][],
+      setSeamSelection: (selection: [string, string][]) => set({ seamSelection: selection }),
+      selectedSeamSegment: null as [string, string] | null,
+      setSelectedSeamSegment: (segment: [string, string] | null) => set({ selectedSeamSegment: segment }),
+
       seams: [],
-      addSeam: (id1, id2) => {
-        set((state) => {
-          const seams = state.present.seams;
-          const exists = seams.some(([a, b]) => (a === id1 && b === id2) || (a === id2 && b === id1));
-          if (exists) return {};
-          const updated = [...seams, [id1, id2]];
-          return {
-            present: {
-              ...state.present,
-              seams: updated,
-            },
-          };
-        });
+      addSeam: (segmentA, segmentB) => {
+  set(state => {
+    const segmentKey = ([a, b]: [string, string]) => [a, b].sort().join('_');
+    const k1 = segmentKey(segmentA);
+    const k2 = segmentKey(segmentB);
+    const exists = state.present.seams.some(([s1, s2]) =>
+      (segmentKey(s1) === k1 && segmentKey(s2) === k2) ||
+      (segmentKey(s1) === k2 && segmentKey(s2) === k1)
+    );
+    if (exists) return {};
+
+    return {
+      present: {
+        ...state.present,
+        seams: [...state.present.seams, [segmentA, segmentB]],
       },
-      removeSeam: (id1, id2) => {
-        set((state) => {
-          const seams = state.present.seams;
-          return {
-            present: {
-              ...state.present,
-              seams: seams.filter(([a, b]) => !(a === id1 && b === id2) && !(a === id2 && b === id1)),
-            },
-          };
-        });
-      },
-      isSeam: (id1, id2) => {
-        const seams = get().present.seams;
-        return seams.some(([a, b]) => (a === id1 && b === id2) || (a === id2 && b === id1));
-      },
+    };
+  });
+},
+removeSeam: (seg1, seg2) => {
+  const key = ([a, b]: [string, string]) => [a, b].sort().join('_');
+  const k1 = key(seg1);
+  const k2 = key(seg2);
+
+  set(state => ({
+    present: {
+      ...state.present,
+      seams: state.present.seams.filter(
+        ([s1, s2]) => {
+          const ks1 = key(s1);
+          const ks2 = key(s2);
+          return !((ks1 === k1 && ks2 === k2) || (ks1 === k2 && ks2 === k1));
+        }
+      ),
+    }
+  }));
+},
+
+isSeam: (seg1, seg2) => {
+  const key = ([a, b]: [string, string]) => [a, b].sort().join('_');
+  const k1 = key(seg1);
+  const k2 = key(seg2);
+  return get().present.seams.some(([s1, s2]) => {
+    const ks1 = key(s1);
+    const ks2 = key(s2);
+    return (ks1 === k1 && ks2 === k2) || (ks1 === k2 && ks2 === k1);
+  });
+},
 
       addPathSeam: (a, b) => {
         set((state) => ({

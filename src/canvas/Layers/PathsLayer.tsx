@@ -9,27 +9,49 @@ export function PathsLayer() {
     const currentTool = useCanvasState(s => s.currentTool);
     const zoom = useCanvasState(s => s.zoom);
     const addSeam = useCanvasState(s => s.addSeam); // ✅ Must work with point segments
-    const seamSelection = useRef<string[][]>([]); // holds [[aId, bId], [cId, dId]]
-    const selectedSegment = useRef<[string, string] | null>(null);
+    const seamSelection = useCanvasState(s => s.seamSelection);
+    const setSeamSelection = useCanvasState(s => s.setSeamSelection);
+    const selectedSegment = useCanvasState(s => s.selectedSeamSegment);
+    const setSelectedSeamSegment = useCanvasState(s => s.setSelectedSeamSegment);
     
-    const handleSegmentClick = (aId: string, bId: string) => {
-    if (currentTool !== 'seam') return;
+const handleSegmentClick = (aId: string, bId: string) => {
+  if (currentTool !== 'seam') return;
 
-    if (seamSelection.current.length >= 2) {
-        seamSelection.current = [];
-        selectedSegment.current = null;
-    }
+  const normalize = ([id1, id2]: [string, string]) => [id1, id2].sort() as [string, string];
+  const selectedSegment = normalize([aId, bId]);
 
-    seamSelection.current.push([aId, bId]);
-    selectedSegment.current = [aId, bId];
+  // Avoid selecting same segment twice in seamSelection
+  if (seamSelection.some(seg => seg[0] === selectedSegment[0] && seg[1] === selectedSegment[1])) {
+    return;
+  }
 
-    if (seamSelection.current.length === 2) {
-        const [[a1, b1], [a2, b2]] = seamSelection.current;
-        addSeam(a1, a2);
-        addSeam(b1, b2);
-        seamSelection.current = [];
-        selectedSegment.current = null;
-    }
+  // Prevent same segment from being used in any seam
+  const isUsedInSeam = seams.some(([[x1, x2], [y1, y2]]) => {
+    const seg1 = normalize([x1, x2]);
+    const seg2 = normalize([y1, y2]);
+    return (
+      (seg1[0] === selectedSegment[0] && seg1[1] === selectedSegment[1]) ||
+      (seg2[0] === selectedSegment[0] && seg2[1] === selectedSegment[1])
+    );
+  });
+
+  if (isUsedInSeam) return;
+
+  // Reset if already two segments selected
+  if (seamSelection.length >= 2) {
+    setSeamSelection([]);
+    setSelectedSeamSegment(null);
+  }
+
+  const updated = [...seamSelection, selectedSegment];
+  setSeamSelection(updated);
+  setSelectedSeamSegment(selectedSegment);
+
+  if (updated.length === 2) {
+    addSeam(updated[0], updated[1]);
+    setSeamSelection([]);
+    setSelectedSeamSegment(null);
+  }
 };
 
 
@@ -88,9 +110,9 @@ export function PathsLayer() {
                 const segments: any = [];
                 const addBezierSegment = (a, b, isClosing = false) => {
                     const isSelected =
-                        selectedSegment.current &&
-                        ((selectedSegment.current[0] === a.id && selectedSegment.current[1] === b.id) ||
-                        (selectedSegment.current[0] === b.id && selectedSegment.current[1] === a.id));
+                        selectedSegment &&
+                        ((selectedSegment[0] === a.id && selectedSegment[1] === b.id) ||
+                        (selectedSegment[0] === b.id && selectedSegment[1] === a.id));
 
                     const baseColor = isSelected
                         ? 'rgba(0,0,255,0.5)'
@@ -104,6 +126,7 @@ export function PathsLayer() {
                             points={getQuadraticBezierPoints(a, a.handleOut, b.handleIn, b)}
                             stroke={baseColor}
                             strokeWidth={12 / zoom}
+                            name="seam-segment"
                             onClick={() => currentTool === 'seam' && handleSegmentClick(a.id, b.id)}
                             onMouseEnter={(e) => {
                                 if (currentTool === 'seam' && !isSelected) {

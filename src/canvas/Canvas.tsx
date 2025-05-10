@@ -233,7 +233,16 @@ export function Canvas() {
             }
             return;
           }
+          
+          if (currentTool === 'seam') {
+            const isClickingOutsideSegment = !targetName?.includes('seam-segment');
 
+            if (isClickingOutsideSegment) {
+              useCanvasState.getState().setSeamSelection([]);
+              useCanvasState.getState().setSelectedSeamSegment(null);
+            }
+            return;
+          }
 
 
           if (currentTool === 'select') {
