@@ -9,6 +9,7 @@ import { Toolbar } from './UI/Toolbar';
 import Konva from 'konva';
 import { SelectionTransformer } from './Layers/SelectionTransformer';
 import { PenSegmentPreview } from './Previews/PenSegmentPreview';
+import { SeamLayer } from './Layers/SeamLayer';
 
 Konva.showWarnings = false;
 
@@ -45,6 +46,7 @@ export function Canvas() {
   const [isPanning, setIsPanning] = useState(false);
   const [lastPointerPos, setLastPointerPos] = useState<{ x: number; y: number } | null>(null);
   const pendingSelectionStart = useRef<any>(null);
+  const seamSelection = useRef<string[]>([]);
 
   useEffect(() => {
     const state = useCanvasState.getState();
@@ -115,6 +117,7 @@ export function Canvas() {
         KeyW: 'select',
         KeyE: 'pen',
         KeyG: 'background',
+        KeyS: 'seam',
       } as const;
 
       const selectedTool = toolKeys[e.code as keyof typeof toolKeys];
@@ -245,6 +248,45 @@ export function Canvas() {
               setSelectionRect(null);
               useCanvasState.getState().clearSelectedPointIds();
               useCanvasState.getState().deselectPoint();
+            }
+            return;
+          }
+
+          if (currentTool === 'seam') {
+            const clickedLine = paths.flatMap((path) => {
+              return path.points.slice(0, -1).map((p1, i) => {
+                const p2 = path.points[i + 1];
+                return { a: p1, b: p2 };
+              });
+            }).find(({ a, b }) => {
+              const distToSegment = (x: number, y: number) => {
+                const A = x - a.x;
+                const B = y - a.y;
+                const C = b.x - a.x;
+                const D = b.y - a.y;
+                const dot = A * C + B * D;
+                const lenSq = C * C + D * D;
+                const param = lenSq !== 0 ? dot / lenSq : -1;
+                const xx = param < 0 ? a.x : param > 1 ? b.x : a.x + param * C;
+                const yy = param < 0 ? a.y : param > 1 ? b.y : a.y + param * D;
+                return Math.hypot(x - xx, y - yy);
+              };
+              return distToSegment(world.x, world.y) < 6 / zoom;
+            });
+
+            console.log(clickedLine)
+
+            if (clickedLine) {
+              seamSelection.current.push(clickedLine.a.id);
+              seamSelection.current.push(clickedLine.b.id);
+              if (seamSelection.current.length === 4) seamSelection.current.splice(0, 2);
+
+              if (seamSelection.current.length === 4) {
+                const [a1, a2, b1, b2] = seamSelection.current;
+                useCanvasState.getState().addSeam(a1, b1);
+                useCanvasState.getState().addSeam(a2, b2);
+                seamSelection.current = [];
+              }
             }
             return;
           }
@@ -448,6 +490,7 @@ export function Canvas() {
           ))}
 
           <PathsLayer />
+          <SeamLayer />
           <PointsLayer />
           {currentTool === 'pen' && !isDraggingNewPoint && !useCanvasState.getState().isDraggingHandle && <PenSegmentPreview />}
           {/* 👇 Show selection box only during drag (visual aid) */}

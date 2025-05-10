@@ -32,8 +32,14 @@ interface BackgroundImage {
   locked: boolean;
 }
 
+interface Seam {
+  from: string;
+  to: string;
+}
+
+
 // TOOLS
-export type Tool = 'pen' | 'background' | 'select';
+export type Tool = 'pen' | 'background' | 'select' | 'seam';
 
 interface CanvasState {
   currentPathId: string | null;
@@ -105,6 +111,11 @@ interface CanvasState {
   setClipboard: (paths: Path[]) => void;
   copySelectedPoints: () => void;
   pasteClipboardPoints: () => void;
+
+  seams: [string, string][];
+  addSeam: (pointId1: string, pointId2: string) => void;
+  removeSeam: (pointId1: string, pointId2: string) => void;
+  isSeam: (pointId1: string, pointId2: string) => boolean;
 }
 export const useCanvasState = create<CanvasState>()(
   persist(
@@ -114,6 +125,26 @@ export const useCanvasState = create<CanvasState>()(
       selectedBackgroundId: null,
       snapGuides: { x: null, y: null },
       setSnapGuides: (guides) => set({ snapGuides: guides }),
+
+      seams: [],
+      addSeam: (id1, id2) => {
+        set((state) => {
+          const exists = state.seams.some(([a, b]) => (a === id1 && b === id2) || (a === id2 && b === id1));
+          if (exists) return {};
+          return { seams: [...state.seams, [id1, id2]] };
+        });
+      },
+      removeSeam: (id1, id2) => {
+        set((state) => ({
+          seams: state.seams.filter(([a, b]) => !(a === id1 && b === id2) && !(a === id2 && b === id1)),
+        }));
+      },
+      isSeam: (id1, id2) => {
+        const seams = get().seams;
+        return seams.some(([a, b]) => (a === id1 && b === id2) || (a === id2 && b === id1));
+      },
+
+
       clipboard: null,
       setClipboard: (points) => set({ clipboard: points }),
       copySelectedPoints: () => {

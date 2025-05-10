@@ -57,6 +57,9 @@ export function Toolbar() {
                 <button title='E' onClick={() => setTool('pen')} className="h-10 w-10 rounded-md p-1 cursor-pointer border-white border-4" style={{ borderColor: currentTool === "pen" ? "#4781e688" : "white" }}>
                     <img src='/svg/pen.svg' />
                 </button>
+                <button title='S' onClick={() => setTool('seam')} className="h-10 w-10 rounded-md p-1 cursor-pointer border-white border-4" style={{ borderColor: currentTool === "seam" ? "#4781e688" : "white" }}>
+                    <img src='/svg/seam.svg' />
+                </button>
                 <button title='G' onClick={() => setTool('background')} className="h-10 w-10 rounded-md p-1 cursor-pointer border-white border-4" style={{ borderColor: currentTool === "background" ? "#4781e688" : "white" }}>
                     <img src='/svg/background.svg' />
                 </button>
