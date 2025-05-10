@@ -4,24 +4,22 @@ export function LinePath({
   points,
   closed = false,
   onClick,
-  stroke = 'black',
 }: {
   points: any[];
   closed?: boolean;
   onClick?: () => void;
-  stroke?: string;
 }) {
   if (points.length < 2) return null;
 
   return (
     <Shape
-      sceneFunc={(context, shape) => {
-        context.beginPath();
-        context.moveTo(points[0].x, points[0].y);
+      sceneFunc={(ctx, shape) => {
+        ctx.beginPath();
+        ctx.moveTo(points[0].x, points[0].y);
         for (let i = 0; i < points.length - 1; i++) {
           const p1 = points[i];
           const p2 = points[i + 1];
-          context.bezierCurveTo(
+          ctx.bezierCurveTo(
             p1.x + p1.handleOut.dx,
             p1.y + p1.handleOut.dy,
             p2.x + p2.handleIn.dx,
@@ -33,7 +31,7 @@ export function LinePath({
         if (closed) {
           const pLast = points[points.length - 1];
           const pFirst = points[0];
-          context.bezierCurveTo(
+          ctx.bezierCurveTo(
             pLast.x + pLast.handleOut.dx,
             pLast.y + pLast.handleOut.dy,
             pFirst.x + pFirst.handleIn.dx,
@@ -41,13 +39,14 @@ export function LinePath({
             pFirst.x,
             pFirst.y
           );
-          context.closePath();
+          ctx.closePath();
         }
-        context.strokeShape(shape);
+        ctx.strokeShape(shape);
       }}
-      stroke={stroke}
+      stroke="black"
       strokeWidth={2}
       onClick={onClick}
+      listening={!!onClick}
     />
   );
 }
