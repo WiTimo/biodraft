@@ -37,6 +37,12 @@ interface Seam {
   to: string;
 }
 
+interface CanvasPresent {
+  paths: Path[];
+  backgroundImages: BackgroundImage[];
+  seams: [string, string][];
+}
+
 
 // TOOLS
 export type Tool = 'pen' | 'background' | 'select' | 'seam';
@@ -46,12 +52,9 @@ interface CanvasState {
   currentTool: Tool;
   selectedBackgroundId: string | null;
 
-  present: {
-    paths: Path[];
-    backgroundImages: BackgroundImage[];
-  };
-  past: { paths: Path[]; backgroundImages: BackgroundImage[] }[];
-  future: { paths: Path[]; backgroundImages: BackgroundImage[] }[];
+  present: CanvasPresent;
+  past: CanvasPresent[];
+  future: CanvasPresent[];
   justPlacedPointId: string | null;
   isDraggingHandle: boolean;
 
@@ -116,6 +119,8 @@ interface CanvasState {
   addSeam: (pointId1: string, pointId2: string) => void;
   removeSeam: (pointId1: string, pointId2: string) => void;
   isSeam: (pointId1: string, pointId2: string) => boolean;
+
+  addPathSeam: (pathAId: string, pathBId: string) => void;
 }
 export const useCanvasState = create<CanvasState>()(
   persist(
@@ -129,20 +134,43 @@ export const useCanvasState = create<CanvasState>()(
       seams: [],
       addSeam: (id1, id2) => {
         set((state) => {
-          const exists = state.seams.some(([a, b]) => (a === id1 && b === id2) || (a === id2 && b === id1));
+          const seams = state.present.seams;
+          const exists = seams.some(([a, b]) => (a === id1 && b === id2) || (a === id2 && b === id1));
           if (exists) return {};
-          return { seams: [...state.seams, [id1, id2]] };
+          const updated = [...seams, [id1, id2]];
+          return {
+            present: {
+              ...state.present,
+              seams: updated,
+            },
+          };
         });
       },
       removeSeam: (id1, id2) => {
-        set((state) => ({
-          seams: state.seams.filter(([a, b]) => !(a === id1 && b === id2) && !(a === id2 && b === id1)),
-        }));
+        set((state) => {
+          const seams = state.present.seams;
+          return {
+            present: {
+              ...state.present,
+              seams: seams.filter(([a, b]) => !(a === id1 && b === id2) && !(a === id2 && b === id1)),
+            },
+          };
+        });
       },
       isSeam: (id1, id2) => {
-        const seams = get().seams;
+        const seams = get().present.seams;
         return seams.some(([a, b]) => (a === id1 && b === id2) || (a === id2 && b === id1));
       },
+
+      addPathSeam: (a, b) => {
+        set((state) => ({
+          present: {
+            ...state.present,
+            seams: [...(state.present.seams || []), [a, b]],
+          },
+        }));
+      },
+
 
 
       clipboard: null,
@@ -204,6 +232,7 @@ export const useCanvasState = create<CanvasState>()(
       present: {
         paths: [],
         backgroundImages: [],
+        seams: [],
       },
       past: [],
       future: [],
@@ -211,7 +240,14 @@ export const useCanvasState = create<CanvasState>()(
       isDraggingHandle: false,
       saveState: () => {
         set((state) => ({
-          past: [...state.past, JSON.parse(JSON.stringify(state.present))],
+          past: [
+            ...state.past,
+            JSON.parse(JSON.stringify({
+              paths: state.present.paths,
+              backgroundImages: state.present.backgroundImages,
+              seams: state.present.seams,
+            })),
+          ],
           future: [],
         }));
       },
@@ -337,6 +373,7 @@ export const useCanvasState = create<CanvasState>()(
                   : p
               ),
               backgroundImages,
+              seams: present.seams
             },
             justPlacedPointId: point.id, // 🆕 Mark just placed
           });
@@ -349,6 +386,7 @@ export const useCanvasState = create<CanvasState>()(
                 { id: newPathId, points: [point], closed: false },
               ],
               backgroundImages,
+              seams: present.seams,
             },
             currentPathId: newPathId,
             justPlacedPointId: point.id, // 🆕 Mark just placed
@@ -562,7 +600,7 @@ export const useCanvasState = create<CanvasState>()(
 
       resetCanvas: () => {
         set({
-          present: { paths: [], backgroundImages: [] },
+          present: { paths: [], backgroundImages: [], seams: [] },
           past: [],
           future: [],
           selectedPointId: null,

@@ -2,11 +2,11 @@
 import { useCanvasState } from '../state/CanvasState';
 
 export function exportToJson() {
-    const { paths } = useCanvasState.getState().present;
+    const { paths, seams } = useCanvasState.getState().present;
     const exportData = paths.map((path) => ({
         id: path.id,
         transform3D: {
-            position: [0, 1, 0], // placeholder
+            position: [0, 1, 0],
             rotation: [0, 0, 0],
             scale: [1, 1, 1]
         },
@@ -19,13 +19,13 @@ export function exportToJson() {
         closed: path.closed
     }));
 
-    const blob = new Blob([JSON.stringify({ patterns: exportData }, null, 2)], {
-        type: 'application/json'
-    });
+    const blob = new Blob([
+        JSON.stringify({ patterns: exportData, seams }, null, 2)
+    ], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'patterns_with_handles.json';
+    a.download = 'patterns_with_seams.json';
     a.click();
     URL.revokeObjectURL(url);
 }
@@ -52,7 +52,8 @@ export function importFromJson(file: File) {
             useCanvasState.setState((prev) => ({
                 present: {
                     ...prev.present,
-                    paths: [...prev.present.paths, ...newPaths]
+                    paths: [...prev.present.paths, ...newPaths],
+                    seams: parsed.seams || []
                 }
             }));
         }

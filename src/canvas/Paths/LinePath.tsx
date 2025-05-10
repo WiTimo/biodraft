@@ -1,33 +1,23 @@
 import { Shape } from 'react-konva';
-import { useCanvasState } from '../state/CanvasState';
 
-interface LinePathProps {
-  points: {
-    id: string;
-    x: number;
-    y: number;
-    handleIn: { dx: number; dy: number };
-    handleOut: { dx: number; dy: number };
-  }[];
+export function LinePath({
+  points,
+  closed = false,
+  onClick,
+  stroke = 'black',
+}: {
+  points: any[];
   closed?: boolean;
-}
-
-export function LinePath({ points, closed = false }: LinePathProps) {
+  onClick?: () => void;
+  stroke?: string;
+}) {
   if (points.length < 2) return null;
-
-  const zoom = useCanvasState((s) => s.zoom);
-  const baseStrokeWidth = 2;
-  const minStroke = 0.5;
-  const maxStroke = 4;
-
-  const adjustedStrokeWidth = Math.min(maxStroke, Math.max(minStroke, baseStrokeWidth / zoom));
 
   return (
     <Shape
       sceneFunc={(context, shape) => {
         context.beginPath();
         context.moveTo(points[0].x, points[0].y);
-
         for (let i = 0; i < points.length - 1; i++) {
           const p1 = points[i];
           const p2 = points[i + 1];
@@ -40,7 +30,6 @@ export function LinePath({ points, closed = false }: LinePathProps) {
             p2.y
           );
         }
-
         if (closed) {
           const pLast = points[points.length - 1];
           const pFirst = points[0];
@@ -54,11 +43,11 @@ export function LinePath({ points, closed = false }: LinePathProps) {
           );
           context.closePath();
         }
-
         context.strokeShape(shape);
       }}
-      stroke="black"
-      strokeWidth={adjustedStrokeWidth}
+      stroke={stroke}
+      strokeWidth={2}
+      onClick={onClick}
     />
   );
 }

@@ -1,54 +1,60 @@
 import { useCanvasState } from '../state/CanvasState';
 import { LinePath } from '../Paths/LinePath';
-import { Line } from 'react-konva';
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
+
+function getRandomColor(seed: string) {
+    let hash = 0;
+    for (let i = 0; i < seed.length; i++) {
+        hash = seed.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const hue = hash % 360;
+    return `hsl(${hue}, 100%, 60%)`;
+}
 
 export function PathsLayer() {
-    const paths = useCanvasState((s) => s.present.paths);
-    const currentTool = useCanvasState((s) => s.currentTool);
-    const zoom = useCanvasState((s) => s.zoom);
+    const paths = useCanvasState(s => s.present.paths);
+    const seams = useCanvasState(s => s.present.seams || []);
+    const currentTool = useCanvasState(s => s.currentTool);
+    const addSeam = useCanvasState(s => s.addPathSeam);
+    const seamSelection = useRef<string[]>([]);
 
-    const handleSegmentClick = (aId: string, bId: string) => {
-        const seamSelection = (window as any).seamSelectionRef as string[];
-        seamSelection.push(aId);
-        seamSelection.push(bId);
-        if (seamSelection.length === 4) seamSelection.splice(0, 2);
+    const handlePathClick = (pathId: string) => {
+        if (currentTool !== 'seam') return;
+        if (seamSelection.current.length >= 2) {
+            seamSelection.current = [];
+        }
 
-        if (seamSelection.length === 4) {
-            const [a1, a2, b1, b2] = seamSelection;
-            useCanvasState.getState().addSeam(a1, b1);
-            useCanvasState.getState().addSeam(a2, b2);
-            seamSelection.length = 0;
+        seamSelection.current.push(pathId);
+
+        if (seamSelection.current.length === 2) {
+            const [id1, id2] = seamSelection.current;
+            addSeam(id1, id2);
+            seamSelection.current = [];
         }
     };
 
-    const segmentLines = useMemo(() => {
-        if (currentTool !== 'seam') return null;
-        return paths.flatMap((path) => {
-            const segments = [];
-            for (let i = 0; i < path.points.length - 1; i++) {
-                const a = path.points[i];
-                const b = path.points[i + 1];
-                segments.push(
-                    <Line
-                        key={a.id + '-' + b.id}
-                        points={[a.x, a.y, b.x, b.y]}
-                        stroke="transparent"
-                        strokeWidth={10 / zoom}
-                        onClick={() => handleSegmentClick(a.id, b.id)}
-                    />
-                );
-            }
-            return segments;
+    // 🟡 Map path ID → color from seam list
+    const seamColorMap = useMemo(() => {
+        const map = new Map<string, string>();
+        seams.forEach(([id1, id2]) => {
+            const color = getRandomColor(id1 + id2);
+            map.set(id1, color);
+            map.set(id2, color);
         });
-    }, [paths, currentTool, zoom]);
+        return map;
+    }, [seams]);
 
     return (
         <>
             {paths.map((path) => (
-                <LinePath key={path.id} points={path.points} closed={path.closed} />
+                <LinePath
+                    key={path.id}
+                    points={path.points}
+                    closed={path.closed}
+                    onClick={() => handlePathClick(path.id)}
+                    stroke={seamColorMap.get(path.id) || 'black'}
+                />
             ))}
-            {segmentLines}
         </>
     );
 }
