@@ -10,24 +10,29 @@ export function PathsLayer() {
     const zoom = useCanvasState(s => s.zoom);
     const addSeam = useCanvasState(s => s.addSeam); // ✅ Must work with point segments
     const seamSelection = useRef<string[][]>([]); // holds [[aId, bId], [cId, dId]]
-
+    const selectedSegment = useRef<[string, string] | null>(null);
+    
     const handleSegmentClick = (aId: string, bId: string) => {
-        if (currentTool !== 'seam') return;
+    if (currentTool !== 'seam') return;
 
-        if (seamSelection.current.length >= 2) {
-            seamSelection.current = [];
-        }
+    if (seamSelection.current.length >= 2) {
+        seamSelection.current = [];
+        selectedSegment.current = null;
+    }
 
-        seamSelection.current.push([aId, bId]);
+    seamSelection.current.push([aId, bId]);
+    selectedSegment.current = [aId, bId];
 
-        if (seamSelection.current.length === 2) {
-            const [[a1, b1], [a2, b2]] = seamSelection.current;
-            addSeam(a1, a2); // Corrected
-            addSeam(b1, b2); // Corrected
-            seamSelection.current = [];
-        }
+    if (seamSelection.current.length === 2) {
+        const [[a1, b1], [a2, b2]] = seamSelection.current;
+        addSeam(a1, a2);
+        addSeam(b1, b2);
+        seamSelection.current = [];
+        selectedSegment.current = null;
+    }
+};
 
-    };
+
 
     const seamLines = useMemo(() => {
         return seams.map(([id1, id2], i) => {
@@ -80,43 +85,61 @@ export function PathsLayer() {
             ))}
 
             {paths.flatMap((path) => {
-                const segments = [];
+                const segments: any = [];
+                const addBezierSegment = (a, b, isClosing = false) => {
+                    const isSelected =
+                        selectedSegment.current &&
+                        ((selectedSegment.current[0] === a.id && selectedSegment.current[1] === b.id) ||
+                        (selectedSegment.current[0] === b.id && selectedSegment.current[1] === a.id));
+
+                    const baseColor = isSelected
+                        ? 'rgba(0,0,255,0.5)'
+                        : currentTool === 'seam'
+                        ? 'rgba(0,0,255,0.05)'
+                        : 'transparent';
+
+                    segments.push(
+                        <Line
+                            key={`bezier-click-${isClosing ? 'close-' : ''}${a.id}-${b.id}`}
+                            points={getQuadraticBezierPoints(a, a.handleOut, b.handleIn, b)}
+                            stroke={baseColor}
+                            strokeWidth={12 / zoom}
+                            onClick={() => currentTool === 'seam' && handleSegmentClick(a.id, b.id)}
+                            onMouseEnter={(e) => {
+                                if (currentTool === 'seam' && !isSelected) {
+                                    e.target.stroke('rgba(0,0,255,0.2)');
+                                    e.target.getLayer()?.batchDraw();
+                                }
+                            }}
+                            onMouseLeave={(e) => {
+                                if (currentTool === 'seam' && !isSelected) {
+                                    e.target.stroke(baseColor);
+                                    e.target.getLayer()?.batchDraw();
+                                }
+                            }}
+                            listening={currentTool === 'seam'}
+                        />
+                    );
+                };
+
+
                 for (let i = 0; i < path.points.length - 1; i++) {
                     const a = path.points[i];
                     const b = path.points[i + 1];
-                    const bezierPoints = getQuadraticBezierPoints(a, a.handleOut, b.handleIn, b);
-                    segments.push(
-                        <Line
-                            key={`bezier-click-${a.id}-${b.id}`}
-                            points={bezierPoints}
-                            stroke="blue" // debug
-                            strokeWidth={12 / zoom}
-                            onClick={() => handleSegmentClick(a.id, b.id)}
-                            listening
-                        />
-                    );
+                    addBezierSegment(a, b);
                 }
 
-                // 🔁 Add closing segment if path is marked as closed
+                // Add closing segment if path is closed
                 if (path.closed && path.points.length >= 2) {
                     const a = path.points[path.points.length - 1];
                     const b = path.points[0];
-                    const bezierPoints = getQuadraticBezierPoints(a, a.handleOut, b.handleIn, b);
-                    segments.push(
-                        <Line
-                            key={`bezier-click-close-${a.id}-${b.id}`}
-                            points={bezierPoints}
-                            stroke="blue" // debug
-                            strokeWidth={12 / zoom}
-                            onClick={() => handleSegmentClick(a.id, b.id)}
-                            listening
-                        />
-                    );
+                    addBezierSegment(a, b, true);
                 }
 
                 return segments;
             })}
-            {seamLines}
+
+            {currentTool === "seam" && seamLines}
         </>
     );
 }

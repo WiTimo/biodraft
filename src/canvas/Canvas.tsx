@@ -234,6 +234,8 @@ export function Canvas() {
             return;
           }
 
+
+
           if (currentTool === 'select') {
             const isClickingOnEmpty = isStageClick || targetName === '';
             const clickedInsideBox =

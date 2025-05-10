@@ -11,6 +11,7 @@ export function exportToJson() {
             scale: [1, 1, 1]
         },
         points: path.points.map((p) => ({
+            id: p.id,
             x: p.x,
             y: p.y,
             handleIn: { dx: p.handleIn.dx, dy: p.handleIn.dy },
@@ -41,11 +42,11 @@ export function importFromJson(file: File) {
                 id: pattern.id,
                 closed: pattern.closed,
                 points: pattern.points.map((p: any) => ({
-                    id: crypto.randomUUID(),
+                    id: p.id,
                     x: p.x,
                     y: p.y,
                     handleIn: { dx: p.handleIn.dx, dy: p.handleIn.dy },
-                    handleOut: { dx: p.handleOut.dx, dy: p.handleOut.dy }
+                    handleOut: { dx: p.handleOut.dx, dy: p.handleOut.dy },
                 }))
             }));
 
