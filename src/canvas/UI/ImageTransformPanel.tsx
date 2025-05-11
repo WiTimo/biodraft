@@ -37,7 +37,7 @@ export function ImageTransformPanel() {
     };
 
     return (
-        <div className="absolute top-2.5 left-2.5 p-3 rounded-lg shadow-xl bg-white z-2000 min-w-[200px]">
+        <div className="absolute bottom-2.5 left-2.5 p-3 rounded-lg shadow-xl bg-white z-2000 min-w-[200px]">
             <h4 className='text-lg font-semibold'>Image Settings</h4>
 
             <div style={{ margin: '6px 0' }}>

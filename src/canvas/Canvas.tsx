@@ -10,6 +10,7 @@ import Konva from 'konva';
 import { SelectionTransformer } from './Layers/SelectionTransformer';
 import { PenSegmentPreview } from './Previews/PenSegmentPreview';
 import { SeamLayer } from './Layers/SeamLayer';
+import { ThreeDView } from './UI/ThreeDView';
 
 Konva.showWarnings = false;
 
@@ -33,8 +34,11 @@ export function Canvas() {
     offset,
     setOffset,
     selectedPointIds,
-    snapGuides
+    snapGuides,
+    threeDEnabled,
+    toggle3D
   } = useCanvasState();
+
   const { paths, backgroundImages } = present;
   const [isDraggingNewPoint, setIsDraggingNewPoint] = useState(false);
   const [newPointId, setNewPointId] = useState<string | null>(null);
@@ -174,334 +178,360 @@ export function Canvas() {
   }, [undo, redo, deleteSelectedPoint, selectedBackgroundId, isPanning, selectedPointIds]);
 
   return (
-    <div className="w-full h-full">
-      <ImageTransformPanel />
-      <Stage
-        scale={{ x: zoom, y: zoom }}
-        x={offset.x}
-        y={offset.y}
-        ref={stageRef}
-        width={window.innerWidth}
-        height={window.innerHeight}
-        style={{
-          background: '#f0f0f0',
-          cursor:
-            isPanning
-              ? 'grabbing'
-              : isSpacePressed
-                ? 'grab'
-                : currentTool === 'pen'
-                  ? 'url(/cursors/pen.svg) 0 0, auto'
-                  : currentTool === "select"
-                    ? 'url(/cursors/select.svg) 0 0, auto'
-                    : 'default',
-        }}
+    <div className="w-full h-full flex">
+      {/* ── Left half: 3D view (when toggled) ─────────────────── */}
+      {threeDEnabled && (
+        <div className="w-1/2 h-full border-r border-gray-300">
+          <ThreeDView />
+        </div>
+      )}
+      <div className={threeDEnabled ? 'w-1/2 h-full relative' : 'w-full h-full relative'}>
+        <ImageTransformPanel />
+        <Stage
+          scale={{ x: zoom, y: zoom }}
+          x={offset.x}
+          y={offset.y}
+          ref={stageRef}
+          width={window.innerWidth}
+          height={window.innerHeight}
+          style={{
+            background: '#f0f0f0',
+            cursor:
+              isPanning
+                ? 'grabbing'
+                : isSpacePressed
+                  ? 'grab'
+                  : currentTool === 'pen'
+                    ? 'url(/cursors/pen.svg) 0 0, auto'
+                    : currentTool === "select"
+                      ? 'url(/cursors/select.svg) 0 0, auto'
+                      : 'default',
+          }}
 
-        onMouseDown={(e) => {
-          const stage = e.target.getStage();
-          if (!stage) return;
+          onMouseDown={(e) => {
+            const stage = e.target.getStage();
+            if (!stage) return;
 
-          const pointer = stage.getPointerPosition();
-          if (!pointer) return;
+            const pointer = stage.getPointerPosition();
+            if (!pointer) return;
 
-          const isMiddleMouse = e.evt.button === 1;
-          const isSpacePressedNow = isSpacePressed;
+            const isMiddleMouse = e.evt.button === 1;
+            const isSpacePressedNow = isSpacePressed;
 
-          if (isMiddleMouse || isSpacePressedNow) {
-            setIsPanning(true);
-            setLastPointerPos(pointer);
-            document.body.style.cursor = 'grabbing';
-            return;
-          }
-
-          const target = e.target;
-          const targetName = target.name();
-          const world = {
-            x: (pointer.x - offset.x) / zoom,
-            y: (pointer.y - offset.y) / zoom,
-          };
-
-          if (targetName?.includes('transform-handle')) return;
-
-          const isStageClick = target === stage;
-          const isBackgroundClick = targetName === 'background-image';
-
-          if (currentTool === 'background') {
-            if (isStageClick || isBackgroundClick) {
-              deselectBackgroundImages();
-              useCanvasState.getState().deselectPoint();
-            }
-            return;
-          }
-          
-          if (currentTool === 'seam') {
-            const isClickingOutsideSegment = !targetName?.includes('seam-segment');
-
-            if (isClickingOutsideSegment) {
-              useCanvasState.getState().setSeamSelection([]);
-              useCanvasState.getState().setSelectedSeamSegment(null);
-            }
-            return;
-          }
-
-
-          if (currentTool === 'select') {
-            const isClickingOnEmpty = isStageClick || targetName === '';
-            const clickedInsideBox =
-              selectionRect &&
-              pointer.x >= selectionRect.x &&
-              pointer.x <= selectionRect.x + selectionRect.width &&
-              pointer.y >= selectionRect.y &&
-              pointer.y <= selectionRect.y + selectionRect.height;
-
-            if (isClickingOnEmpty && !clickedInsideBox) {
-              pendingSelectionStart.current = world;
-              setSelectionRect(null);
-              useCanvasState.getState().clearSelectedPointIds();
-              useCanvasState.getState().deselectPoint();
-            }
-            return;
-          }
-
-          if (currentTool === 'pen') {
-            if (e.evt.detail === 2) {
-              finishCurrentPath();
+            if (isMiddleMouse || isSpacePressedNow) {
+              setIsPanning(true);
+              setLastPointerPos(pointer);
+              document.body.style.cursor = 'grabbing';
               return;
             }
 
-            if (!isStageClick && targetName !== 'background-image' && targetName !== 'background') return;
-
-            const guides = useCanvasState.getState().snapGuides;
-            const finalX = guides.x ?? world.x;
-            const finalY = guides.y ?? world.y;
-
-            const id = addPoint(finalX, finalY, true);
-            useCanvasState.getState().selectPoint(id);
-            setNewPointId(id);
-            setIsDraggingNewPoint(true);
-          }
-        }}
-
-        onMouseMove={(e) => {
-          const stage = e.target.getStage();
-          if (!stage) return;
-
-          const pointer = stage.getPointerPosition();
-          if (!pointer) return;
-
-          if (currentTool === 'pen') {
+            const target = e.target;
+            const targetName = target.name();
             const world = {
               x: (pointer.x - offset.x) / zoom,
               y: (pointer.y - offset.y) / zoom,
             };
 
-            const SNAP_RADIUS = 10 / zoom;
-            const allPoints = paths.flatMap(p => p.points);
+            if (targetName?.includes('transform-handle')) return;
 
-            let snapX: number | null = null;
-            let snapY: number | null = null;
+            const isStageClick = target === stage;
+            const isBackgroundClick = targetName === 'background-image';
 
-            for (const pt of allPoints) {
-              if (Math.abs(world.x - pt.x) < SNAP_RADIUS) snapX = pt.x;
-              if (Math.abs(world.y - pt.y) < SNAP_RADIUS) snapY = pt.y;
+            if (currentTool === 'background') {
+              if (isStageClick || isBackgroundClick) {
+                deselectBackgroundImages();
+                useCanvasState.getState().deselectPoint();
+              }
+              return;
             }
 
-            useCanvasState.getState().setSnapGuides({ x: snapX, y: snapY });
-          }
+            if (currentTool === 'seam') {
+              const isClickingOutsideSegment = !targetName?.includes('seam-segment');
 
-          if (isPanning && lastPointerPos) {
-            const dx = pointer.x - lastPointerPos.x;
-            const dy = pointer.y - lastPointerPos.y;
-            setOffset({ x: offset.x + dx, y: offset.y + dy });
-            setLastPointerPos(pointer);
-            return;
-          }
-
-          const world = {
-            x: (pointer.x - offset.x) / zoom,
-            y: (pointer.y - offset.y) / zoom,
-          };
-          useCanvasState.getState().setMousePosition(world);
-
-          if (currentTool === 'select' && pendingSelectionStart.current) {
-            const distX = world.x - pendingSelectionStart.current.x;
-            const distY = world.y - pendingSelectionStart.current.y;
-            const distance = Math.sqrt(distX * distX + distY * distY);
-
-            if (!selectionStart && distance > 4) {
-              // ✅ start actual box drawing only after dragging
-              setSelectionStart(pendingSelectionStart.current);
+              if (isClickingOutsideSegment) {
+                useCanvasState.getState().setSeamSelection([]);
+                useCanvasState.getState().setSelectedSeamSegment(null);
+              }
+              return;
             }
 
-            if (selectionStart || distance > 4) {
-              setSelectionRect({
-                x: pendingSelectionStart.current.x,
-                y: pendingSelectionStart.current.y,
-                width: world.x - pendingSelectionStart.current.x,
-                height: world.y - pendingSelectionStart.current.y,
-              });
+
+            if (currentTool === 'select') {
+              const isClickingOnEmpty = isStageClick || targetName === '';
+              const clickedInsideBox =
+                selectionRect &&
+                pointer.x >= selectionRect.x &&
+                pointer.x <= selectionRect.x + selectionRect.width &&
+                pointer.y >= selectionRect.y &&
+                pointer.y <= selectionRect.y + selectionRect.height;
+
+              if (isClickingOnEmpty && !clickedInsideBox) {
+                pendingSelectionStart.current = world;
+                setSelectionRect(null);
+                useCanvasState.getState().clearSelectedPointIds();
+                useCanvasState.getState().deselectPoint();
+              }
+              return;
             }
-          }
+
+            if (currentTool === 'pen') {
+              if (e.evt.detail === 2) {
+                finishCurrentPath();
+                return;
+              }
+
+              if (!isStageClick && targetName !== 'background-image' && targetName !== 'background') return;
+
+              const guides = useCanvasState.getState().snapGuides;
+              const finalX = guides.x ?? world.x;
+              const finalY = guides.y ?? world.y;
+
+              const id = addPoint(finalX, finalY, true);
+              useCanvasState.getState().selectPoint(id);
+              setNewPointId(id);
+              setIsDraggingNewPoint(true);
+            }
+          }}
+
+          onMouseMove={(e) => {
+            const stage = e.target.getStage();
+            if (!stage) return;
+
+            const pointer = stage.getPointerPosition();
+            if (!pointer) return;
+
+            if (currentTool === 'pen') {
+              const world = {
+                x: (pointer.x - offset.x) / zoom,
+                y: (pointer.y - offset.y) / zoom,
+              };
+
+              const SNAP_RADIUS = 10 / zoom;
+              const allPoints = paths.flatMap(p => p.points);
+
+              let snapX: number | null = null;
+              let snapY: number | null = null;
+
+              for (const pt of allPoints) {
+                if (Math.abs(world.x - pt.x) < SNAP_RADIUS) snapX = pt.x;
+                if (Math.abs(world.y - pt.y) < SNAP_RADIUS) snapY = pt.y;
+              }
+
+              useCanvasState.getState().setSnapGuides({ x: snapX, y: snapY });
+            }
+
+            if (isPanning && lastPointerPos) {
+              const dx = pointer.x - lastPointerPos.x;
+              const dy = pointer.y - lastPointerPos.y;
+              setOffset({ x: offset.x + dx, y: offset.y + dy });
+              setLastPointerPos(pointer);
+              return;
+            }
+
+            const world = {
+              x: (pointer.x - offset.x) / zoom,
+              y: (pointer.y - offset.y) / zoom,
+            };
+            useCanvasState.getState().setMousePosition(world);
+
+            if (currentTool === 'select' && pendingSelectionStart.current) {
+              const distX = world.x - pendingSelectionStart.current.x;
+              const distY = world.y - pendingSelectionStart.current.y;
+              const distance = Math.sqrt(distX * distX + distY * distY);
+
+              if (!selectionStart && distance > 4) {
+                // ✅ start actual box drawing only after dragging
+                setSelectionStart(pendingSelectionStart.current);
+              }
+
+              if (selectionStart || distance > 4) {
+                setSelectionRect({
+                  x: pendingSelectionStart.current.x,
+                  y: pendingSelectionStart.current.y,
+                  width: world.x - pendingSelectionStart.current.x,
+                  height: world.y - pendingSelectionStart.current.y,
+                });
+              }
+            }
 
 
-          if (isDraggingNewPoint && newPointId) {
-            const path = paths.find(p => p.points.some(pt => pt.id === newPointId));
-            const point = path?.points.find(pt => pt.id === newPointId);
-            if (!point) return;
+            if (isDraggingNewPoint && newPointId) {
+              const path = paths.find(p => p.points.some(pt => pt.id === newPointId));
+              const point = path?.points.find(pt => pt.id === newPointId);
+              if (!point) return;
 
-            const dx = world.x - point.x;
-            const dy = world.y - point.y;
+              const dx = world.x - point.x;
+              const dy = world.y - point.y;
 
-            moveHandle(newPointId, 'handleOut', dx, dy);
-            moveHandle(newPointId, 'handleIn', -dx, -dy);
-          }
-        }}
-        onMouseUp={() => {
-          if (isPanning) {
+              moveHandle(newPointId, 'handleOut', dx, dy);
+              moveHandle(newPointId, 'handleIn', -dx, -dy);
+            }
+          }}
+          onMouseUp={() => {
+            if (isPanning) {
+              setIsPanning(false);
+              document.body.style.cursor = 'default';
+              return;
+            }
+
+            pendingSelectionStart.current = null;
+            setIsDraggingNewPoint(false);
+            setNewPointId(null);
+            setLastPointerPos(null);
             setIsPanning(false);
             document.body.style.cursor = 'default';
-            return;
-          }
+            useCanvasState.getState().setSnapGuides({ x: null, y: null });
 
-          pendingSelectionStart.current = null;
-          setIsDraggingNewPoint(false);
-          setNewPointId(null);
-          setLastPointerPos(null);
-          setIsPanning(false);
-          document.body.style.cursor = 'default';
-          useCanvasState.getState().setSnapGuides({ x: null, y: null });
+            if (currentTool === 'select' && selectionStart && selectionRect) {
+              const { x, y, width, height } = selectionRect;
+              const rect = {
+                x: Math.min(x, x + width),
+                y: Math.min(y, y + height),
+                width: Math.abs(width),
+                height: Math.abs(height),
+              };
 
-          if (currentTool === 'select' && selectionStart && selectionRect) {
-            const { x, y, width, height } = selectionRect;
-            const rect = {
-              x: Math.min(x, x + width),
-              y: Math.min(y, y + height),
-              width: Math.abs(width),
-              height: Math.abs(height),
+              const allPaths = useCanvasState.getState().present.paths;
+              const allPoints = allPaths.flatMap(p => p.points);
+
+              const individuallySelectedPoints = allPoints
+                .filter(p =>
+                  p.x >= rect.x &&
+                  p.x <= rect.x + rect.width &&
+                  p.y >= rect.y &&
+                  p.y <= rect.y + rect.height
+                )
+                .map(p => p.id);
+
+              useCanvasState.getState().setSelectedPointIds(individuallySelectedPoints);
+
+              // ✅ If exactly one point is selected, set it as the primary selection
+              if (individuallySelectedPoints.length === 1) {
+                useCanvasState.getState().selectPoint(individuallySelectedPoints[0]);
+              } else {
+                useCanvasState.getState().deselectPoint();
+              }
+
+              setSelectionStart(null);
+              setSelectionRect(null);
+            }
+          }}
+
+
+          onMouseLeave={() => {
+            useCanvasState.getState().setMousePosition(null);
+            useCanvasState.getState().setSnapGuides({ x: null, y: null });
+          }}
+
+          onWheel={(e) => {
+            const evt = e.evt;
+            if (!evt.ctrlKey && !evt.metaKey) return;
+
+            evt.preventDefault();
+            const stage = e.target.getStage();
+            const pointer = stage?.getPointerPosition();
+            if (!stage || !pointer) return;
+
+            const state = useCanvasState.getState();
+            const zoom = state.zoom;
+            const offset = state.offset;
+
+            const sensitivity = 0.0025;
+            const minZoom = 0.1;
+            const maxZoom = 5;
+            const delta = evt.deltaY;
+            const newZoom = Math.min(maxZoom, Math.max(minZoom, zoom - delta * sensitivity));
+
+            const mouse = {
+              x: (pointer.x - offset.x) / zoom,
+              y: (pointer.y - offset.y) / zoom,
             };
 
-            const allPaths = useCanvasState.getState().present.paths;
-            const allPoints = allPaths.flatMap(p => p.points);
+            const newOffset = {
+              x: pointer.x - mouse.x * newZoom,
+              y: pointer.y - mouse.y * newZoom,
+            };
 
-            const individuallySelectedPoints = allPoints
-              .filter(p =>
-                p.x >= rect.x &&
-                p.x <= rect.x + rect.width &&
-                p.y >= rect.y &&
-                p.y <= rect.y + rect.height
-              )
-              .map(p => p.id);
+            state.setZoom(newZoom);
+            state.setOffset(newOffset);
+          }}
+        >
+          <Layer>
+            {backgroundImages.map((img) => (
+              <BackgroundImage
+                key={img.id}
+                id={img.id}
+                src={img.src}
+                x={img.x}
+                y={img.y}
+                scaleX={img.scaleX}
+                scaleY={img.scaleY}
+                rotation={img.rotation}
+                opacity={img.opacity}
+                locked={img.locked}
+              />
+            ))}
 
-            useCanvasState.getState().setSelectedPointIds(individuallySelectedPoints);
-
-            // ✅ If exactly one point is selected, set it as the primary selection
-            if (individuallySelectedPoints.length === 1) {
-              useCanvasState.getState().selectPoint(individuallySelectedPoints[0]);
-            } else {
-              useCanvasState.getState().deselectPoint();
-            }
-
-            setSelectionStart(null);
-            setSelectionRect(null);
-          }
-        }}
-
-
-        onMouseLeave={() => {
-          useCanvasState.getState().setMousePosition(null);
-          useCanvasState.getState().setSnapGuides({ x: null, y: null });
-        }}
-
-        onWheel={(e) => {
-          const evt = e.evt;
-          if (!evt.ctrlKey && !evt.metaKey) return;
-
-          evt.preventDefault();
-          const stage = e.target.getStage();
-          const pointer = stage?.getPointerPosition();
-          if (!stage || !pointer) return;
-
-          const state = useCanvasState.getState();
-          const zoom = state.zoom;
-          const offset = state.offset;
-
-          const sensitivity = 0.0025;
-          const minZoom = 0.1;
-          const maxZoom = 5;
-          const delta = evt.deltaY;
-          const newZoom = Math.min(maxZoom, Math.max(minZoom, zoom - delta * sensitivity));
-
-          const mouse = {
-            x: (pointer.x - offset.x) / zoom,
-            y: (pointer.y - offset.y) / zoom,
-          };
-
-          const newOffset = {
-            x: pointer.x - mouse.x * newZoom,
-            y: pointer.y - mouse.y * newZoom,
-          };
-
-          state.setZoom(newZoom);
-          state.setOffset(newOffset);
-        }}
-      >
-        <Layer>
-          {backgroundImages.map((img) => (
-            <BackgroundImage
-              key={img.id}
-              id={img.id}
-              src={img.src}
-              x={img.x}
-              y={img.y}
-              scaleX={img.scaleX}
-              scaleY={img.scaleY}
-              rotation={img.rotation}
-              opacity={img.opacity}
-              locked={img.locked}
-            />
-          ))}
-
-          <PathsLayer stageRef={stageRef} />
-          <SeamLayer />
-          <PointsLayer />
-          {currentTool === 'pen' && !isDraggingNewPoint && !useCanvasState.getState().isDraggingHandle && <PenSegmentPreview />}
-          {/* 👇 Show selection box only during drag (visual aid) */}
-          {selectionRect && selectionStart && currentTool === 'select' && (
-            <Rect
-              x={Math.min(selectionRect.x, selectionRect.x + selectionRect.width)}
-              y={Math.min(selectionRect.y, selectionRect.y + selectionRect.height)}
-              width={Math.abs(selectionRect.width)}
-              height={Math.abs(selectionRect.height)}
-              stroke="blue"
-              strokeWidth={1}
-              dash={[4, 4]}
-            />
-          )}
+            <PathsLayer />
+            <SeamLayer />
+            <PointsLayer />
+            {currentTool === 'pen' && !isDraggingNewPoint && !useCanvasState.getState().isDraggingHandle && <PenSegmentPreview />}
+            {/* 👇 Show selection box only during drag (visual aid) */}
+            {selectionRect && selectionStart && currentTool === 'select' && (
+              <Rect
+                x={Math.min(selectionRect.x, selectionRect.x + selectionRect.width)}
+                y={Math.min(selectionRect.y, selectionRect.y + selectionRect.height)}
+                width={Math.abs(selectionRect.width)}
+                height={Math.abs(selectionRect.height)}
+                stroke="blue"
+                strokeWidth={1}
+                dash={[4, 4]}
+              />
+            )}
 
 
-          {snapGuides.x !== null && (
-            <Line
-              points={[snapGuides.x, -10000, snapGuides.x, 10000]}
-              stroke="deepskyblue"
-              strokeWidth={1}
-              dash={[4, 4]}
-              listening={false}
-            />
-          )}
-          {snapGuides.y !== null && (
-            <Line
-              points={[-10000, snapGuides.y, 10000, snapGuides.y]}
-              stroke="deepskyblue"
-              strokeWidth={1}
-              dash={[4, 4]}
-              listening={false}
-            />
-          )}
+            {snapGuides.x !== null && (
+              <Line
+                points={[snapGuides.x, -10000, snapGuides.x, 10000]}
+                stroke="deepskyblue"
+                strokeWidth={1}
+                dash={[4, 4]}
+                listening={false}
+              />
+            )}
+            {snapGuides.y !== null && (
+              <Line
+                points={[-10000, snapGuides.y, 10000, snapGuides.y]}
+                stroke="deepskyblue"
+                strokeWidth={1}
+                dash={[4, 4]}
+                listening={false}
+              />
+            )}
 
-          <SelectionTransformer isVisible={selectedPointIds.length > 0 && !selectionStart} />
-        </Layer>
-      </Stage>
-      <Toolbar />
+            <SelectionTransformer isVisible={selectedPointIds.length > 0 && !selectionStart} />
+          </Layer>
+        </Stage>
+        {/* Toggle button (top-left) */}
+        <button
+          onClick={toggle3D}
+          style={{
+            position: 'absolute',
+            top: 10,
+            left: 10,
+            zIndex: 5000,
+            padding: '6px 12px',
+            background: threeDEnabled ? '#4781e6' : '#ddd',
+            color: threeDEnabled ? 'white' : 'black',
+            borderRadius: 4,
+            border: 'none',
+            cursor: 'pointer',
+          }}
+        >
+          {threeDEnabled ? '← Canvas' : '3D View →'}
+        </button>
+        <Toolbar />
+      </div>
     </div>
   );
 }

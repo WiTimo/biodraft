@@ -129,6 +129,9 @@ interface CanvasState {
 
   swapSeam: (segment: Segment) => void;
 
+  threeDEnabled: boolean;
+  toggle3D: () => void;
+
 }
 export const useCanvasState = create<CanvasState>()(
   persist(
@@ -138,6 +141,10 @@ export const useCanvasState = create<CanvasState>()(
       selectedBackgroundId: null,
       snapGuides: { x: null, y: null },
       setSnapGuides: (guides) => set({ snapGuides: guides }),
+
+      threeDEnabled: false,
+      toggle3D: () => set(state => ({ threeDEnabled: !state.threeDEnabled })),
+
 
       seamSelection: [] as [string, string][],
       setSeamSelection: (selection: [string, string][]) => set({ seamSelection: selection }),
