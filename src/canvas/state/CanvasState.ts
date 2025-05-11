@@ -127,6 +127,8 @@ interface CanvasState {
   selectedSeamSegment: [string, string] | null;
   setSelectedSeamSegment: (segment: [string, string] | null) => void;
 
+  swapSeam: (segment: Segment) => void;
+
 }
 export const useCanvasState = create<CanvasState>()(
   persist(
@@ -144,53 +146,87 @@ export const useCanvasState = create<CanvasState>()(
 
       seams: [],
       addSeam: (segmentA, segmentB) => {
-  set(state => {
-    const segmentKey = ([a, b]: [string, string]) => [a, b].sort().join('_');
-    const k1 = segmentKey(segmentA);
-    const k2 = segmentKey(segmentB);
-    const exists = state.present.seams.some(([s1, s2]) =>
-      (segmentKey(s1) === k1 && segmentKey(s2) === k2) ||
-      (segmentKey(s1) === k2 && segmentKey(s2) === k1)
-    );
-    if (exists) return {};
+        set(state => {
+          const segmentKey = ([a, b]: [string, string]) => [a, b].sort().join('_');
+          const k1 = segmentKey(segmentA);
+          const k2 = segmentKey(segmentB);
+          const exists = state.present.seams.some(([s1, s2]) =>
+            (segmentKey(s1) === k1 && segmentKey(s2) === k2) ||
+            (segmentKey(s1) === k2 && segmentKey(s2) === k1)
+          );
+          if (exists) return {};
 
-    return {
-      present: {
-        ...state.present,
-        seams: [...state.present.seams, [segmentA, segmentB]],
+          return {
+            present: {
+              ...state.present,
+              seams: [...state.present.seams, [segmentA, segmentB]],
+            },
+          };
+        });
       },
-    };
-  });
-},
-removeSeam: (seg1, seg2) => {
-  const key = ([a, b]: [string, string]) => [a, b].sort().join('_');
-  const k1 = key(seg1);
-  const k2 = key(seg2);
+      removeSeam: (seg1, seg2) => {
+        const key = ([a, b]: [string, string]) => [a, b].sort().join('_');
+        const k1 = key(seg1);
+        const k2 = key(seg2);
 
-  set(state => ({
-    present: {
-      ...state.present,
-      seams: state.present.seams.filter(
-        ([s1, s2]) => {
+        set(state => ({
+          present: {
+            ...state.present,
+            seams: state.present.seams.filter(
+              ([s1, s2]) => {
+                const ks1 = key(s1);
+                const ks2 = key(s2);
+                return !((ks1 === k1 && ks2 === k2) || (ks1 === k2 && ks2 === k1));
+              }
+            ),
+          }
+        }));
+      },
+
+      swapSeam: (clickedSeg) => {
+        set(state => {
+          const normalize = ([a, b]: Segment) =>
+            ([a, b].sort() as Segment);
+
+          const target = normalize(clickedSeg);
+
+          const newSeams = (state.present.seams as SegmentSeam[]).map(
+            ([segA, segB]) => {
+              const normA = normalize(segA);
+              const normB = normalize(segB);
+
+              // if we clicked on segA, flip segB
+              if (normA[0] === target[0] && normA[1] === target[1]) {
+                return [segA, [segB[1], segB[0]]] as SegmentSeam;
+              }
+              // if we clicked on segB, flip segA
+              if (normB[0] === target[0] && normB[1] === target[1]) {
+                return [[segA[1], segA[0]], segB] as SegmentSeam;
+              }
+              return [segA, segB] as SegmentSeam;
+            }
+          );
+
+          return {
+            present: {
+              ...state.present,
+              seams: newSeams,
+            },
+          };
+        });
+      },
+
+
+      isSeam: (seg1, seg2) => {
+        const key = ([a, b]: [string, string]) => [a, b].sort().join('_');
+        const k1 = key(seg1);
+        const k2 = key(seg2);
+        return get().present.seams.some(([s1, s2]) => {
           const ks1 = key(s1);
           const ks2 = key(s2);
-          return !((ks1 === k1 && ks2 === k2) || (ks1 === k2 && ks2 === k1));
-        }
-      ),
-    }
-  }));
-},
-
-isSeam: (seg1, seg2) => {
-  const key = ([a, b]: [string, string]) => [a, b].sort().join('_');
-  const k1 = key(seg1);
-  const k2 = key(seg2);
-  return get().present.seams.some(([s1, s2]) => {
-    const ks1 = key(s1);
-    const ks2 = key(s2);
-    return (ks1 === k1 && ks2 === k2) || (ks1 === k2 && ks2 === k1);
-  });
-},
+          return (ks1 === k1 && ks2 === k2) || (ks1 === k2 && ks2 === k1);
+        });
+      },
 
       addPathSeam: (a, b) => {
         set((state) => ({

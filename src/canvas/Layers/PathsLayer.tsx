@@ -13,46 +13,52 @@ export function PathsLayer() {
     const setSeamSelection = useCanvasState(s => s.setSeamSelection);
     const selectedSegment = useCanvasState(s => s.selectedSeamSegment);
     const setSelectedSeamSegment = useCanvasState(s => s.setSelectedSeamSegment);
-    
-const handleSegmentClick = (aId: string, bId: string) => {
-  if (currentTool !== 'seam') return;
 
-  const normalize = ([id1, id2]: [string, string]) => [id1, id2].sort() as [string, string];
-  const selectedSegment = normalize([aId, bId]);
+    const handleSegmentClick = (aId: string, bId: string) => {
+        if (currentTool !== 'seam') return;
 
-  // Avoid selecting same segment twice in seamSelection
-  if (seamSelection.some(seg => seg[0] === selectedSegment[0] && seg[1] === selectedSegment[1])) {
-    return;
-  }
+        const normalize = ([id1, id2]: [string, string]) => [id1, id2].sort() as [string, string];
+        const selectedSegment = normalize([aId, bId]);
 
-  // Prevent same segment from being used in any seam
-  const isUsedInSeam = seams.some(([[x1, x2], [y1, y2]]) => {
-    const seg1 = normalize([x1, x2]);
-    const seg2 = normalize([y1, y2]);
-    return (
-      (seg1[0] === selectedSegment[0] && seg1[1] === selectedSegment[1]) ||
-      (seg2[0] === selectedSegment[0] && seg2[1] === selectedSegment[1])
-    );
-  });
+        // Avoid selecting same segment twice in seamSelection
+        if (seamSelection.some(seg => seg[0] === selectedSegment[0] && seg[1] === selectedSegment[1])) {
+            return;
+        }
 
-  if (isUsedInSeam) return;
+        const isUsedInSeam = seams.some(([s1, s2]) => {
+            const seg1 = normalize(s1);
+            const seg2 = normalize(s2);
+            return (
+                seg1[0] === selectedSegment[0] && seg1[1] === selectedSegment[1] ||
+                seg2[0] === selectedSegment[0] && seg2[1] === selectedSegment[1]
+            );
+        });
 
-  // Reset if already two segments selected
-  if (seamSelection.length >= 2) {
-    setSeamSelection([]);
-    setSelectedSeamSegment(null);
-  }
+        if (isUsedInSeam) {
+            // flip the endpoints in the existing seam
+            useCanvasState.getState().swapSeam(selectedSegment);
+            // clear our little highlight
+            setSeamSelection([]);
+            setSelectedSeamSegment(null);
+            return;
+        }
 
-  const updated = [...seamSelection, selectedSegment];
-  setSeamSelection(updated);
-  setSelectedSeamSegment(selectedSegment);
+        // Reset if already two segments selected
+        if (seamSelection.length >= 2) {
+            setSeamSelection([]);
+            setSelectedSeamSegment(null);
+        }
 
-  if (updated.length === 2) {
-    addSeam(updated[0], updated[1]);
-    setSeamSelection([]);
-    setSelectedSeamSegment(null);
-  }
-};
+        const updated = [...seamSelection, selectedSegment];
+        setSeamSelection(updated);
+        setSelectedSeamSegment(selectedSegment);
+
+        if (updated.length === 2) {
+            addSeam(updated[0], updated[1]);
+            setSeamSelection([]);
+            setSelectedSeamSegment(null);
+        }
+    };
 
 
 
@@ -112,13 +118,13 @@ const handleSegmentClick = (aId: string, bId: string) => {
                     const isSelected =
                         selectedSegment &&
                         ((selectedSegment[0] === a.id && selectedSegment[1] === b.id) ||
-                        (selectedSegment[0] === b.id && selectedSegment[1] === a.id));
+                            (selectedSegment[0] === b.id && selectedSegment[1] === a.id));
 
                     const baseColor = isSelected
                         ? 'rgba(0,0,255,0.5)'
                         : currentTool === 'seam'
-                        ? 'rgba(0,0,255,0.05)'
-                        : 'transparent';
+                            ? 'rgba(0,0,255,0.05)'
+                            : 'transparent';
 
                     segments.push(
                         <Line

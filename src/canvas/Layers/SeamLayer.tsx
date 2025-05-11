@@ -14,15 +14,6 @@ function findPoint(paths: any[], id: string) {
   return null;
 }
 
-function getColor(seed: string) {
-  let hash = 0;
-  for (let i = 0; i < seed.length; i++) {
-    hash = seed.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  const hue = hash % 360;
-  return `hsl(${hue}, 100%, 60%)`;
-}
-
 export function SeamLayer() {
   const paths = useCanvasState(s => s.present.paths);
   const seams = useCanvasState(s => s.present.seams);
@@ -35,13 +26,11 @@ export function SeamLayer() {
       const pB2 = findPoint(paths, b2);
       if (!pA1 || !pA2 || !pB1 || !pB2) return [];
 
-      const color = getColor(`${a1}-${b1}-${a2}-${b2}`);
-
       return [
         <Line
           key={`seam-${i}-1`}
           points={getLine(pA1, pA2)}
-          stroke={color}
+          stroke={"orange"}
           strokeWidth={2}
           dash={[10, 5]}
           listening={false}
@@ -49,7 +38,7 @@ export function SeamLayer() {
         <Line
           key={`seam-${i}-2`}
           points={getLine(pB1, pB2)}
-          stroke={color}
+          stroke={"orange"}
           strokeWidth={2}
           dash={[10, 5]}
           listening={false}
