@@ -7,30 +7,32 @@ export function ThreeDView() {
     const mountRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        // capture the container once
         const container = mountRef.current;
         if (!container) return;
 
-        // initial size
-        const width = container.clientWidth;
-        const height = container.clientHeight;
-
         // ── Scene / Camera / Renderer ─────────────────────────
         const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
+        const camera = new THREE.PerspectiveCamera(75, 1, 0.1, 1000);
         camera.position.z = 5;
 
         const renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(width, height);
+        // start with container’s current size
+        const setSize = () => {
+            const w = container.clientWidth;
+            const h = container.clientHeight;
+            camera.aspect = w / h;
+            camera.updateProjectionMatrix();
+            renderer.setSize(w, h);
+        };
+        setSize();
         container.appendChild(renderer.domElement);
 
-        // ── Simple cube ────────────────────────────────────────
+        // ── Simple rotating cube ──────────────────────────────
         const geometry = new THREE.BoxGeometry();
         const material = new THREE.MeshNormalMaterial();
         const cube = new THREE.Mesh(geometry, material);
         scene.add(cube);
 
-        // ── Animate ────────────────────────────────────────────
         let frameId: number;
         const animate = () => {
             cube.rotation.x += 0.01;
@@ -40,21 +42,16 @@ export function ThreeDView() {
         };
         animate();
 
-        // ── Handle window resize ──────────────────────────────
-        const handleResize = () => {
-            if (!container) return;
-            const w = container.clientWidth;
-            const h = container.clientHeight;
-            camera.aspect = w / h;
-            camera.updateProjectionMatrix();
-            renderer.setSize(w, h);
-        };
-        window.addEventListener('resize', handleResize);
+        // ── WATCH FOR CONTAINER RESIZE ────────────────────────
+        const resizeObserver = new ResizeObserver(() => {
+            setSize();
+        });
+        resizeObserver.observe(container);
 
-        // ── Cleanup on unmount ─────────────────────────────────
+        // ── CLEANUP ────────────────────────────────────────────
         return () => {
-            window.removeEventListener('resize', handleResize);
             cancelAnimationFrame(frameId);
+            resizeObserver.disconnect();
             if (container.contains(renderer.domElement)) {
                 container.removeChild(renderer.domElement);
             }

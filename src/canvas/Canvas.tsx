@@ -51,6 +51,9 @@ export function Canvas() {
   const [lastPointerPos, setLastPointerPos] = useState<{ x: number; y: number } | null>(null);
   const pendingSelectionStart = useRef<any>(null);
   const stageRef = useRef<Konva.Stage>(null);
+
+  const [split, setSplit] = useState(window.innerWidth / 2);
+  const [isResizing, setIsResizing] = useState(false);
   useEffect(() => {
     const state = useCanvasState.getState();
 
@@ -177,15 +180,54 @@ export function Canvas() {
     };
   }, [undo, redo, deleteSelectedPoint, selectedBackgroundId, isPanning, selectedPointIds]);
 
+  useEffect(() => {
+    if (threeDEnabled) {
+      setSplit(window.innerWidth / 2);
+    }
+  }, [threeDEnabled]);
+
+
+  useEffect(() => {
+    const onMouseMove = (e: MouseEvent) => {
+      if (!isResizing) return;
+      const min = 100;
+      const max = window.innerWidth - 100;
+      setSplit(Math.min(max, Math.max(min, e.clientX)));
+    };
+    const onMouseUp = () => setIsResizing(false);
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, [isResizing]);
+
+  console.log(split, threeDEnabled)
   return (
     <div className="w-full h-full flex">
       {/* ── Left half: 3D view (when toggled) ─────────────────── */}
       {threeDEnabled && (
-        <div className="w-1/2 h-full border-r border-gray-300">
+        <div className="h-full border-r border-gray-300" style={{ width: split }}>
           <ThreeDView />
         </div>
       )}
-      <div className={threeDEnabled ? 'w-1/2 h-full relative' : 'w-full h-full relative'}>
+      {/* ── Draggable sash ─────────────────────────────────────── */}
+      {threeDEnabled && (
+        <div
+          onMouseDown={() => setIsResizing(true)}
+          className="h-full bg-blue-500 relative z-10"
+          style={{ width: 4, cursor: 'col-resize' }}
+        />
+      )}
+      <div
+        className="h-full relative"
+        style={{
+          flex: 1,
+          width: threeDEnabled ? window.innerWidth - split : '100%'
+        }}
+      >
         <ImageTransformPanel />
         <Stage
           scale={{ x: zoom, y: zoom }}

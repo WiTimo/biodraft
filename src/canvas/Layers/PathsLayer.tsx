@@ -1,14 +1,14 @@
 import { Line } from 'react-konva';
 import { useCanvasState } from '../state/CanvasState';
 import { LinePath } from '../Paths/LinePath';
-import { useMemo, useRef } from 'react';
+import { useMemo } from 'react';
 
 export function PathsLayer() {
     const paths = useCanvasState(s => s.present.paths);
     const seams = useCanvasState(s => s.present.seams || []);
     const currentTool = useCanvasState(s => s.currentTool);
     const zoom = useCanvasState(s => s.zoom);
-    const addSeam = useCanvasState(s => s.addSeam); // ✅ Must work with point segments
+    const addSeam = useCanvasState(s => s.addSeam);
     const seamSelection = useCanvasState(s => s.seamSelection);
     const setSeamSelection = useCanvasState(s => s.setSeamSelection);
     const selectedSegment = useCanvasState(s => s.selectedSeamSegment);
