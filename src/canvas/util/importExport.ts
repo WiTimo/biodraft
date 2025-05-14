@@ -5,11 +5,6 @@ export function exportToJson() {
 
   const exportData = paths.map((path) => ({
     id: path.id,
-    transform3D: {
-      position: [0, 1, 0],
-      rotation: [0, 0, 0],
-      scale: [1, 1, 1],
-    },
     points: path.points.map((p) => ({
       id: p.id,
       x: p.x,

@@ -36,7 +36,9 @@ export function Canvas() {
     selectedPointIds,
     snapGuides,
     threeDEnabled,
-    toggle3D
+    toggle3D,
+    splitWidth: split,
+    setSplitWidth: setSplit,
   } = useCanvasState();
 
   const { paths, backgroundImages } = present;
@@ -51,9 +53,8 @@ export function Canvas() {
   const [lastPointerPos, setLastPointerPos] = useState<{ x: number; y: number } | null>(null);
   const pendingSelectionStart = useRef<any>(null);
   const stageRef = useRef<Konva.Stage>(null);
-
-  const [split, setSplit] = useState(window.innerWidth / 2);
   const [isResizing, setIsResizing] = useState(false);
+
   useEffect(() => {
     const state = useCanvasState.getState();
 
@@ -181,13 +182,6 @@ export function Canvas() {
   }, [undo, redo, deleteSelectedPoint, selectedBackgroundId, isPanning, selectedPointIds]);
 
   useEffect(() => {
-    if (threeDEnabled) {
-      setSplit(window.innerWidth / 2);
-    }
-  }, [threeDEnabled]);
-
-
-  useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
       if (!isResizing) return;
       const min = 100;
@@ -204,12 +198,16 @@ export function Canvas() {
     };
   }, [isResizing]);
 
-  console.log(split, threeDEnabled)
   return (
     <div className="w-full h-full flex">
       {/* ── Left half: 3D view (when toggled) ─────────────────── */}
       {threeDEnabled && (
-        <div className="h-full border-r border-gray-300" style={{ width: split }}>
+        isResizing ? 
+        <div className="h-full grid place-items-center overflow-hidden rounded-r-2xl bg-black" style={{ width: split }}>
+          <img src='/svg/loader.svg' className='h-14 w-14 select-none'/>
+        </div>
+        :
+        <div className="h-full overflow-hidden rounded-r-2xl" style={{ width: split }}>
           <ThreeDView />
         </div>
       )}
@@ -217,15 +215,17 @@ export function Canvas() {
       {threeDEnabled && (
         <div
           onMouseDown={() => setIsResizing(true)}
-          className="h-full bg-blue-500 relative z-10"
-          style={{ width: 4, cursor: 'col-resize' }}
+          className="h-full relative z-10"
+          style={{ width: 10, cursor: 'col-resize' }}
         />
       )}
       <div
-        className="h-full relative"
+        className="h-full relative overflow-hidden"
         style={{
           flex: 1,
-          width: threeDEnabled ? window.innerWidth - split : '100%'
+          width: threeDEnabled ? window.innerWidth - split : '100%',
+          borderTopLeftRadius: threeDEnabled ? "1rem" : 0,
+          borderBottomLeftRadius: threeDEnabled ? "1rem" : 0,
         }}
       >
         <ImageTransformPanel />
@@ -563,14 +563,14 @@ export function Canvas() {
             left: 10,
             zIndex: 5000,
             padding: '6px 12px',
-            background: threeDEnabled ? '#4781e6' : '#ddd',
-            color: threeDEnabled ? 'white' : 'black',
+            borderWidth: 3,
+            borderStyle: 'solid',
+            borderColor: threeDEnabled ? '#4781e6' : '#ddd',
             borderRadius: 4,
-            border: 'none',
             cursor: 'pointer',
           }}
         >
-          {threeDEnabled ? '← Canvas' : '3D View →'}
+          <img src='/svg/toggle3d.svg' className='h-10 w-10' />
         </button>
         <Toolbar />
       </div>

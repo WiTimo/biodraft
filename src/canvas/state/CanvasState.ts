@@ -131,6 +131,14 @@ interface CanvasState {
 
   threeDEnabled: boolean;
   toggle3D: () => void;
+  splitWidth: number;
+  setSplitWidth: (width: number) => void;
+
+  cameraPos: { x: number; y: number; z: number };
+  setCameraPos: (pos: { x: number; y: number; z: number }) => void;
+  cameraTarget: { x: number; y: number; z: number };
+  setCameraTarget: (target: { x: number; y: number; z: number }) => void;
+
 
 }
 export const useCanvasState = create<CanvasState>()(
@@ -142,9 +150,18 @@ export const useCanvasState = create<CanvasState>()(
       snapGuides: { x: null, y: null },
       setSnapGuides: (guides) => set({ snapGuides: guides }),
 
+      cameraPos: { x: 0, y: 1.5, z: 5 },
+      cameraTarget: { x: 0, y: 0, z: 0 },
+
+      setCameraPos: (cameraPos) => set({ cameraPos }),
+      setCameraTarget: (cameraTarget) => set({ cameraTarget }),
+
+
       threeDEnabled: false,
       toggle3D: () => set(state => ({ threeDEnabled: !state.threeDEnabled })),
-
+      
+      splitWidth: window.innerWidth / 2,
+      setSplitWidth: (width) => set({ splitWidth: width }),
 
       seamSelection: [] as [string, string][],
       setSeamSelection: (selection: [string, string][]) => set({ seamSelection: selection }),
@@ -681,6 +698,8 @@ export const useCanvasState = create<CanvasState>()(
           selectedBackgroundId: null,
           selectionRect: null,
           selectionStart: null,
+          threeDEnabled: false,
+          splitWidth: window.innerWidth / 2,
         });
         window.location.reload()
       },
@@ -691,6 +710,10 @@ export const useCanvasState = create<CanvasState>()(
         present: state.present,
         zoom: state.zoom,
         offset: state.offset,
+        threeDEnabled: state.threeDEnabled,
+        splitWidth: state.splitWidth,
+        cameraPos: state.cameraPos,
+        cameraTarget: state.cameraTarget,
       }),
     }
   )
