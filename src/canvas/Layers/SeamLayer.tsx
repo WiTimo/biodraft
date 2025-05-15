@@ -17,7 +17,7 @@ function findPoint(paths: any[], id: string) {
 export function SeamLayer() {
   const paths = useCanvasState(s => s.present.paths);
   const seams = useCanvasState(s => s.present.seams);
-
+  const currentTool = useCanvasState(s => s.currentTool);
   const seamLines = useMemo(() => {
     return seams.flatMap(([[a1, b1], [a2, b2]], i) => {
       const pA1 = findPoint(paths, a1);
@@ -46,6 +46,6 @@ export function SeamLayer() {
       ];
     }).filter(Boolean);
   }, [paths, seams]);
-
+  if(!currentTool || currentTool !== "seam") return null;
   return <>{seamLines}</>;
 }

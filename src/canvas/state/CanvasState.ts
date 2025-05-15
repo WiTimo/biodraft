@@ -139,6 +139,8 @@ interface CanvasState {
   cameraTarget: { x: number; y: number; z: number };
   setCameraTarget: (target: { x: number; y: number; z: number }) => void;
 
+  isShiftPressed: boolean;
+  setIsShiftPressed: (v: boolean) => void;
 
 }
 export const useCanvasState = create<CanvasState>()(
@@ -162,6 +164,9 @@ export const useCanvasState = create<CanvasState>()(
       
       splitWidth: window.innerWidth / 2,
       setSplitWidth: (width) => set({ splitWidth: width }),
+
+      isShiftPressed: false,
+      setIsShiftPressed: (v: boolean) => set({ isShiftPressed: v }),
 
       seamSelection: [] as [string, string][],
       setSeamSelection: (selection: [string, string][]) => set({ seamSelection: selection }),

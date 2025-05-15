@@ -1,4 +1,4 @@
-import { Stage, Layer, Rect, Line } from 'react-konva';
+import { Stage, Layer, Rect, Line, Text } from 'react-konva';
 import { useCanvasState } from './state/CanvasState';
 import { useEffect, useRef, useState } from 'react';
 import { BackgroundImage } from './BackgroundImage/BackgroundImage';
@@ -118,8 +118,10 @@ export function Canvas() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.code === 'Space') setIsSpacePressed(true);
-
+      if (e.code === 'Space' || e.code === "ControlLeft") setIsSpacePressed(true);
+      if (e.key === 'Shift') {
+        useCanvasState.getState().setIsShiftPressed(true);
+      }
       const toolKeys = {
         KeyW: 'select',
         KeyE: 'pen',
@@ -165,12 +167,15 @@ export function Canvas() {
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.code === 'Space') {
+      if (e.code === 'Space'|| e.code === "ControlLeft") {
         setIsSpacePressed(false);
         if (isPanning) {
           setIsPanning(false);
           document.body.style.cursor = 'default';
         }
+      }
+      if (e.key === 'Shift') {
+        useCanvasState.getState().setIsShiftPressed(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -552,6 +557,11 @@ export function Canvas() {
             )}
 
             <SelectionTransformer isVisible={selectedPointIds.length > 0 && !selectionStart} />
+          
+            <Line points={[700, -1500, 700, 2000]} stroke={"gray"} strokeWidth={2} />
+            <Text offsetX={175} offsetY={400} fontSize={78} fontVariant='bold' fill={"gray"} text='Front' />
+            <Text offsetX={-1400} offsetY={400} fontSize={78} fontVariant='bold' fill={"gray"} text='Back' />
+          
           </Layer>
         </Stage>
         {/* Toggle button (top-left) */}

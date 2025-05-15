@@ -34,6 +34,9 @@ export function SelectionTransformer({ isVisible }: { isVisible: boolean }) {
   const moveHandle = useCanvasState((s) => s.moveHandle);
   const saveState = useCanvasState((s) => s.saveState);
 
+  const dragStartRef = useRef<{ x: number; y: number } | null>(null);
+  const lockedAxisRef = useRef<"x" | "y" | null>(null);
+
   const dragState = useRef(null);
   const rotateState = useRef(null);
 
@@ -142,15 +145,66 @@ export function SelectionTransformer({ isVisible }: { isVisible: boolean }) {
         name="transform-handle"
         onMouseEnter={(e) => e.target.getStage()?.container().style.setProperty('cursor', 'move')}
         onMouseLeave={(e) => e.target.getStage()?.container().style.setProperty('cursor', 'default')}
-        onDragStart={() => saveState()}
+        onDragStart={(e) => {
+          const pointer = e.target.getStage()?.getPointerPosition();
+          if (!pointer) return;
+
+          const zoom = useCanvasState.getState().zoom;
+          const offset = useCanvasState.getState().offset;
+
+          dragStartRef.current = toWorldPos(pointer, zoom, offset);
+          lockedAxisRef.current = null;
+
+          saveState();
+
+          dragState.current = {
+            originalPoints: selectedPoints.map((p) => ({
+              id: p.id,
+              x: p.x,
+              y: p.y,
+            })),
+          };
+        }}
         onDragMove={(e) => {
-          const dx = e.target.x() - minX;
-          const dy = e.target.y() - minY;
-          selectedPoints.forEach((p) => movePoint(p.id, p.x + dx, p.y + dy));
+          const pointer = e.target.getStage()?.getPointerPosition();
+          if (!pointer || !dragStartRef.current || !dragState.current) return;
+
+          const zoom = useCanvasState.getState().zoom;
+          const offset = useCanvasState.getState().offset;
+          const worldPointer = toWorldPos(pointer, zoom, offset);
+
+          let dx = worldPointer.x - dragStartRef.current.x;
+          let dy = worldPointer.y - dragStartRef.current.y;
+
+          const state = useCanvasState.getState();
+          if (state.isShiftPressed) {
+            if (!lockedAxisRef.current) {
+              lockedAxisRef.current = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+            }
+            if (lockedAxisRef.current === "x") {
+              dy = 0;
+            } else {
+              dx = 0;
+            }
+          } else {
+            lockedAxisRef.current = null;
+          }
+
+          dragState.current.originalPoints.forEach((orig: any) => {
+            movePoint(orig.id, orig.x + dx, orig.y + dy);
+          });
+
+          // Visually snap the rect back
           e.target.x(minX);
           e.target.y(minY);
         }}
-        onDragEnd={(e) => e.target.getStage()?.container().style.setProperty('cursor', 'default')}
+
+        onDragEnd={(e) => {
+          dragStartRef.current = null;
+          dragState.current = null;
+          lockedAxisRef.current = null;
+          e.target.getStage()?.container().style.setProperty('cursor', 'default')
+        }}
       />
 
       <Line

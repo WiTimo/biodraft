@@ -23,17 +23,16 @@ interface PathData  { id: string; points: PointData[]; closed: boolean }
  */
 function buildClothingMesh(
   paths: PathData[],
-  bboxWidth: number,
-  bboxHeight: number
+  bboxWidth: number
 ): THREE.Group {
   const group = new THREE.Group();
 
-  // pick a single px→world scale.  Here we base it on model width:
+  // 1px→world units
   const pxToWorld = bboxWidth / EDITOR_W;
-  const halfW = EDITOR_W / 2;
-  const halfH = EDITOR_H / 2;
+  const halfW     = EDITOR_W / 2;
+  const halfH     = EDITOR_H / 2;
 
-  // convert editor (x,y) in px → THREE.Vector2 in world units
+  // convert editor (x,y) → world (X,Y)
   const toVec2 = (pt: { x: number; y: number }) =>
     new THREE.Vector2(
       (pt.x - halfW) * pxToWorld,
@@ -43,12 +42,12 @@ function buildClothingMesh(
   for (const path of paths) {
     if (path.points.length < 2) continue;
 
-    // if any point in this path exceeds x = 700, we’ll flip our offsets
-    const shouldReverse = path.points.some(pt => pt.x > 700);
+    // still decide “back” by your 700px rule
+    const isBack = path.points.some(pt => pt.x > 700);
 
+    // build the 2D shape as before
     const shape = new THREE.Shape();
     shape.moveTo(...toVec2(path.points[0]).toArray());
-
     for (let i = 1; i < path.points.length; i++) {
       const prev = path.points[i - 1];
       const cur  = path.points[i];
@@ -76,44 +75,44 @@ function buildClothingMesh(
         shape.lineTo(...toVec2(cur).toArray());
       }
     }
-
     if (path.closed) shape.closePath();
 
+    // extrude & material
     const geo = new THREE.ExtrudeGeometry(shape, {
       depth: 0.01,
       bevelEnabled: false,
       curveSegments: 32,
       steps: 1,
     });
-
-    const mat = new THREE.MeshStandardMaterial({
+    const mat  = new THREE.MeshStandardMaterial({
       color: 0xff4444,
       side: THREE.DoubleSide,
     });
     const mesh = new THREE.Mesh(geo, mat);
 
-    // decide our offsets, flipping them if needed
-    let offsetX = 0;
-    let offsetY = 0;
-    let offsetZ = 0;
-    if(shouldReverse){
-      offsetX = -7;
-      offsetY = 3;
-      offsetZ = -0.65
-    }else{
-      offsetX = 3.1;
-      offsetY = 3;
-      offsetZ = 0.65;
-    }
+    const sx = isBack ? -2 : 2;
+    mesh.scale.set(sx, 2, 2);
 
-    mesh.position.set(offsetX, offsetY, offsetZ);
-    mesh.scale.set(2, 2, 2);
+    let px = 0;
+    let py = 0;
+    let pz = 0;
+    if(!isBack){
+      px = 3.1;
+      py = 3.0;
+      pz = 0.75;
+    }else{
+      px = 7.1
+      py = 3.0;
+      pz = -0.75;
+    }
+    mesh.position.set(px, py, pz);
 
     group.add(mesh);
   }
 
   return group;
 }
+
 
 export function ThreeDView() {
   const mountRef      = useRef<HTMLDivElement>(null);
