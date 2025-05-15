@@ -450,18 +450,17 @@ export function Canvas() {
                 )
                 .map(p => p.id);
 
-              useCanvasState.getState().setSelectedPointIds(individuallySelectedPoints);
-
-              // ✅ If exactly one point is selected, set it as the primary selection
               if (individuallySelectedPoints.length === 1) {
                 useCanvasState.getState().selectPoint(individuallySelectedPoints[0]);
               } else {
+                useCanvasState.getState().setSelectedPointIds(individuallySelectedPoints);
                 useCanvasState.getState().deselectPoint();
               }
 
               setSelectionStart(null);
               setSelectionRect(null);
             }
+
           }}
 
 
