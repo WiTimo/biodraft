@@ -39,6 +39,7 @@ export function Canvas() {
     toggle3D,
     splitWidth: split,
     setSplitWidth: setSplit,
+    setIsSimulationMode
   } = useCanvasState();
 
   const { paths, backgroundImages } = present;
@@ -195,8 +196,11 @@ export function Canvas() {
       const min = 100;
       const max = window.innerWidth - 100;
       setSplit(Math.min(max, Math.max(min, e.clientX)));
+      setIsSimulationMode(false)
     };
-    const onMouseUp = () => setIsResizing(false);
+    const onMouseUp = () => {
+      setIsResizing(false)
+    };
 
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
