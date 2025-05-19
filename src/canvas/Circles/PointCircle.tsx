@@ -42,14 +42,18 @@ export const PointCircle = React.memo(function PointCircle({ x, y, id }: PointCi
         movePoint(id, e.target.x(), e.target.y());
       }}
       onClick={(e) => {
-        const currentTool = useCanvasState.getState().currentTool;
+        const state = useCanvasState.getState();
+        const currentTool = state.currentTool;
         if (currentTool !== 'select' && currentTool !== 'pen') return;
 
-        if (e.evt.ctrlKey) {
-          toggleHandlesForPoint(id);
+        if (e.evt.altKey) {
+          // Alt+Click toggles handles
+          e.cancelBubble = true;
+          state.toggleHandlesForPoint(id);
         } else {
-          useCanvasState.getState().clearSelectedPointIds();
-          selectPoint(id);
+          // Normal click selects the point
+          state.clearSelectedPointIds();
+          state.selectPoint(id);
           e.cancelBubble = true;
         }
       }}

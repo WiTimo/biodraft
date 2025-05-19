@@ -122,6 +122,7 @@ export function Canvas() {
       if (e.key === 'Shift') {
         useCanvasState.getState().setIsShiftPressed(true);
       }
+      if (e.key === 'Alt') useCanvasState.getState().setIsAltPressed(true);
       const toolKeys = {
         KeyW: 'select',
         KeyE: 'pen',
@@ -177,6 +178,8 @@ export function Canvas() {
       if (e.key === 'Shift') {
         useCanvasState.getState().setIsShiftPressed(false);
       }
+      console.log(e.key)
+      if (e.key === 'Alt') useCanvasState.getState().setIsAltPressed(false);
     };
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
@@ -251,7 +254,7 @@ export function Canvas() {
                   : currentTool === 'pen'
                     ? 'url(/cursors/pen.svg) 0 0, auto'
                     : currentTool === "select"
-                      ? 'url(/cursors/select.svg) 0 0, auto'
+                      ? 'url(/cursors/select.svg) 8 4, auto'
                       : 'default',
           }}
 

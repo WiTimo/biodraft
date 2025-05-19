@@ -142,6 +142,12 @@ interface CanvasState {
   isShiftPressed: boolean;
   setIsShiftPressed: (v: boolean) => void;
 
+  isAltPressed: boolean;
+  setIsAltPressed: (v: boolean) => void;
+
+  isSimulationMode: boolean;
+  setIsSimulationMode: (v: boolean) => void;
+
 }
 export const useCanvasState = create<CanvasState>()(
   persist(
@@ -158,6 +164,8 @@ export const useCanvasState = create<CanvasState>()(
       setCameraPos: (cameraPos) => set({ cameraPos }),
       setCameraTarget: (cameraTarget) => set({ cameraTarget }),
 
+      isSimulationMode: false,
+      setIsSimulationMode: (v) => set({ isSimulationMode: v }),
 
       threeDEnabled: false,
       toggle3D: () => set(state => ({ threeDEnabled: !state.threeDEnabled })),
@@ -167,6 +175,10 @@ export const useCanvasState = create<CanvasState>()(
 
       isShiftPressed: false,
       setIsShiftPressed: (v: boolean) => set({ isShiftPressed: v }),
+
+        isAltPressed: false,
+        setIsAltPressed: (v: boolean) => set({ isAltPressed: v }),
+
 
       seamSelection: [] as [string, string][],
       setSeamSelection: (selection: [string, string][]) => set({ seamSelection: selection }),
@@ -538,28 +550,37 @@ export const useCanvasState = create<CanvasState>()(
 
 
       toggleHandlesForPoint: (id) => {
-        const { present, saveState } = get();
-        saveState();
-        set({
-          present: {
-            ...present,
-            paths: present.paths.map((path) => ({
-              ...path,
-              points: path.points.map((point) => {
-                if (point.id !== id) return point;
-                const hasHandles =
-                  point.handleIn.dx !== 0 ||
-                  point.handleIn.dy !== 0 ||
-                  point.handleOut.dx !== 0 ||
-                  point.handleOut.dy !== 0;
-                return hasHandles
-                  ? { ...point, handleIn: { dx: 0, dy: 0 }, handleOut: { dx: 0, dy: 0 } }
-                  : { ...point, handleIn: { dx: -30, dy: 0 }, handleOut: { dx: 30, dy: 0 } };
-              }),
-            })),
-          },
-        });
-      },
+  const { present, saveState } = get();
+  saveState();
+  set({
+    present: {
+      ...present,
+      paths: present.paths.map((path) => ({
+        ...path,
+        points: path.points.map((point) => {
+          if (point.id !== id) return point;
+          const hasHandles =
+            point.handleIn.dx !== 0 ||
+            point.handleIn.dy !== 0 ||
+            point.handleOut.dx !== 0 ||
+            point.handleOut.dy !== 0;
+          return hasHandles
+            ? {
+                ...point,
+                handleIn: { dx: 0, dy: 0 },
+                handleOut: { dx: 0, dy: 0 },
+              }
+            : {
+                ...point,
+                handleIn: { dx: -200, dy: 0 },
+                handleOut: { dx: 200, dy: 0 },
+              };
+        }),
+      })),
+    },
+  });
+},
+
       startHandleMove: () => {
         const { isDraggingHandle, saveState } = get();
         if (!isDraggingHandle) {

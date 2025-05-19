@@ -7,6 +7,20 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { useCanvasState } from '../state/CanvasState';
 
+import init, { PatternEngine } from '../wasm/cloth_engine';
+
+function toWorldCoords(x: number, y: number, bboxWidth: number): THREE.Vector3 {
+  const pxToWorld = bboxWidth / EDITOR_W;
+  const halfW = EDITOR_W / 2;
+  const halfH = EDITOR_H / 2;
+  return new THREE.Vector3(
+    (x - halfW) * pxToWorld,
+    (halfH - y) * pxToWorld,
+    0
+  );
+}
+
+
 // ────────────────────────────
 // **FIXED** internal editor resolution
 const EDITOR_W = 800;
@@ -120,6 +134,11 @@ export function ThreeDView() {
   const mixerRef      = useRef<AnimationMixer>();
   const clockRef      = useRef(new Clock());
 
+  const seamGroup = useRef(new THREE.Group());
+
+  const [simulatedPaths, setSimulatedPaths] = useState<PathData[] | null>(null);
+  const {isSimulationMode, setIsSimulationMode, present} = useCanvasState();
+
   // will hold your model’s measured world-space size
   const [bbox, setBbox] = useState({ width: 0, height: 0 });
 
@@ -193,6 +212,7 @@ export function ThreeDView() {
       model.add(clothingGroup.current);
       scene.add(model);
 
+      scene.add(seamGroup.current);
       // freeze first frame of any animation
       const mixer = new AnimationMixer(model);
       mixerRef.current = mixer;
@@ -225,6 +245,7 @@ export function ThreeDView() {
       window.removeEventListener('resize', onResize);
       controls.removeEventListener('change', onChange);
       container.removeChild(renderer.domElement);
+      seamGroup.current.clear();
       renderer.dispose();
     };
   }, []);
@@ -250,5 +271,100 @@ export function ThreeDView() {
     group.add(...newGroup.children);
   }, [paths, bbox]);
 
-  return <div ref={mountRef} style={{ width: '100%', height: '100%' }} />;
+  // 🧠 Load paths from WASM when simulation mode is turned on
+  useEffect(() => {
+    if (!isSimulationMode) {
+      setSimulatedPaths(null);
+      return;
+    }
+
+    try {
+      
+      const engine = new PatternEngine();
+      const [ frontPath, backPath ] = present.paths;
+
+    // turn your raw ID‐pairs into exactly the shape Rust wants:
+    const rustSeams = (present.seams as [ [string, string], [string, string] ][]).map(
+      ([[fromIdStart, fromIdEnd], [toIdStart, toIdEnd]]) => ({
+        from: {
+          path_id: frontPath.id,
+          start:  frontPath.points.findIndex(pt => pt.id === fromIdStart),
+          end:    frontPath.points.findIndex(pt => pt.id === fromIdEnd),
+        },
+        to: {
+          path_id: backPath.id,
+          start:  backPath.points.findIndex(pt => pt.id === toIdStart),
+          end:    backPath.points.findIndex(pt => pt.id === toIdEnd),
+        },
+      })
+    );
+
+    // now build the exact JSON Rust expects:
+    const engineInput = {
+      paths: present.paths,
+      seams: rustSeams,
+    };
+
+    engine.load_json(JSON.stringify(engineInput));
+      const result = engine.get_json();
+      setSimulatedPaths(result.paths);
+
+      const resolvedSeams = engine.get_resolved_seams_json();
+
+      // Each seam: { from_points: [...], to_points: [...] }
+      resolvedSeams.forEach((seam: any) => {
+        drawLinePairs(seam.from_points, seam.to_points);
+      });
+
+
+      function drawLinePairs(from: { x: number, y: number }[], to: { x: number, y: number }[]) {
+        seamGroup.current.clear();
+
+        for (let i = 0; i < Math.min(from.length, to.length); i++) {
+          const fromVec = toWorldCoords(from[i].x, from[i].y, bbox.width);
+          const toVec = toWorldCoords(to[i].x, to[i].y, bbox.width);
+
+          const geometry = new THREE.BufferGeometry().setFromPoints([fromVec, toVec]);
+          const material = new THREE.LineBasicMaterial({ color: 0x00ffff, linewidth: 2 });
+          const line = new THREE.Line(geometry, material);
+
+          seamGroup.current.add(line);
+        }
+      }
+
+    } catch (err) {
+      console.error("❌ WASM JSON roundtrip error:", err);
+    }
+  }, [isSimulationMode, present]);
+
+  // 🧱 Build clothing group using either JS paths or simulated Rust paths
+  useEffect(() => {
+    if (bbox.width === 0 || bbox.height === 0) return;
+
+    const group = clothingGroup.current;
+    // Clean up old meshes
+    group.children.forEach((m: any) => {
+      m.geometry.dispose();
+      if (Array.isArray(m.material)) {
+        m.material.forEach((mt: any) => mt.dispose());
+      } else {
+        m.material.dispose();
+      }
+    });
+    group.clear();
+
+    // Use simulation result if available
+    const activePaths = isSimulationMode && simulatedPaths ? simulatedPaths : paths;
+
+    const newGroup = buildClothingMesh(activePaths, bbox.width);
+    group.add(...newGroup.children);
+  }, [paths, simulatedPaths, bbox, isSimulationMode]);
+
+
+  return <div className='h-full w-full relative'>
+    <button className='absolute top-0 left-0 z-[2000] text-white' onClick={() => setIsSimulationMode(!isSimulationMode)}>
+      {isSimulationMode ? "Simulation" : "Modeling"}
+    </button>
+    <div ref={mountRef} style={{ width: '100%', height: '100%' }} />;
+  </div> 
 }
