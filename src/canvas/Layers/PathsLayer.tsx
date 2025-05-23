@@ -135,18 +135,22 @@ export function PathsLayer() {
                             name="seam-segment"
                             onClick={() => currentTool === 'seam' && handleSegmentClick(a.id, b.id)}
                             onMouseEnter={(e) => {
-                                if (currentTool === 'seam' && !isSelected) {
-                                    e.target.stroke('rgba(0,0,255,0.2)');
-                                    e.target.getLayer()?.batchDraw();
-                                }
+                            if (currentTool === 'seam') {
+                                // remember this segment so Delete can act on it
+                                setSelectedSeamSegment([a.id, b.id]);
+                                if (!isSelected) e.target.stroke('rgba(0,0,255,0.2)');
+                                e.target.getLayer()?.batchDraw();
+                            }
                             }}
                             onMouseLeave={(e) => {
-                                if (currentTool === 'seam' && !isSelected) {
-                                    e.target.stroke(baseColor);
-                                    e.target.getLayer()?.batchDraw();
-                                }
+                            if (currentTool === 'seam') {
+                                // clear the hover‐selection
+                                setSelectedSeamSegment(null);
+                                if (!isSelected) e.target.stroke(baseColor);
+                                e.target.getLayer()?.batchDraw();
+                            }
                             }}
-                            listening={currentTool === 'seam'}
+                           listening={currentTool === 'seam'}
                         />
                     );
                 };

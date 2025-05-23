@@ -139,104 +139,142 @@ export function ThreeDView() {
     };
   }, []);
 
-  // ─── rebuild red panels when paths or bbox change ───────────────
-  useEffect(() => {
-    if (!bbox.width) return;
-    const grp = clothing.current;
-    grp.children.forEach((m:any) => {
-      m.geometry.dispose();
-      Array.isArray(m.material)
-        ? m.material.forEach((mt:any)=>mt.dispose())
-        : m.material.dispose();
+useEffect(() => {
+  if (!isSimulationMode) {
+    console.log("[Seams] Simulation mode off — clearing seams.");
+    seamGroup.current.children.forEach((line: THREE.Line) => {
+      line.geometry.dispose();
+      if (Array.isArray(line.material)) {
+        line.material.forEach((m: THREE.Material) => m.dispose());
+      } else {
+        line.material.dispose();
+      }
     });
-    grp.clear();
-    grp.add(...buildPanels(paths, bbox.width).children);
-  }, [paths, bbox]);
+    seamGroup.current.clear();
+    return;
+  }
 
-  // ─── simulation: run WASM, filter bad seams, draw each segment ─────
-  useEffect(() => {
-    if (!isSimulationMode) {
-      seamGroup.current.clear();
-      return;
-    }
-
-    (async () => {
+  (async () => {
+    try {
+      console.log("[Seams] Simulation mode on — building seams.");
       const engine = new PatternEngine();
 
-      // build rust‐side seams → findIndex may return -1
       const [fp, bp] = present.paths;
-      const rustSeams = (present.seams as [string,string][][])
-        .map(([[fs,fe],[ts,te]]) => ({
-          from: {
-            path_id: fp.id,
-            start: fp.points.findIndex(p=>p.id===fs),
-            end:   fp.points.findIndex(p=>p.id===fe),
-          },
-          to: {
-            path_id: bp.id,
-            start: bp.points.findIndex(p=>p.id===ts),
-            end:   bp.points.findIndex(p=>p.id===te),
-          },
-        }))
-        // filter out any with -1
-        .filter(s =>
-          s.from.start >= 0 && s.from.end >= 0 &&
-          s.to.start   >= 0 && s.to.end   >= 0
-        );
+      if (!fp || !bp) {
+        console.warn("[Seams] Missing front or back path in present.paths", present.paths);
+        return;
+      }
+
+      console.log(`[Seams] Front path ID: ${fp.id}, points: ${fp.points.length}`);
+      console.log(`[Seams] Back path ID: ${bp.id}, points: ${bp.points.length}`);
+      console.log(`[Seams] Present seams count: ${present.seams.length}`);
+
+      const rustSeams = (present.seams as [string,string][][]).map(([[fs,fe],[ts,te]], i) => {
+        const fromStart = fp.points.findIndex(p => p.id === fs);
+        const fromEnd   = fp.points.findIndex(p => p.id === fe);
+        const toStart   = bp.points.findIndex(p => p.id === ts);
+        const toEnd     = bp.points.findIndex(p => p.id === te);
+
+        console.log(`[Seams][${i}] Seam points IDs: from [${fs},${fe}] to [${ts},${te}]`);
+        console.log(`[Seams][${i}] Mapped indices: from [${fromStart},${fromEnd}] to [${toStart},${toEnd}]`);
+
+        return {
+          from: { path_id: fp.id, start: fromStart, end: fromEnd },
+          to:   { path_id: bp.id, start: toStart, end: toEnd },
+        };
+      }).filter((s, i) => {
+        const valid = s.from.start >= 0 && s.from.end >= 0 && s.to.start >= 0 && s.to.end >= 0;
+        if (!valid) {
+          console.warn(`[Seams] Filtering out invalid seam at index ${i}:`, s);
+        }
+        return valid;
+      });
+
+      console.log(`[Seams] Rust seams after filtering: ${rustSeams.length}`);
 
       engine.load_json(JSON.stringify({
-        paths:   present.paths,
-        seams:   rustSeams
+        paths: present.paths,
+        seams: rustSeams,
       }));
 
-      const { paths: wp } = engine.get_json();
-      const resolved      = engine.get_resolved_seams_json() as { from_points:PointData[], to_points:PointData[] }[];
+      const wasmJson = engine.get_json();
+      console.log("[Seams] WASM engine JSON data:", wasmJson);
+
+      const resolved: { from_points: PointData[], to_points: PointData[] }[] = engine.get_resolved_seams_json();
+      console.log("[Seams] Resolved seams from WASM:", resolved);
 
       const meshes = clothing.current.children as THREE.Mesh[];
+      console.log(`[Seams] Number of panel meshes: ${meshes.length}`);
+
+      // Clear old seams, disposing their geometry/materials
+      seamGroup.current.children.forEach((line: THREE.Line) => {
+        line.geometry.dispose();
+        if (Array.isArray(line.material)) {
+          line.material.forEach((m: THREE.Material) => m.dispose());
+        } else {
+          line.material.dispose();
+        }
+      });
       seamGroup.current.clear();
 
-   // draw every segment from panels[0] → panels[1]
-// draw every segment from panels[0] → panels[1]
-resolved.forEach((s, i) => {
-  const fromDef = rustSeams[i].from;
-  const toDef   = rustSeams[i].to;
-  const meshA   = fromDef.path_id === fp.id ? meshes[0] : meshes[1];
-  const meshB   =   toDef.path_id === fp.id  ? meshes[0] : meshes[1];
+      resolved.forEach((s, i) => {
+        const fromDef = rustSeams[i].from;
+        const toDef   = rustSeams[i].to;
+        const meshA   = fromDef.path_id === fp.id ? meshes[0] : meshes[1];
+        const meshB   = toDef.path_id === fp.id ? meshes[0] : meshes[1];
 
-  // take the points **in the exact order** Rust gave them
-  const fromPts = s.from_points;
-  const toPts   = s.to_points;
+        const fPts = s.from_points;
+        const tPts = s.to_points;
 
-  const count = Math.min(fromPts.length, toPts.length);
-  for (let j = 0; j < count; j++) {
-    const A_pt = fromPts[j];
-    const B_pt = toPts[j];
+        if (fPts.length < 1 || tPts.length < 1) {
+          console.warn(`[Seams][${i}] Empty from_points or to_points; skipping seam.`);
+          return;
+        }
 
-    // map editor‐pixel → local XY plane
-    const A = toWorld(A_pt.x, A_pt.y);
-    const B = toWorld(B_pt.x, B_pt.y);
+        // Start points
+        const A_start = toWorld(fPts[0].x, fPts[0].y);
+        const B_start = toWorld(tPts[0].x, tPts[0].y);
+        meshA.localToWorld(A_start);
+        meshB.localToWorld(B_start);
 
-    // apply each panel’s full scale+position
-    meshA.localToWorld(A);
-    meshB.localToWorld(B);
+        console.log(`[Seams][${i}] Start points after toWorld and localToWorld: A=${A_start.toArray()}, B=${B_start.toArray()}`);
 
-    // draw the line
-    const geo = new THREE.BufferGeometry().setFromPoints([A, B]);
-    const mat = new THREE.LineBasicMaterial({ color: 0x00ffff, linewidth: 2 });
-    seamGroup.current.add(new THREE.Line(geo, mat));
-  }
-});
+        const geoStart = new THREE.BufferGeometry().setFromPoints([A_start, B_start]);
+        const matStart = new THREE.LineBasicMaterial({ color: 0x00ffff });
+        const lineStart = new THREE.Line(geoStart, matStart);
+        seamGroup.current.add(lineStart);
 
+        // End points
+        const A_end = toWorld(fPts[fPts.length - 1].x, fPts[fPts.length - 1].y);
+        const B_end = toWorld(tPts[tPts.length - 1].x, tPts[tPts.length - 1].y);
+        meshA.localToWorld(A_end);
+        meshB.localToWorld(B_end);
 
-    })().catch(console.error);
-  }, [isSimulationMode, present]);
+        console.log(`[Seams][${i}] End points after toWorld and localToWorld: A=${A_end.toArray()}, B=${B_end.toArray()}`);
+
+        const geoEnd = new THREE.BufferGeometry().setFromPoints([A_end, B_end]);
+        const matEnd = new THREE.LineBasicMaterial({ color: 0x00ffff });
+        const lineEnd = new THREE.Line(geoEnd, matEnd);
+        seamGroup.current.add(lineEnd);
+      });
+
+      console.log(`[Seams] Added ${resolved.length * 2} seam lines to seamGroup.`);
+
+    } catch (err) {
+      console.error("[Seams] Error while computing seams:", err);
+      alert(`Seam computation error: ${err.message || err}`);
+    }
+  })();
+}, [isSimulationMode, present]);
 
   return (
     <div className="h-full w-full relative">
       <button
-        className="absolute top-0 left-0 z-[2000] text-white"
+        className="absolute top-2 left-2 z-[2000] text-white rounded-xl border-blue-500 border-2 p-1 pl-4 pr-4 flex items-center gap-1"
         onClick={() => setIsSimulationMode(!isSimulationMode)}
+        style={{ backgroundColor: isSimulationMode ? "#193cb8" : "#00000000" }}
       >
+        <img src={isSimulationMode ? "/svg/play.svg" : "/svg/pause.svg"} className='h-6 w-6' />
         {isSimulationMode ? "Simulation" : "Modeling"}
       </button>
       <div ref={mountRef} style={{ width:'100%', height:'100%' }}/>

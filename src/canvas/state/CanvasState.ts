@@ -115,11 +115,11 @@ interface CanvasState {
   pasteClipboardPoints: () => void;
 
   seams: SegmentSeam[];
-  addSeam: (pointId1: string, pointId2: string) => void;
-  removeSeam: (pointId1: string, pointId2: string) => void;
-  isSeam: (pointId1: string, pointId2: string) => boolean;
+  addSeam: (seg1: Segment, seg2: Segment) => void;
+  removeSeam: (seg1: Segment, seg2: Segment) => void;
+  isSeam: (seg1: Segment, seg2: Segment) => boolean;
 
-  addPathSeam: (pathAId: string, pathBId: string) => void;
+  addPathSeam: (seg1: Segment, seg2:  Segment) => void;
 
 
   seamSelection: [string, string][];

@@ -148,6 +148,33 @@ export function Canvas() {
 
       if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
+        // 1️⃣ if a seam segment is selected, remove that seam
+// Canvas.tsx (inside your keydown handler)
+if (currentTool === 'seam') {
+  const sel = useCanvasState.getState().selectedSeamSegment;
+  if (sel) {
+    // 1. Grab the array of all seam‐pairs
+    const seams = useCanvasState.getState().present.seams as [Segment, Segment][];
+
+    // 2. Find the one pair where either side matches sel
+    const seamPair = seams.find(
+      ([segA, segB]) =>
+        (segA[0] === sel[0] && segA[1] === sel[1]) ||
+        (segB[0] === sel[0] && segB[1] === sel[1])
+    );
+
+    // 3. If found, remove it
+    if (seamPair) {
+      useCanvasState.getState().removeSeam(seamPair[0], seamPair[1]);
+      // clear selection so UI resets
+      useCanvasState.getState().setSelectedSeamSegment(null);
+    }
+    // prevent any further Delete logic
+    e.preventDefault();
+    return;
+  }
+}
+
         if (selectedPointIds.length > 0) {
           useCanvasState.getState().deleteSelectedPoints();
         } else {
@@ -179,7 +206,6 @@ export function Canvas() {
       if (e.key === 'Shift') {
         useCanvasState.getState().setIsShiftPressed(false);
       }
-      console.log(e.key)
       if (e.key === 'Alt') useCanvasState.getState().setIsAltPressed(false);
     };
     window.addEventListener('keydown', handleKeyDown);
