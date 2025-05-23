@@ -285,7 +285,7 @@ export function ThreeDView() {
     <div className="h-full w-full relative">
       <button
         onClick={() => setIsSimulationMode(!isSimulationMode)}
-        className="absolute top-2 left-2 z-[2000] p-1 border-2 rounded-xl border-blue-500 text-white flex items-center gap-1"
+        className="absolute top-2 left-2 z-[2000] p-1 border-2 rounded-xl border-blue-500 text-white flex items-center gap-1 pl-2 pr-2"
         style={{ backgroundColor: isSimulationMode ? '#193cb8' : 'transparent' }}
       >
         <img
