@@ -1,6 +1,8 @@
 use wasm_bindgen::prelude::*;
 use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
+mod physics;
+use physics::PhysicsWorld;
 
 // ─── Structs ───────────────────────────────────────────────────────────────
 
@@ -58,13 +60,14 @@ pub struct ResolvedSeam {
 #[wasm_bindgen]
 pub struct PatternEngine {
     stored_json: Option<PatternData>,
+    physics: Option<PhysicsWorld>,
 }
 
 #[wasm_bindgen]
 impl PatternEngine {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
-        Self { stored_json: None }
+        Self { stored_json: None, physics: None }
     }
 
     #[wasm_bindgen]
@@ -86,7 +89,7 @@ impl PatternEngine {
     }
 
     #[wasm_bindgen]
-    pub fn get_resolved_seams_json(&self) -> Result<JsValue, JsValue> {
+    pub fn get_resolved_seams_json(&self) -> Result<JsValue, JsValue> { 
         let Some(data) = &self.stored_json else {
             return Err(JsValue::from_str("No pattern loaded"));
         };
@@ -140,4 +143,39 @@ impl PatternEngine {
         JsValue::from_serde(&resolved)
             .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
     }
+
+    /// Build the physics world from loaded pattern
+    #[wasm_bindgen]
+    pub fn init_physics(&mut self) -> Result<(), JsValue> {
+        let data = self.stored_json.as_ref()
+            .ok_or_else(|| JsValue::from_str("Load a pattern first"))?;
+        self.physics = Some(PhysicsWorld::new(&data));
+        Ok(())
+    }
+
+    /// Advance by dt seconds
+    #[wasm_bindgen]
+    pub fn step_physics(&mut self, dt: f64) -> Result<(), JsValue> {
+        if let Some(world) = &mut self.physics {
+            world.step(dt);
+            Ok(())
+        } else {
+            Err(JsValue::from_str("Physics not initialized"))
+        }
+    }
+
+    /// Get updated 2D positions back to JS
+    #[wasm_bindgen]
+    pub fn get_physics_positions(&self) -> Result<JsValue, JsValue> {
+        let data = self.stored_json.as_ref()
+            .ok_or_else(|| JsValue::from_str("Load a pattern first"))?;
+        if let Some(world) = &self.physics {
+            let pts = world.export_positions(&data);
+            JsValue::from_serde(&pts)
+                .map_err(|e| JsValue::from_str(&format!("Serialize error: {}", e)))
+        } else {
+            Err(JsValue::from_str("Physics not initialized"))
+        }
+    }
+
 }
