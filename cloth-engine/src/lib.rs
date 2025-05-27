@@ -170,7 +170,7 @@ impl PatternEngine {
         let data = self.stored_json.as_ref()
             .ok_or_else(|| JsValue::from_str("Load a pattern first"))?;
         if let Some(world) = &self.physics {
-            let pts = world.export_positions(&data);
+            let pts = world.export_positions();
             JsValue::from_serde(&pts)
                 .map_err(|e| JsValue::from_str(&format!("Serialize error: {}", e)))
         } else {
