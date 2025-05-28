@@ -21,6 +21,8 @@ export function ThreeDView() {
   const engineRef = useRef<PatternEngine>(new PatternEngine());
   const [bbox, setBbox] = useState({ width: 0, height: 0 });
 
+  
+
   const {
     isSimulationMode,
     setIsSimulationMode,
@@ -35,6 +37,16 @@ export function ThreeDView() {
   } = useCanvasState();
 
   const paths = useCanvasState(s => s.present.paths);
+
+    useEffect(() => {
+      if (bbox.width <= 0 || paths.length === 0) return;
+
+      clothing.current.clear();
+
+      const panels = buildPanels(paths, bbox.width);
+      clothing.current.add(panels);
+
+    }, [paths, bbox.width]);
 
   // Map 2D-Editor-Koordinaten → lokale THREE.Vector3
   const toWorld = (x: number, y: number) => {
@@ -152,119 +164,130 @@ export function ThreeDView() {
   }, []);
 
   // ─── Physics‐Loop ────────────────────────────────────
-  useEffect(() => {
-    if (!isSimulationMode) {
-      seamGroup.current.clear();
-      return;
-    }
+useEffect(() => {
+  // 1) If simulation is off, just clear seams and don’t start a loop
+  if (!isSimulationMode) {
+    seamGroup.current.clear();
+    return;
+  }
 
-    const engine = engineRef.current!;
-    let last = performance.now();
-    let raf: number;
+  const engine = engineRef.current;
+  let rafId: number;
+  let engineInitialized = false;
+  let lastTime = performance.now();
 
-    // Payload aufbauen
+  const tick = (now: number) => {
+    // compute dt (clamped if you like)
+    const dt = Math.min((now - lastTime) / 1000, /* max_dt? */ 0.016);
+    lastTime = now;
+
+    // 2) Detect front/back panels
     const front = present.paths.find(p => p.points.some(pt => pt.x <= 700));
     const back  = present.paths.find(p => p.points.some(pt => pt.x  > 700));
     if (!front || !back) {
-      console.warn('[Physics] missing front/back patterns');
-      return;
-    }
+      console.warn('[Physics] waiting for both front & back panels…');
+    } else {
+      // 3) Initialize the engine once
+      if (!engineInitialized) {
+        const rustSeams = present.seams
+          .map(([A, B]) => {
+            const isFront = front.points.some(pt => pt.id === A[0]);
+            const [from, to] = isFront ? [A, B] : [B, A];
+            return {
+              from: {
+                path_id: front.id,
+                start:   front.points.findIndex(pt => pt.id === from[0]),
+                end:     front.points.findIndex(pt => pt.id === from[1]),
+              },
+              to: {
+                path_id: back.id,
+                start:   back .points.findIndex(pt => pt.id === to  [0]),
+                end:     back .points.findIndex(pt => pt.id === to  [1]),
+              },
+            };
+          })
+          .filter(s => s.from.start >= 0 && s.to.start >= 0);
 
-    const rustSeams = present.seams.map(([A, B]) => {
-      const isAfront = front.points.some(pt => pt.id === A[0]);
-      const [from, to] = isAfront ? [A, B] : [B, A];
-      const fs = front.points.findIndex(pt => pt.id === from[0]);
-      const fe = front.points.findIndex(pt => pt.id === from[1]);
-      const ts = back .points.findIndex(pt => pt.id === to  [0]);
-      const te = back .points.findIndex(pt => pt.id === to  [1]);
-      return {
-        from: { path_id: front.id, start: fs, end: fe },
-        to:   { path_id: back.id,  start: ts, end: te }
-      };
-    }).filter(s => s.from.start >= 0 && s.from.end >= 0 && s.to.start >= 0 && s.to.end >= 0);
-
-    const payload = { paths: present.paths, seams: rustSeams };
-    console.log('[Physics] payload:', payload);
-
-    try {
-      engine.load_json(JSON.stringify(payload));
-      engine.init_physics();
-      console.log('[Physics] initialized');
-    } catch (err) {
-      console.error('[Physics] init error:', err);
-      return;
-    }
-
-    const tick = (now: number) => {
-      const dt = (now - last) / 1000;
-      last = now;
-
-      try {
-        engine.step_physics(dt);
-        const updated: PointData[] = engine.get_physics_positions();
-        // Debug: Ausgabe der ersten Punkte
-        console.log('[Physics] tick, sample pos:', updated.slice(0, 3));
-
-        // Panels als Mesh aktualisieren
-        const posMap = new Map(updated.map(p => [p.id, p] as [string, PointData]));
-        const panelGroup = clothing.current.children[0] as THREE.Group;
-        panelGroup.children.forEach(child => {
-          const mesh = child as THREE.Mesh;
-          const pid  = mesh.userData.pathId as string;
-          const pattern = present.paths.find(p => p.id === pid);
-          if (!pattern) return;
-
-          const shape = new THREE.Shape();
-          const firstPhys = posMap.get(pattern.points[0].id)!;
-          shape.moveTo(...toWorld(firstPhys.x, firstPhys.y).toArray());
-
-          for (let i = 1; i < pattern.points.length; i++) {
-            const prevPhys = posMap.get(pattern.points[i-1].id)!;
-            const curPhys  = posMap.get(pattern.points[i].id)!;
-            const cp1 = toWorld(prevPhys.x, prevPhys.y);
-            const cp2 = toWorld(curPhys.x,  curPhys.y);
-            const end = toWorld(curPhys.x,  curPhys.y);
-            shape.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, end.x, end.y);
-          }
-          if (pattern.closed) shape.closePath();
-
-          const newGeo = new THREE.ExtrudeGeometry(shape, {
-            depth: 0.01,
-            bevelEnabled: false,
-            curveSegments: 32,
-            steps: 1,
-          });
-          mesh.geometry.dispose();
-          mesh.geometry = newGeo;
-        });
-
-        // Naht-Linien (Blau)
-        seamGroup.current.clear();
-        present.seams.forEach(([A, B]) => {
-          [0, 1].forEach(k => {
-            const a = posMap.get(A[k]), b = posMap.get(B[k]);
-            if (!a || !b) return;
-            const line = new THREE.Line(
-              new THREE.BufferGeometry().setFromPoints([
-                toWorld(a.x, a.y),
-                toWorld(b.x, b.y)
-              ]),
-              new THREE.LineBasicMaterial({ color: 0x0000ff })
-            );
-            seamGroup.current.add(line);
-          });
-        });
-      } catch (err) {
-        console.error('[Physics] tick error:', err);
+        engine.load_json(JSON.stringify({ paths: present.paths, seams: rustSeams }));
+        engine.init_physics();
+        engineInitialized = true;
       }
 
-      raf = requestAnimationFrame(tick);
-    };
+      // 4) Step physics
+      engine.step_physics(dt);
+      const updated: PointData[] = engine.get_physics_positions();
+      const posMap = new Map(updated.map(p => [p.id, p] as [string, PointData]));
 
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+      // 5) Rebuild cloth meshes
+      const panelGroup = clothing.current.children[0] as THREE.Group;
+      panelGroup.children.forEach(child => {
+        const mesh    = child as THREE.Mesh;
+        const pid     = mesh.userData.pathId as string;
+        const pattern = present.paths.find(p => p.id === pid)!;
 
-  }, [isSimulationMode, present.paths, present.seams, bbox]);
+        // build a fresh Shape with handles
+        const shape = new THREE.Shape();
+        const firstOrig = pattern.points[0];
+        const firstPhys = posMap.get(firstOrig.id)!;
+        shape.moveTo(...toWorld(firstPhys.x, firstPhys.y).toArray());
+
+        for (let i = 1; i < pattern.points.length; i++) {
+          const prevOrig = pattern.points[i - 1];
+          const  curOrig = pattern.points[i];
+          const prevP    = posMap.get(prevOrig.id)!;
+          const  curP    = posMap.get( curOrig.id)!;
+
+          const cp1 = toWorld(
+            prevP.x + prevOrig.handleOut.dx,
+            prevP.y + prevOrig.handleOut.dy
+          );
+          const cp2 = toWorld(
+            curP.x  +  curOrig.handleIn.dx,
+            curP.y  +  curOrig.handleIn.dy
+          );
+          const end = toWorld(curP.x, curP.y);
+
+          shape.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, end.x, end.y);
+        }
+        if (pattern.closed) shape.closePath();
+
+        // replace geometry
+        mesh.geometry.dispose();
+        mesh.geometry = new THREE.ExtrudeGeometry(shape, {
+          depth:         0.01,
+          bevelEnabled:  false,
+          curveSegments: 32,
+          steps:         1,
+        });
+      });
+
+      // 6) Draw seam lines
+      seamGroup.current.clear();
+      present.seams.forEach(([A, B]) => {
+        [0, 1].forEach(k => {
+          const a = posMap.get(A[k])!;
+          const b = posMap.get(B[k])!;
+          const line = new THREE.Line(
+            new THREE.BufferGeometry().setFromPoints([
+              toWorld(a.x, a.y), toWorld(b.x, b.y)
+            ]),
+            new THREE.LineBasicMaterial({ color: 0x0000ff })
+          );
+          seamGroup.current.add(line);
+        });
+      });
+    }
+
+    // queue next frame
+    rafId = requestAnimationFrame(tick);
+  };
+
+  // start the loop
+  rafId = requestAnimationFrame(tick);
+  return () => cancelAnimationFrame(rafId);
+
+}, [isSimulationMode, present.paths, present.seams, bbox.width]);
+
 
   return (
     <div className="h-full w-full relative">
