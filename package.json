@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.5",
+    "ammo.js": "^0.0.10",
+    "ammojs3": "^0.0.11",
     "konva": "^9.3.20",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
