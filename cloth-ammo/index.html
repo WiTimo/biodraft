@@ -6,10 +6,16 @@
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
 	<style>
-		body { margin: 0; overflow: hidden; background: #888; }
+		body {
+			margin: 0;
+			overflow: hidden;
+			background: #888;
+		}
+
 		#info {
 			position: absolute;
-			top: 10px; left: 10px;
+			top: 10px;
+			left: 10px;
 			color: #fff;
 			font-family: sans-serif;
 			z-index: 1;
@@ -181,7 +187,7 @@
 			});
 			const centerX = (minX + maxX) / 2;
 			const centerY = (minY + maxY) / 2;
-			const span    = Math.max(maxX - minX, maxY - minY);
+			const span = Math.max(maxX - minX, maxY - minY);
 
 			// We will scale everything by this so our cloth “envelopes” the sphere nicely:
 			const scaleFactor = 1.5;
@@ -206,7 +212,7 @@
 			patternData.patterns.forEach(pattern => {
 				// Build one Shape per pattern (including Bezier handles if present)
 				const shape = new THREE.Shape();
-				const pts   = pattern.points;
+				const pts = pattern.points;
 				if (pts.length === 0) {
 					// skip empty pattern
 					patternShapes.push({ bounds: null, contour: [] });
@@ -214,7 +220,7 @@
 				}
 
 				// 1) Move to first anchor
-				const firstRaw  = pts[0];
+				const firstRaw = pts[0];
 				const firstNorm = normalizePoint(firstRaw);
 				shape.moveTo(firstNorm.x, firstNorm.z);
 
@@ -235,8 +241,8 @@
 					};
 
 					const hasBezier = (
-						   (prevRaw.handleOut && (prevRaw.handleOut.dx !== 0 || prevRaw.handleOut.dy !== 0))
-						|| (currRaw.handleIn  && (currRaw.handleIn.dx  !== 0 || currRaw.handleIn.dy  !== 0))
+						(prevRaw.handleOut && (prevRaw.handleOut.dx !== 0 || prevRaw.handleOut.dy !== 0))
+						|| (currRaw.handleIn && (currRaw.handleIn.dx !== 0 || currRaw.handleIn.dy !== 0))
 					);
 
 					if (hasBezier) {
@@ -261,8 +267,8 @@
 
 				// 3) If closed, connect last→first (with Bezier if needed)
 				if (pattern.closed) {
-					const lastRaw     = pts[pts.length - 1];
-					const lastNorm    = normalizePoint(lastRaw);
+					const lastRaw = pts[pts.length - 1];
+					const lastNorm = normalizePoint(lastRaw);
 					const cp1_abs_last = {
 						x: lastRaw.x + (lastRaw.handleOut?.dx || 0),
 						y: lastRaw.y + (lastRaw.handleOut?.dy || 0)
@@ -273,12 +279,12 @@
 					};
 
 					const hasClosingBezier = (
-						   (lastRaw.handleOut && (lastRaw.handleOut.dx !== 0 || lastRaw.handleOut.dy !== 0))
-						|| (firstRaw.handleIn && (firstRaw.handleIn.dx  !== 0 || firstRaw.handleIn.dy  !== 0))
+						(lastRaw.handleOut && (lastRaw.handleOut.dx !== 0 || lastRaw.handleOut.dy !== 0))
+						|| (firstRaw.handleIn && (firstRaw.handleIn.dx !== 0 || firstRaw.handleIn.dy !== 0))
 					);
 
 					if (hasClosingBezier) {
-						const cp1_norm_last  = {
+						const cp1_norm_last = {
 							x: ((cp1_abs_last.x - centerX) / span) * scaleFactor,
 							z: ((cp1_abs_last.y - centerY) / span) * scaleFactor
 						};
@@ -287,9 +293,9 @@
 							z: ((cp2_abs_first.y - centerY) / span) * scaleFactor
 						};
 						shape.bezierCurveTo(
-							cp1_norm_last.x,  cp1_norm_last.z,
+							cp1_norm_last.x, cp1_norm_last.z,
 							cp2_norm_first.x, cp2_norm_first.z,
-							firstNorm.x,      firstNorm.z
+							firstNorm.x, firstNorm.z
 						);
 					} else {
 						shape.lineTo(firstNorm.x, firstNorm.z);
@@ -433,17 +439,17 @@
 		// 4) SETUP THE VERTEX BUFFERS FOR THE COMPUTE‐SHADERS
 		// ─────────────────────────────────────────────────────────────────────────
 		function setupVerletVertexBuffers() {
-			const vertexCount      = verletVertices.length;
-			const springListArray  = [];
+			const vertexCount = verletVertices.length;
+			const springListArray = [];
 			const vertexPositionArray = new Float32Array(vertexCount * 3);
-			const vertexParamsArray   = new Uint32Array(vertexCount * 3);
+			const vertexParamsArray = new Uint32Array(vertexCount * 3);
 
 			for (let i = 0; i < vertexCount; i++) {
 				const vertex = verletVertices[i];
-				vertexPositionArray[i * 3]     = vertex.position.x;
+				vertexPositionArray[i * 3] = vertex.position.x;
 				vertexPositionArray[i * 3 + 1] = vertex.position.y;
 				vertexPositionArray[i * 3 + 2] = vertex.position.z;
-				vertexParamsArray[i * 3]       = vertex.isFixed ? 1 : 0;
+				vertexParamsArray[i * 3] = vertex.isFixed ? 1 : 0;
 				if (!vertex.isFixed) {
 					vertexParamsArray[i * 3 + 1] = vertex.springIds.length;
 					vertexParamsArray[i * 3 + 2] = springListArray.length;
@@ -452,26 +458,26 @@
 			}
 
 			vertexPositionBuffer = instancedArray(vertexPositionArray, 'vec3').setPBO(true);
-			vertexForceBuffer    = instancedArray(vertexCount, 'vec3');
-			vertexParamsBuffer   = instancedArray(vertexParamsArray, 'uvec3');
-			springListBuffer     = instancedArray(new Uint32Array(springListArray), 'uint').setPBO(true);
+			vertexForceBuffer = instancedArray(vertexCount, 'vec3');
+			vertexParamsBuffer = instancedArray(vertexParamsArray, 'uvec3');
+			springListBuffer = instancedArray(new Uint32Array(springListArray), 'uint').setPBO(true);
 		}
 
 		function setupVerletSpringBuffers() {
-			const springCount           = verletSprings.length;
-			const springVertexIdArray   = new Uint32Array(springCount * 2);
+			const springCount = verletSprings.length;
+			const springVertexIdArray = new Uint32Array(springCount * 2);
 			const springRestLengthArray = new Float32Array(springCount);
 
 			for (let i = 0; i < springCount; i++) {
 				const spring = verletSprings[i];
-				springVertexIdArray[i * 2]     = spring.vertex0.id;
+				springVertexIdArray[i * 2] = spring.vertex0.id;
 				springVertexIdArray[i * 2 + 1] = spring.vertex1.id;
-				springRestLengthArray[i]       = spring.vertex0.position.distanceTo(spring.vertex1.position);
+				springRestLengthArray[i] = spring.vertex0.position.distanceTo(spring.vertex1.position);
 			}
 
-			springVertexIdBuffer   = instancedArray(springVertexIdArray, 'uvec2').setPBO(true);
+			springVertexIdBuffer = instancedArray(springVertexIdArray, 'uvec2').setPBO(true);
 			springRestLengthBuffer = instancedArray(springRestLengthArray, 'float');
-			springForceBuffer      = instancedArray(springCount * 3, 'vec3').setPBO(true);
+			springForceBuffer = instancedArray(springCount * 3, 'vec3').setPBO(true);
 		}
 
 		// ─────────────────────────────────────────────────────────────────────────
@@ -491,7 +497,7 @@
 			//    Build one BufferGeometry whose vertex count = verletVertices.length.
 			//
 			const totalVerts = verletVertices.length;
-			const geometry   = new THREE.BufferGeometry();
+			const geometry = new THREE.BufferGeometry();
 
 			// 1) Build a “vertexId” attribute so each rendered vertex knows which Verlet‐index to fetch
 			const vertexIdArray = new Uint32Array(totalVerts);
@@ -537,13 +543,13 @@
 
 			// 4) Create a NodeMaterial that uses “vertexId” → vertexPositionBuffer
 			clothMaterial = new THREE.MeshPhysicalNodeMaterial({
-				color:          0x204080,
-				side:           THREE.DoubleSide,
-				transparent:    true,
-				opacity:        0.85,
-				sheen:          1.0,
+				color: 0x204080,
+				side: THREE.DoubleSide,
+				transparent: true,
+				opacity: 0.85,
+				sheen: 1.0,
 				sheenRoughness: 0.5,
-				sheenColor:     0xffffff
+				sheenColor: 0xffffff
 			});
 
 			// Override positionNode so each vertex fetches its current position from the GPU buffer
@@ -579,11 +585,11 @@
 		// 7) COMPUTE‐SHADERS (VERLET SIMULATION)
 		// ─────────────────────────────────────────────────────────────────────────
 		function setupUniforms() {
-			dampeningUniform      = uniform(0.99);
+			dampeningUniform = uniform(0.99);
 			spherePositionUniform = uniform(new THREE.Vector3(0, 0, 0));
-			sphereUniform         = uniform(1.0);
-			windUniform           = uniform(1.0);
-			stiffnessUniform      = uniform(0.2);
+			sphereUniform = uniform(1.0);
+			windUniform = uniform(1.0);
+			stiffnessUniform = uniform(0.2);
 		}
 
 		function setupComputeShaders() {
@@ -595,13 +601,13 @@
 				If(instanceIndex.greaterThanEqual(uint(springCount)), () => {
 					Return();
 				});
-				const vertexIds  = springVertexIdBuffer.element(instanceIndex);
+				const vertexIds = springVertexIdBuffer.element(instanceIndex);
 				const restLength = springRestLengthBuffer.element(instanceIndex);
-				const v0pos      = vertexPositionBuffer.element(vertexIds.x);
-				const v1pos      = vertexPositionBuffer.element(vertexIds.y);
-				const delta      = v1pos.sub(v0pos).toVar();
-				const dist       = delta.length().max(0.000001).toVar();
-				const force      = dist.sub(restLength).mul(stiffnessUniform).mul(delta).mul(0.5).div(dist);
+				const v0pos = vertexPositionBuffer.element(vertexIds.x);
+				const v1pos = vertexPositionBuffer.element(vertexIds.y);
+				const delta = v1pos.sub(v0pos).toVar();
+				const dist = delta.length().max(0.000001).toVar();
+				const force = dist.sub(restLength).mul(stiffnessUniform).mul(delta).mul(0.5).div(dist);
 				springForceBuffer.element(instanceIndex).assign(force);
 			})().compute(springCount);
 
@@ -610,38 +616,38 @@
 				If(instanceIndex.greaterThanEqual(uint(vertexCount)), () => {
 					Return();
 				});
-				const paramsLocal   = vertexParamsBuffer.element(instanceIndex).toVar();
-				const isFixedLocal  = paramsLocal.x;
-				const springCountL  = paramsLocal.y;
+				const paramsLocal = vertexParamsBuffer.element(instanceIndex).toVar();
+				const isFixedLocal = paramsLocal.x;
+				const springCountL = paramsLocal.y;
 				const springPointer = paramsLocal.z;
 				If(isFixedLocal, () => {
 					Return();
 				});
 
 				const position = vertexPositionBuffer.element(instanceIndex).toVar('vertexPosition');
-				const force    = vertexForceBuffer.element(instanceIndex).toVar('vertexForce');
+				const force = vertexForceBuffer.element(instanceIndex).toVar('vertexForce');
 				force.mulAssign(dampeningUniform);
 
 				const ptrStart = springPointer.toVar('ptrStart');
-				const ptrEnd   = ptrStart.add(springCountL).toVar('ptrEnd');
+				const ptrEnd = ptrStart.add(springCountL).toVar('ptrEnd');
 				Loop({ start: ptrStart, end: ptrEnd, type: 'uint', condition: '<' }, ({ i }) => {
-					const springId      = springListBuffer.element(i).toVar('springId');
-					const springForceV  = springForceBuffer.element(springId);
+					const springId = springListBuffer.element(i).toVar('springId');
+					const springForceV = springForceBuffer.element(springId);
 					const springVertexI = springVertexIdBuffer.element(springId);
-					const factor        = select(springVertexI.x.equal(instanceIndex), 1.0, -1.0);
+					const factor = select(springVertexI.x.equal(instanceIndex), 1.0, -1.0);
 					force.addAssign(springForceV.mul(factor));
 				});
 
 				// gravity
 				force.y.subAssign(0.00005);
 				// wind
-				const noise     = triNoise3D(position, 1, time).sub(0.2).mul(0.0001);
+				const noise = triNoise3D(position, 1, time).sub(0.2).mul(0.0001);
 				const windForce = noise.mul(windUniform);
 				force.z.subAssign(windForce);
 
 				// collision with sphere
 				const deltaSphere = position.add(force).sub(spherePositionUniform);
-				const dist        = deltaSphere.length();
+				const dist = deltaSphere.length();
 				const sphereForce = float(sphereRadius).sub(dist).max(0).mul(deltaSphere).div(dist).mul(sphereUniform);
 				force.addAssign(sphereForce);
 
@@ -664,11 +670,11 @@
 
 			// (b) SHOW each spring as a line:
 			const springWireframePositionBuffer = new THREE.BufferAttribute(new Float32Array(6), 3, false);
-			const springWireframeIndexBuffer    = new THREE.BufferAttribute(new Uint32Array([0, 1]), 1, false);
-			const springWireframeMaterial       = new THREE.LineBasicNodeMaterial();
+			const springWireframeIndexBuffer = new THREE.BufferAttribute(new Uint32Array([0, 1]), 1, false);
+			const springWireframeMaterial = new THREE.LineBasicNodeMaterial();
 			springWireframeMaterial.positionNode = Fn(() => {
 				const vertexIds = springVertexIdBuffer.element(instanceIndex);
-				const vertexId  = select(attribute('vertexIndex').equal(0), vertexIds.x, vertexIds.y);
+				const vertexId = select(attribute('vertexIndex').equal(0), vertexIds.x, vertexIds.y);
 				return vertexPositionBuffer.element(vertexId);
 			})();
 
@@ -698,12 +704,12 @@
 			clothMesh.visible = !params.wireframe;
 
 			// Toggle wireframe (if present)
-			if (vertexWireframeObject)  vertexWireframeObject.visible = params.wireframe;
+			if (vertexWireframeObject) vertexWireframeObject.visible = params.wireframe;
 			if (springWireframeObject) springWireframeObject.visible = params.wireframe;
 
-			const deltaTime      = Math.min(clock.getDelta(), 1 / 60);
+			const deltaTime = Math.min(clock.getDelta(), 1 / 60);
 			const stepsPerSecond = 360;
-			const timePerStep    = 1 / stepsPerSecond;
+			const timePerStep = 1 / stepsPerSecond;
 
 			timeSinceLastStep += deltaTime;
 			while (timeSinceLastStep >= timePerStep) {
