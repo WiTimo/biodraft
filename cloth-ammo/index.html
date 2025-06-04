@@ -1,516 +1,602 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-  <title>three.js WebGPU – T-Shirt‐Shaped Cloth from JSON</title>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0" />
-  <link rel="stylesheet" href="main.css" />
-  <style>
-    body {
-      margin: 0;
-      overflow: hidden;
-    }
-    #info {
-      position: absolute;
-      top: 0;
-      width: 100%;
-      padding: 10px;
-      color: #fff;
-      font-family: sans-serif;
-      background-color: rgba(0, 0, 0, 0.5);
-      z-index: 1;
-    }
-  </style>
+	<title>three.js webgpu - compute cloth</title>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
 </head>
+
 <body>
-  <div id="info">
-    <a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> WebGPU – T-Shirt-Shaped Cloth from JSON
-  </div>
+	<div id="info">
+		<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> webgpu - compute cloth<br />
+		Simple cloth simulation with a verlet system running in compute shaders
+	</div>
 
-  <script type="importmap">
-  {
-    "imports": {
-      "three":       "https://unpkg.com/three@0.173.0/build/three.webgpu.js",
-      "three/webgpu":"https://unpkg.com/three@0.173.0/build/three.webgpu.js",
-      "three/tsl":   "https://unpkg.com/three@0.173.0/build/three.tsl.js",
-      "three/addons/":"https://unpkg.com/three@0.173.0/examples/jsm/"
-    }
+	<script type="importmap">
+		{
+			"imports": {
+				"three":        "https://unpkg.com/three@0.173.0/build/three.webgpu.js",
+				"three/webgpu": "https://unpkg.com/three@0.173.0/build/three.webgpu.js",
+				"three/tsl":    "https://unpkg.com/three@0.173.0/build/three.tsl.js",
+				"three/addons/":"https://unpkg.com/three@0.173.0/examples/jsm/"
+			}
+		}
+	</script>
+
+	<script type="module">
+		import * as THREE from 'three';
+		import {
+			Fn, If, Return, instancedArray, instanceIndex,
+			uniform, select, attribute, uint, Loop,
+			float, transformNormalToView, cross, triNoise3D, time
+		} from 'three/tsl';
+		import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
+		import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+		import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+
+		let renderer, scene, camera, controls;
+		const sphereRadius = 0.15;
+
+		let vertexPositionBuffer, vertexForceBuffer, vertexParamsBuffer;
+		let springVertexIdBuffer, springRestLengthBuffer, springForceBuffer;
+		let springListBuffer;
+		let computeSpringForces, computeVertexForces;
+		let dampeningUniform, spherePositionUniform, stiffnessUniform, sphereUniform, windUniform;
+		let vertexWireframeObject, springWireframeObject;
+		let clothMesh, clothMaterial, sphere;
+		let timeSinceLastStep = 0;
+		let timestamp = 0;
+
+		const verletVertices = [];
+		const verletSprings = [];
+		const verletVertexColumns = [];
+
+		const clock = new THREE.Clock();
+
+		const params = {
+			wireframe: false,
+			sphere: true,
+			wind: 1.0,
+		};
+
+		let patternData = null;
+
+		// --------------------------------------------------
+		// 1) LOAD JSON
+		// --------------------------------------------------
+		async function loadConfig() {
+			try {
+				const response = await fetch('./patterns_with_seams.json');
+				if (!response.ok) {
+					throw new Error(`HTTP ${response.status} – ${response.statusText}`);
+				}
+				patternData = await response.json();
+				console.log('Loaded JSON data:', patternData);
+			} catch (err) {
+				console.error('Failed to load patterns_with_seams.json:', err);
+			}
+		}
+
+		init();
+
+		// --------------------------------------------------
+		// 2) INITIALIZATION
+		// --------------------------------------------------
+		async function init() {
+			await loadConfig();
+
+			// Renderer
+			renderer = new THREE.WebGPURenderer({ antialias: true });
+			renderer.setPixelRatio(window.devicePixelRatio);
+			renderer.setSize(window.innerWidth, window.innerHeight);
+			renderer.toneMapping = THREE.NeutralToneMapping;
+			renderer.toneMappingExposure = 1;
+			document.body.appendChild(renderer.domElement);
+
+			// Scene
+			scene = new THREE.Scene();
+
+			// Camera
+			camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.01, 10);
+			camera.position.set(-1.6, -0.1, -1.6);
+
+			// Controls
+			controls = new OrbitControls(camera, renderer.domElement);
+			controls.minDistance = 1;
+			controls.maxDistance = 3;
+			controls.target.set(0, -0.1, 0);
+			controls.update();
+
+			// HDR Environment
+			const rgbeLoader = new RGBELoader().setPath('textures/equirectangular/');
+			const hdrTexture = await rgbeLoader.loadAsync('royal_esplanade_1k.hdr');
+			hdrTexture.mapping = THREE.EquirectangularReflectionMapping;
+			scene.background = hdrTexture;
+			scene.backgroundBlurriness = 0.5;
+			scene.environment = hdrTexture;
+
+			// ─── BUILD PHYSICS FROM JSON ───
+			setupVerletGeometryFromJSON();
+			setupVerletVertexBuffers();
+			setupVerletSpringBuffers();
+			setupUniforms();
+			setupComputeShaders();
+			setupClothMeshFromJSON();
+			setupSphere();
+
+			// GUI
+			const gui = new GUI();
+			gui.add(stiffnessUniform, 'value', 0.1, 0.5, 0.01).name('stiffness');
+			gui.add(params, 'wireframe');
+			gui.add(params, 'sphere');
+			gui.add(params, 'wind', 0, 5, 0.1);
+
+			const materialFolder = gui.addFolder('material');
+			materialFolder.addColor(clothMaterial, 'color');
+			materialFolder.add(clothMaterial, 'roughness', 0.0, 1, 0.01);
+			materialFolder.add(clothMaterial, 'sheen', 0.0, 1, 0.01);
+			materialFolder.add(clothMaterial, 'sheenRoughness', 0.0, 1, 0.01);
+			materialFolder.addColor(clothMaterial, 'sheenColor');
+
+			window.addEventListener('resize', onWindowResize);
+			renderer.setAnimationLoop(render);
+		}
+
+		// --------------------------------------------------
+		// 3) SETUP VERTEX‐BASED PHYSICS (VERLET) FROM JSON
+		// --------------------------------------------------
+		function setupVerletGeometryFromJSON() {
+			// Clear any prior data
+			verletVertices.length = 0;
+			verletSprings.length = 0;
+			verletVertexColumns.length = 0;
+
+			// 1) Compute bounding box of ALL JSON points:
+			let minX = Infinity, maxX = -Infinity;
+			let minY = Infinity, maxY = -Infinity;
+			patternData.patterns.forEach(pattern => {
+				pattern.points.forEach(pt => {
+					minX = Math.min(minX, pt.x);
+					maxX = Math.max(maxX, pt.x);
+					minY = Math.min(minY, pt.y);
+					maxY = Math.max(maxY, pt.y);
+				});
+			});
+			const centerX = (minX + maxX) / 2;
+			const centerY = (minY + maxY) / 2;
+			const span = Math.max(maxX - minX, maxY - minY);
+
+			// 2) Choose a scale factor so the pattern is large enough to hit the sphere
+			const scaleFactor = 1.5;
+
+			// 3) Choose an initial height above the sphere so that it "drops" onto it
+			const initialY = sphereRadius + 0.5; // sphereRadius = 0.15, so Y ≈ 0.65
+
+			// 4) Helper‐maps for JSON → Verlet vertices
+			const vertexMap = {};
+
+			const addVerletVertex = (x, y, z, isFixed, pointId) => {
+				const id = verletVertices.length;
+				const vertex = {
+					id,
+					position: new THREE.Vector3(x, y, z),
+					isFixed,
+					springIds: [],
+					jsonId: pointId
+				};
+				verletVertices.push(vertex);
+				vertexMap[pointId] = vertex;
+				return vertex;
+			};
+
+			const addVerletSpring = (v0, v1) => {
+				const id = verletSprings.length;
+				const spring = { id, vertex0: v0, vertex1: v1 };
+				v0.springIds.push(id);
+				v1.springIds.push(id);
+				verletSprings.push(spring);
+				return spring;
+			};
+
+			// 5) Create one normalized, scaled Verlet‐vertex per JSON point
+			patternData.patterns.forEach(pattern => {
+				const thisPatternVertices = [];
+				pattern.points.forEach(pt => {
+					// Normalize JSON → [–0.5…0.5], then multiply by scaleFactor
+					const xNorm = ((pt.x - centerX) / span) * scaleFactor;
+					const zNorm = ((pt.y - centerY) / span) * scaleFactor;
+					// Y = initialY (so it falls downward onto sphere)
+					const v = addVerletVertex(xNorm, initialY, zNorm, false, pt.id);
+					thisPatternVertices.push(v);
+				});
+				verletVertexColumns.push(thisPatternVertices);
+			});
+
+			// 6) Connect “pattern adjacency” springs
+			patternData.patterns.forEach(pattern => {
+				const pts = pattern.points;
+				const closed = !!pattern.closed;
+				for (let i = 0; i < pts.length; i++) {
+					const currId = pts[i].id;
+					const nextIdx = (i + 1) % pts.length;
+					if (nextIdx === 0 && !closed) continue;
+					const nextId = pts[nextIdx].id;
+					const v0 = vertexMap[currId];
+					const v1 = vertexMap[nextId];
+					if (v0 && v1) addVerletSpring(v0, v1);
+				}
+			});
+
+			// 7) Connect “seam” springs between patterns
+			patternData.seams.forEach(seamPair => {
+				seamPair.forEach(([idA, idB]) => {
+					const vA = vertexMap[idA];
+					const vB = vertexMap[idB];
+					if (vA && vB) addVerletSpring(vA, vB);
+				});
+			});
+		}
+
+		function setupVerletVertexBuffers() {
+			const vertexCount = verletVertices.length;
+			const springListArray = [];
+			const vertexPositionArray = new Float32Array(vertexCount * 3);
+			const vertexParamsArray = new Uint32Array(vertexCount * 3);
+
+			for (let i = 0; i < vertexCount; i++) {
+				const vertex = verletVertices[i];
+				vertexPositionArray[i * 3]     = vertex.position.x;
+				vertexPositionArray[i * 3 + 1] = vertex.position.y;
+				vertexPositionArray[i * 3 + 2] = vertex.position.z;
+				vertexParamsArray[i * 3]       = vertex.isFixed ? 1 : 0;
+				if (!vertex.isFixed) {
+					vertexParamsArray[i * 3 + 1] = vertex.springIds.length;
+					vertexParamsArray[i * 3 + 2] = springListArray.length;
+					springListArray.push(...vertex.springIds);
+				}
+			}
+
+			vertexPositionBuffer = instancedArray(vertexPositionArray, 'vec3').setPBO(true);
+			vertexForceBuffer    = instancedArray(vertexCount, 'vec3');
+			vertexParamsBuffer   = instancedArray(vertexParamsArray, 'uvec3');
+			springListBuffer     = instancedArray(new Uint32Array(springListArray), 'uint').setPBO(true);
+		}
+
+		function setupVerletSpringBuffers() {
+			const springCount = verletSprings.length;
+			const springVertexIdArray = new Uint32Array(springCount * 2);
+			const springRestLengthArray = new Float32Array(springCount);
+
+			for (let i = 0; i < springCount; i++) {
+				const spring = verletSprings[i];
+				springVertexIdArray[i * 2]     = spring.vertex0.id;
+				springVertexIdArray[i * 2 + 1] = spring.vertex1.id;
+				springRestLengthArray[i]       = spring.vertex0.position.distanceTo(spring.vertex1.position);
+			}
+
+			springVertexIdBuffer   = instancedArray(springVertexIdArray, 'uvec2').setPBO(true);
+			springRestLengthBuffer = instancedArray(springRestLengthArray, 'float');
+			springForceBuffer      = instancedArray(springCount * 3, 'vec3').setPBO(true);
+		}
+
+		// --------------------------------------------------
+		// 4) BUILD & RENDER THE TRIANGULATED MESH (FROM JSON)
+		// --------------------------------------------------
+		function setupClothMeshFromJSON() {
+  // Remove any old clothMesh if present
+  if (clothMesh) {
+    scene.remove(clothMesh);
+    clothMesh.geometry.dispose();
+    clothMesh.material.dispose();
+    clothMesh = null;
   }
-  </script>
 
-  <script type="module">
-    import * as THREE from 'three';
-    import Stats from 'three/addons/libs/stats.module.js';
-    import { Fn, If, Return, instancedArray, instanceIndex, uniform, select, attribute, uint, Loop, float, transformNormalToView, cross, triNoise3D, time } from 'three/tsl';
-    import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
-    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-    import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+  //
+  // STEP A: Recompute the same bounding‐box/center/scale so mesh vertices match Verlet vertices
+  //
+  let minX = Infinity, maxX = -Infinity;
+  let minY = Infinity, maxY = -Infinity;
+  patternData.patterns.forEach(pattern => {
+    pattern.points.forEach(pt => {
+      minX = Math.min(minX, pt.x);
+      maxX = Math.max(maxX, pt.x);
+      minY = Math.min(minY, pt.y);
+      maxY = Math.max(maxY, pt.y);
+    });
+  });
+  const centerX   = (minX + maxX) / 2;
+  const centerY   = (minY + maxY) / 2;
+  const span      = Math.max(maxX - minX, maxY - minY);
+  const scaleFactor = 1.5;
 
-    let stats, renderer, scene, camera, controls;
-    const clock = new THREE.Clock();
-
-    //———————————————————————
-    // Cloth parameters
-    //———————————————————————
-    let vertexPositionBuffer, vertexForceBuffer, vertexParamsBuffer;
-    let springVertexIdBuffer, springRestLengthBuffer, springForceBuffer, springListBuffer;
-    let computeSpringForces, computeVertexForces;
-    let dampeningUniform, spherePositionUniform, stiffnessUniform, sphereUniform, windUniform;
-    let vertexWireframeObject, springWireframeObject;
-    let sphere;
-    let timeSinceLastStep = 0;
-    let timestamp = 0;
-
-    // Verlet‐system storage on the CPU side
-    const verletVertices = [];   // { id, position:Vector3, isFixed:boolean, springIds:[] }
-    const verletSprings  = [];   // { id, vertex0, vertex1 } 
-    const patternVertexArrays = []; // array of per‐pattern arrays of verlet “vertex objects”
-    // (to help seam‐lookup later)
-
-    const params = {
-      wireframe: true,
-      sphere: true,
-      wind: 1.0,
-      stiffness: 0.2
+  //
+  // Helper: Given a raw JSON point { x, y, handleIn, handleOut }, return its normalized coords in [-scale..+scale].
+  //
+  function normalizePoint(pt) {
+    return {
+      x: ((pt.x - centerX) / span) * scaleFactor,
+      y: ((pt.y - centerY) / span) * scaleFactor
     };
+  }
 
-    //———————————————————————
-    // Initialization
-    //———————————————————————
-    init();
+  // Build one merged geometry for all patterns
+  const mergedGeometry = new THREE.BufferGeometry();
+  const positions      = [];
+  const indices        = [];
+  let   vertexOffset   = 0;
 
-    async function init() {
-      // 1) Renderer
-      renderer = new THREE.WebGPURenderer({ antialias: true });
-      renderer.setPixelRatio(window.devicePixelRatio);
-      renderer.setSize(window.innerWidth, window.innerHeight);
-      renderer.toneMapping = THREE.NeutralToneMapping;
-      renderer.toneMappingExposure = 1;
-      document.body.appendChild(renderer.domElement);
-
-      // 2) Stats
-      stats = new Stats();
-      document.body.appendChild(stats.dom);
-
-      // 3) Scene + Camera + Controls
-      scene = new THREE.Scene();
-      camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.01, 10);
-      camera.position.set(-0.5, 0.5, 1.0);
-      controls = new OrbitControls(camera, renderer.domElement);
-      controls.target.set(0, 0.2, 0);
-      controls.update();
-
-      // 4) Environment (HDRI)
-      const rgbeLoader = new RGBELoader().setPath('textures/equirectangular/');
-      const hdrTexture = await rgbeLoader.loadAsync('royal_esplanade_1k.hdr');
-      hdrTexture.mapping = THREE.EquirectangularReflectionMapping;
-      scene.background = hdrTexture;
-      scene.backgroundBlurriness = 0.5;
-      scene.environment = hdrTexture;
-
-      // 5) Load JSON + Setup Cloth
-      await setupCloth();
-
-      // 6) GUI
-      const gui = new GUI();
-      gui.add(params, 'wireframe').name('wireframe');
-      gui.add(params, 'sphere').name('show sphere');
-      gui.add(params, 'wind', 0, 5, 0.1).name('wind');
-      gui.add(stiffnessUniform, 'value', 0.01, 1.0, 0.01).name('stiffness');
-
-      window.addEventListener('resize', onWindowResize);
-      renderer.setAnimationLoop(render);
-    }
-
-    //———————————————————————
-    // Main “setupCloth” (async)
-    //———————————————————————
-    async function setupCloth() {
-
-  //-------------------------------------------------------------
-  // (A) Fetch your JSON
-  //-------------------------------------------------------------
-  const response = await fetch('patterns.json');
-  const json = await response.json();
-
-  // A small boolean to “turn off” all Verlet‐related code until you’re ready:
-  const ENABLE_CLOTH = false; // ← set to true later to re‐enable the cloth sim
-
-  //-------------------------------------------------------------
-  // (B) Build two ShapeGeometries (front/back), but also add a simple Mesh
-  //-------------------------------------------------------------
-  const scale = 0.005;
-  json.patterns.forEach((pat, pi) => {
-
-    // --- Build the THREE.Shape from pat.points + handles ---
+  patternData.patterns.forEach(pattern => {
     const shape = new THREE.Shape();
-    const pts = pat.points;
+    const pts   = pattern.points;
+
+    // If there are no points, skip
     if (pts.length === 0) return;
 
-    // Move to first anchor
-    shape.moveTo(pts[0].x * scale, pts[0].y * scale);
+    // 1) Move to the first anchor in normalized space
+    const firstRaw = pts[0];
+    const firstNorm = normalizePoint(firstRaw);
+    shape.moveTo(firstNorm.x, firstNorm.y);
 
-    // Walk each Bézier edge
-    for (let i = 0; i < pts.length; i++) {
-      const cur = pts[i];
-      const nxt = pts[(i + 1) % pts.length];
-      const x0 = cur.x * scale, y0 = cur.y * scale;
-      const x1 = nxt.x * scale, y1 = nxt.y * scale;
-      const h0o = new THREE.Vector2(cur.x + cur.handleOut.dx, cur.y + cur.handleOut.dy).multiplyScalar(scale);
-      const h1i = new THREE.Vector2(nxt.x + nxt.handleIn.dx, nxt.y + nxt.handleIn.dy).multiplyScalar(scale);
-      shape.bezierCurveTo(h0o.x, h0o.y, h1i.x, h1i.y, x1, y1);
-    }
+    // 2) For each segment from pts[i - 1] → pts[i], decide whether to use straight line or cubic Bézier
+    for (let i = 1; i < pts.length; i++) {
+      const prevRaw = pts[i - 1];
+      const currRaw = pts[i];
 
-    // --- Tessellate into a ShapeGeometry ---
-    const curveSegments = 40;
-    const shapeGeo = new THREE.ShapeGeometry(shape, curveSegments);
+      // Normalize anchors
+      const prevNorm = normalizePoint(prevRaw);
+      const currNorm = normalizePoint(currRaw);
 
-    // -------------------------------------------------------------
-    // (C) Add a plain Mesh so you can already see the pattern in 3D
-    // -------------------------------------------------------------
-    // We'll give it a basic double‐sided wireframe or solid color.
-    const zOffset = (pi === 0) ? +0.02 : -0.02; // same Z offsets you used for Verlet
-    const mat = new THREE.MeshBasicMaterial({
-      color: (pi === 0) ? 0x0077ff : 0xff9900,
-      side: THREE.DoubleSide,
-      wireframe: true
-    });
-    const flatMesh = new THREE.Mesh(shapeGeo, mat);
-    flatMesh.position.z = zOffset;
-    scene.add(flatMesh);
+      // Compute absolute control‐point positions (before normalization):
+      const cp1_abs = {
+        x: prevRaw.x + (prevRaw.handleOut?.dx || 0),
+        y: prevRaw.y + (prevRaw.handleOut?.dy || 0)
+      };
+      const cp2_abs = {
+        x: currRaw.x + (currRaw.handleIn?.dx || 0),
+        y: currRaw.y + (currRaw.handleIn?.dy || 0)
+      };
 
-    // -------------------------------------------------------------
-    // (D) Now, wrap the original Verlet‐building code in a guard:
-    // -------------------------------------------------------------
-    if (ENABLE_CLOTH) {
-      // 1) Create a “mapping” from geometry‐vertex → verlet‐vertex
-      const posAttr = shapeGeo.attributes.position;
-      const idxAttr = shapeGeo.index;
-      const vertexCount = posAttr.count;
-      const indexArray = idxAttr.array;
-      const geomToVerlet = new Uint32Array(vertexCount);
+      // Check if either handleOut of prev or handleIn of curr is non‐zero. If so, draw a cubic Bézier.
+      const hasBezier = (
+           (prevRaw.handleOut && (prevRaw.handleOut.dx !== 0 || prevRaw.handleOut.dy !== 0))
+        || (currRaw.handleIn  && (currRaw.handleIn.dx  !== 0 || currRaw.handleIn.dy  !== 0))
+      );
 
-      // 2) Create verlet vertices for this pattern
-      //    (identify “topmost” Y to fix shoulders)
-      let maxY = -Infinity;
-      for (let i = 0; i < vertexCount; i++) {
-        const vy = posAttr.getY(i);
-        if (vy > maxY) maxY = vy;
-      }
-      const fixThreshold = 0.01;
-      const thisPatternVerts = [];
-
-      for (let i = 0; i < vertexCount; i++) {
-        const vx = posAttr.getX(i),
-              vy = posAttr.getY(i);
-        const isFixed = (vy >= maxY - fixThreshold);
-        const id = verletVertices.length;
-        const vertexObj = {
-          id,
-          position: new THREE.Vector3(vx, vy, zOffset),
-          isFixed: isFixed ? true : false,
-          springIds: []
+      if (hasBezier) {
+        // Normalize control points
+        const cp1_norm = {
+          x: ((cp1_abs.x - centerX) / span) * scaleFactor,
+          y: ((cp1_abs.y - centerY) / span) * scaleFactor
         };
-        verletVertices.push(vertexObj);
-        thisPatternVerts.push(vertexObj);
-        geomToVerlet[i] = id;
-      }
-      patternVertexArrays.push(thisPatternVerts);
+        const cp2_norm = {
+          x: ((cp2_abs.x - centerX) / span) * scaleFactor,
+          y: ((cp2_abs.y - centerY) / span) * scaleFactor
+        };
 
-      // 3) Create structural springs for each triangle edge
-      const edgeSet = new Set();
-      function addSpringByGeomIndices(a, b) {
-        const va = geomToVerlet[a], vb = geomToVerlet[b];
-        if (va === vb) return;
-        const key = (va < vb) ? `${va}-${vb}` : `${vb}-${va}`;
-        if (edgeSet.has(key)) return;
-        edgeSet.add(key);
-        const sid = verletSprings.length;
-        verletSprings.push({
-          id: sid,
-          vertex0: verletVertices[va],
-          vertex1: verletVertices[vb]
-        });
-        verletVertices[va].springIds.push(sid);
-        verletVertices[vb].springIds.push(sid);
-      }
-      for (let i = 0; i < indexArray.length; i += 3) {
-        const i0 = indexArray[i], i1 = indexArray[i + 1], i2 = indexArray[i + 2];
-        addSpringByGeomIndices(i0, i1);
-        addSpringByGeomIndices(i1, i2);
-        addSpringByGeomIndices(i2, i0);
-      }
-    } // ← end of if (ENABLE_CLOTH)
-  }); // ← end of json.patterns.forEach
+        // shape.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, endX, endY)
+        shape.bezierCurveTo(
+          cp1_norm.x, cp1_norm.y,
+          cp2_norm.x, cp2_norm.y,
+          currNorm.x, currNorm.y
+        );
 
-  // -------------------------------------------------------------
-  // (E) “Seam” springs: also wrap them in the same guard
-  // -------------------------------------------------------------
-  if (ENABLE_CLOTH) {
-    const seamEdgeSet = new Set();
-    json.seams.forEach(pair => {
-      const [ edgeBack, edgeFront ] = pair;
-      const [ idA_b, idB_b ] = edgeBack;
-      const [ idA_f, idB_f ] = edgeFront;
-
-      function findClosestVertex(controlID) {
-        const cp = controlPointMap[controlID];
-        if (!cp) return null;
-        const pi = cp.patternIndex;
-        const cx = cp.x * scale, cy = cp.y * scale;
-        let best = null, bestDist = Infinity;
-        for (const vObj of patternVertexArrays[pi]) {
-          const dx = vObj.position.x - cx;
-          const dy = vObj.position.y - cy;
-          const d2 = dx*dx + dy*dy;
-          if (d2 < bestDist) {
-            bestDist = d2;
-            best = vObj;
-          }
-        }
-        return best;
-      }
-
-      const vbA = findClosestVertex(idA_b);
-      const vbB = findClosestVertex(idB_b);
-      const vfA = findClosestVertex(idA_f);
-      const vfB = findClosestVertex(idB_f);
-
-      if (vbA && vfA) addSeamSpring(vbA.id, vfA.id);
-      if (vbB && vfB) addSeamSpring(vbB.id, vfB.id);
-    });
-
-    function addSeamSpring(va, vb) {
-      if (va === null || vb === null) return;
-      const key = (va < vb) ? `${va}-${vb}` : `${vb}-${va}`;
-      if (!seamEdgeSet.has(key)) {
-        seamEdgeSet.add(key);
-        const sid = verletSprings.length;
-        verletSprings.push({
-          id: sid,
-          vertex0: verletVertices[va],
-          vertex1: verletVertices[vb]
-        });
-        verletVertices[va].springIds.push(sid);
-        verletVertices[vb].springIds.push(sid);
+      } else {
+        // Just a straight segment
+        shape.lineTo(currNorm.x, currNorm.y);
       }
     }
-  } // ← end if (ENABLE_CLOTH)
 
-  // -------------------------------------------------------------
-  // (F) Finally, guard all of the cloth‐simulation setup calls
-  // -------------------------------------------------------------
-  if (ENABLE_CLOTH) {
-    setupVerletVertexBuffers();
-    setupVerletSpringBuffers();
-    setupUniforms();
-    setupComputeShaders();
-    setupWireframe();
-    setupSphere();
-  }
+    // 3) If the pattern is closed, connect last → first
+    if (pattern.closed) {
+      const lastRaw  = pts[pts.length - 1];
+      const lastNorm = normalizePoint(lastRaw);
+
+      // Absolute control‐point for last.handleOut (if any)
+      const cp1_abs_last = {
+        x: lastRaw.x + (lastRaw.handleOut?.dx || 0),
+        y: lastRaw.y + (lastRaw.handleOut?.dy || 0)
+      };
+      // Absolute control‐point for first.handleIn (if any)
+      const cp2_abs_first = {
+        x: firstRaw.x + (firstRaw.handleIn?.dx || 0),
+        y: firstRaw.y + (firstRaw.handleIn?.dy || 0)
+      };
+
+      const hasClosingBezier = (
+           (lastRaw.handleOut && (lastRaw.handleOut.dx !== 0 || lastRaw.handleOut.dy !== 0))
+        || (firstRaw.handleIn && (firstRaw.handleIn.dx  !== 0 || firstRaw.handleIn.dy  !== 0))
+      );
+
+      if (hasClosingBezier) {
+        const cp1_norm_last = {
+          x: ((cp1_abs_last.x - centerX) / span) * scaleFactor,
+          y: ((cp1_abs_last.y - centerY) / span) * scaleFactor
+        };
+        const cp2_norm_first = {
+          x: ((cp2_abs_first.x - centerX) / span) * scaleFactor,
+          y: ((cp2_abs_first.y - centerY) / span) * scaleFactor
+        };
+
+        // Connect shape from lastNorm → firstNorm via cubic Bézier
+        shape.bezierCurveTo(
+          cp1_norm_last.x,  cp1_norm_last.y,
+          cp2_norm_first.x, cp2_norm_first.y,
+          firstNorm.x,      firstNorm.y
+        );
+      } else {
+        // Just a straight line closing
+        shape.lineTo(firstNorm.x, firstNorm.y);
+      }
+    }
+
+    // 4) Triangulate this single Shape into a standalone BufferGeometry
+    const shapeGeom = new THREE.ShapeGeometry(shape);
+
+    // Copy its vertex positions (flattened) into our big positions array:
+    const posAttr = shapeGeom.getAttribute('position');
+    const idxAttr = shapeGeom.getIndex();
+
+    for (let i = 0; i < posAttr.count; i++) {
+      positions.push(
+        posAttr.getX(i),
+        posAttr.getY(i),
+        posAttr.getZ(i) // should be 0 for 2D shapes, but we copy it anyway
+      );
+    }
+    // Copy indices, but offset every index by vertexOffset
+    for (let i = 0; i < idxAttr.count; i++) {
+      indices.push(idxAttr.getX(i) + vertexOffset);
+    }
+    vertexOffset += posAttr.count;
+
+    shapeGeom.dispose();
+  }); // end patternData.patterns.forEach
+
+  // 5) Build the merged BufferGeometry for *all* patterns
+  const posArray = new Float32Array(positions);
+  const idxArray = new Uint32Array(indices);
+  mergedGeometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+  mergedGeometry.setIndex(new THREE.BufferAttribute(idxArray, 1));
+  mergedGeometry.computeVertexNormals();
+
+  // 6) Create the cloth mesh & material (same as before)
+  clothMaterial = new THREE.MeshPhysicalNodeMaterial({
+    color:          0x204080,
+    side:           THREE.DoubleSide,
+    transparent:    true,
+    opacity:        0.85,
+    sheen:          1.0,
+    sheenRoughness: 0.5,
+    sheenColor:     0xffffff
+  });
+  clothMesh = new THREE.Mesh(mergedGeometry, clothMaterial);
+  clothMesh.frustumCulled = false;
+  scene.add(clothMesh);
 }
 
-    //———————————————————————
-    // setupVerletVertexBuffers()
-    //———————————————————————
-    function setupVerletVertexBuffers() {
-      const vertexCount = verletVertices.length;
-      // Build position array & params array
-      const posArr = new Float32Array(vertexCount * 3);
-      const paramArr = new Uint32Array(vertexCount * 3);
-      const springList = [];
+		// --------------------------------------------------
+		// 5) SPHERE FOR COLLISION
+		// --------------------------------------------------
+		function setupSphere() {
+			const geometry = new THREE.IcosahedronGeometry(sphereRadius * 0.95, 4);
+			const material = new THREE.MeshStandardNodeMaterial();
+			sphere = new THREE.Mesh(geometry, material);
+			scene.add(sphere);
+		}
 
-      for (let i = 0; i < vertexCount; i++) {
-        const vObj = verletVertices[i];
-        posArr[3 * i]     = vObj.position.x;
-        posArr[3 * i + 1] = vObj.position.y;
-        posArr[3 * i + 2] = vObj.position.z;
-        paramArr[3 * i]     = vObj.isFixed ? 1 : 0;
-        paramArr[3 * i + 1] = vObj.springIds.length;
-        paramArr[3 * i + 2] = springList.length;
-        for (const s of vObj.springIds) springList.push(s);
-      }
+		// --------------------------------------------------
+		// 6) COMPUTE‐SHADERS (VERLET SIMULATION)
+		// --------------------------------------------------
+		function setupUniforms() {
+			dampeningUniform      = uniform(0.99);
+			spherePositionUniform = uniform(new THREE.Vector3(0, 0, 0));
+			sphereUniform         = uniform(1.0);
+			windUniform           = uniform(1.0);
+			stiffnessUniform      = uniform(0.2);
+		}
 
-      vertexPositionBuffer = instancedArray(posArr, 'vec3').setPBO(true);
-      vertexForceBuffer    = instancedArray(vertexCount, 'vec3');
-      vertexParamsBuffer   = instancedArray(paramArr, 'uvec3');
-      springListBuffer     = instancedArray(new Uint32Array(springList), 'uint').setPBO(true);
-    }
+		function setupComputeShaders() {
+			const vertexCount = verletVertices.length;
+			const springCount = verletSprings.length;
 
-    //———————————————————————
-    // setupVerletSpringBuffers()
-    //———————————————————————
-    function setupVerletSpringBuffers() {
-      const springCount = verletSprings.length;
-      const idArr = new Uint32Array(springCount * 2);
-      const restArr = new Float32Array(springCount);
-      for (let i = 0; i < springCount; i++) {
-        const s = verletSprings[i];
-        idArr[2 * i]     = s.vertex0.id;
-        idArr[2 * i + 1] = s.vertex1.id;
-        restArr[i] = s.vertex0.position.distanceTo(s.vertex1.position);
-      }
-      springVertexIdBuffer = instancedArray(idArr, 'uvec2').setPBO(true);
-      springRestLengthBuffer = instancedArray(restArr, 'float');
-      springForceBuffer = instancedArray(springCount * 3, 'vec3').setPBO(true);
-    }
+			computeSpringForces = Fn(() => {
+				If(instanceIndex.greaterThanEqual(uint(springCount)), () => Return());
+				const vertexIds  = springVertexIdBuffer.element(instanceIndex);
+				const restLength = springRestLengthBuffer.element(instanceIndex);
+				const v0pos      = vertexPositionBuffer.element(vertexIds.x);
+				const v1pos      = vertexPositionBuffer.element(vertexIds.y);
+				const delta      = v1pos.sub(v0pos).toVar();
+				const dist       = delta.length().max(0.000001).toVar();
+				const force      = dist.sub(restLength).mul(stiffnessUniform).mul(delta).mul(0.5).div(dist);
+				springForceBuffer.element(instanceIndex).assign(force);
+			})().compute(springCount);
 
-    //———————————————————————
-    // setupUniforms()
-    //———————————————————————
-    function setupUniforms() {
-      dampeningUniform = uniform(0.99);
-      spherePositionUniform = uniform(new THREE.Vector3(0, 0, 0));
-      sphereUniform = uniform(1.0);
-      windUniform = uniform(params.wind);
-      stiffnessUniform = uniform(params.stiffness);
-    }
+			computeVertexForces = Fn(() => {
+				If(instanceIndex.greaterThanEqual(uint(vertexCount)), () => Return());
+				const paramsLocal   = vertexParamsBuffer.element(instanceIndex).toVar();
+				const isFixedLocal  = paramsLocal.x;
+				const springCountL  = paramsLocal.y;
+				const springPointer = paramsLocal.z;
+				If(isFixedLocal, () => Return());
 
-    //———————————————————————
-    // setupComputeShaders()
-    //———————————————————————
-    function setupComputeShaders() {
-      const vertexCount = verletVertices.length;
-      const springCount = verletSprings.length;
+				const position = vertexPositionBuffer.element(instanceIndex).toVar('vertexPosition');
+				const force    = vertexForceBuffer.element(instanceIndex).toVar('vertexForce');
+				force.mulAssign(dampeningUniform);
 
-      // 1) computeSpringForces
-      computeSpringForces = Fn(() => {
-        If(instanceIndex.greaterThanEqual(uint(springCount)), () => Return());
-        const vv = springVertexIdBuffer.element(instanceIndex);
-        const rest = springRestLengthBuffer.element(instanceIndex);
-        const p0 = vertexPositionBuffer.element(vv.x);
-        const p1 = vertexPositionBuffer.element(vv.y);
-        const delta = p1.sub(p0).toVar();
-        const dist = delta.length().max(0.000001).toVar();
-        const force = dist.sub(rest).mul(stiffnessUniform).mul(delta).mul(0.5).div(dist);
-        springForceBuffer.element(instanceIndex).assign(force);
-      })().compute(springCount);
+				const ptrStart = springPointer.toVar('ptrStart');
+				const ptrEnd   = ptrStart.add(springCountL).toVar('ptrEnd');
+				Loop({ start: ptrStart, end: ptrEnd, type: 'uint', condition: '<' }, ({ i }) => {
+					const springId      = springListBuffer.element(i).toVar('springId');
+					const springForceV  = springForceBuffer.element(springId);
+					const springVertexI = springVertexIdBuffer.element(springId);
+					const factor        = select(springVertexI.x.equal(instanceIndex), 1.0, -1.0);
+					force.addAssign(springForceV.mul(factor));
+				});
 
-      // 2) computeVertexForces
-      computeVertexForces = Fn(() => {
-        If(instanceIndex.greaterThanEqual(uint(vertexCount)), () => Return());
-        const pr = vertexParamsBuffer.element(instanceIndex).toVar();
-        const isF = pr.x;
-        const sc = pr.y;
-        const sp = pr.z;
-        If(isF, () => Return());
+				// gravity
+				force.y.subAssign(0.00005);
+				// wind
+				const noise     = triNoise3D(position, 1, time).sub(0.2).mul(0.0001);
+				const windForce = noise.mul(windUniform);
+				force.z.subAssign(windForce);
 
-        const pos = vertexPositionBuffer.element(instanceIndex).toVar('vp');
-        const f   = vertexForceBuffer.element(instanceIndex).toVar('vf');
-        f.mulAssign(dampeningUniform);
+				// collision with sphere
+				const deltaSphere = position.add(force).sub(spherePositionUniform);
+				const dist        = deltaSphere.length();
+				const sphereForce = float(sphereRadius).sub(dist).max(0).mul(deltaSphere).div(dist).mul(sphereUniform);
+				force.addAssign(sphereForce);
 
-        const start = sp.toVar('st');
-        const end   = start.add(sc).toVar('en');
-        Loop({ start, end, type: 'uint', condition: '<' }, ({ i }) => {
-          const sID = springListBuffer.element(i).toVar('sid');
-          const sf = springForceBuffer.element(sID);
-          const vIDs = springVertexIdBuffer.element(sID);
-          const factor = select(vIDs.x.equal(instanceIndex), 1.0, -1.0);
-          f.addAssign(sf.mul(factor));
-        });
+				vertexForceBuffer.element(instanceIndex).assign(force);
+				vertexPositionBuffer.element(instanceIndex).addAssign(force);
+			})().compute(vertexCount);
+		}
 
-        // gravity
-        f.y.subAssign(0.00005);
-        // wind
-        const noise = triNoise3D(pos, 1, time).sub(0.2).mul(0.0001);
-        const windForce = noise.mul(windUniform);
-        f.z.subAssign(windForce);
-        // collision w/ sphere
-        const dS = pos.add(f).sub(spherePositionUniform);
-        const dLen = dS.length();
-        const sF = float(0.15).sub(dLen).max(0).mul(dS).div(dLen).mul(sphereUniform);
-        f.addAssign(sF);
+		// --------------------------------------------------
+		// 7) RENDER LOOP
+		// --------------------------------------------------
+		async function render() {
+			// Show/hide the sphere:
+			sphere.visible = params.sphere;
+			sphereUniform.value = params.sphere ? 1 : 0;
 
-        vertexForceBuffer.element(instanceIndex).assign(f);
-        vertexPositionBuffer.element(instanceIndex).addAssign(f);
-      })().compute(vertexCount);
-    }
+			// Update wind uniform:
+			windUniform.value = params.wind;
 
-    //———————————————————————
-    // setupWireframe()
-    //———————————————————————
-    function setupWireframe() {
-      // 1) vertex sprites
-      const spriteMat = new THREE.SpriteNodeMaterial();
-      spriteMat.positionNode = vertexPositionBuffer.element(instanceIndex);
-      vertexWireframeObject = new THREE.Mesh(new THREE.PlaneGeometry(0.005, 0.005), spriteMat);
-      vertexWireframeObject.frustumCulled = false;
-      vertexWireframeObject.count = verletVertices.length;
-      scene.add(vertexWireframeObject);
+			// Show/hide the cloth mesh:
+			clothMesh.visible = !params.wireframe;
 
-      // 2) spring lines
-      const linePos = new Float32Array([0, 0, 0, 0, 0, 0]);
-      const lineIdx = new Uint32Array([0, 1]);
-      const springMat = new THREE.LineBasicNodeMaterial();
-      springMat.positionNode = Fn(() => {
-        const p = springVertexIdBuffer.element(instanceIndex);
-        const pick = select(attribute('vertexIndex').equal(0), p.x, p.y);
-        return vertexPositionBuffer.element(pick);
-      })();
+			// Toggle wireframe objects if they exist:
+			if (vertexWireframeObject) vertexWireframeObject.visible = params.wireframe;
+			if (springWireframeObject) springWireframeObject.visible = params.wireframe;
 
-      const lineGeo = new THREE.InstancedBufferGeometry();
-      lineGeo.setAttribute('position', new THREE.BufferAttribute(linePos, 3, false));
-      lineGeo.setAttribute('vertexIndex', new THREE.BufferAttribute(lineIdx, 1, false));
-      lineGeo.instanceCount = verletSprings.length;
+			const deltaTime = Math.min(clock.getDelta(), 1 / 60);
+			const stepsPerSecond = 360;
+			const timePerStep = 1 / stepsPerSecond;
 
-      springWireframeObject = new THREE.Line(lineGeo, springMat);
-      springWireframeObject.frustumCulled = false;
-      springWireframeObject.count = verletSprings.length;
-      scene.add(springWireframeObject);
-    }
+			timeSinceLastStep += deltaTime; // <-- corrected typo here
+			while (timeSinceLastStep >= timePerStep) {
+				timestamp += timePerStep;
+				timeSinceLastStep -= timePerStep;
+				updateSphere();
+				await renderer.computeAsync(computeSpringForces);
+				await renderer.computeAsync(computeVertexForces);
+			}
 
-    //———————————————————————
-    // setupSphere()
-    //———————————————————————
-    function setupSphere() {
-      const geometry = new THREE.IcosahedronGeometry(0.15 * 0.95, 4);
-      const material = new THREE.MeshStandardNodeMaterial();
-      sphere = new THREE.Mesh(geometry, material);
-      scene.add(sphere);
-    }
+			await renderer.renderAsync(scene, camera);
+		}
 
-    //———————————————————————
-    // onWindowResize()
-    //———————————————————————
-    function onWindowResize() {
-      camera.aspect = window.innerWidth / window.innerHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
-    }
+		function updateSphere() {
+			sphere.position.set(Math.sin(timestamp * 2.1) * 0.1, 0, Math.sin(timestamp * 0.8));
+			spherePositionUniform.value.copy(sphere.position);
+		}
 
-    //———————————————————————
-    // render() – runs every frame
-    //———————————————————————
-async function render() {
-  stats.begin();
-
-  // Keep sphere on/off & params updating:
-  sphere.visible = params.sphere;
-  sphereUniform.value = params.sphere ? 1 : 0;
-  windUniform.value = params.wind;
-  stiffnessUniform.value = params.stiffness;
-
-  // If cloth is disabled, never step the simulation:
-  const ENABLE_CLOTH = false; // ← same constant as in setupCloth()
-  if (ENABLE_CLOTH) {
-    const deltaTime = Math.min(clock.getDelta(), 1 / 60);
-    const stepsPerSecond = 360;
-    const timePerStep = 1 / stepsPerSecond;
-    timeSinceLastStep += deltaTime;
-
-    while (timeSinceLastStep >= timePerStep) {
-      timestamp += timePerStep;
-      timeSinceLastStep -= timePerStep;
-      updateSphere();
-      await renderer.computeAsync(computeSpringForces);
-      await renderer.computeAsync(computeVertexForces);
-    }
-  }
-
-  // Finally, just render the scene as‐is:
-  await renderer.renderAsync(scene, camera);
-  stats.end();
-}
-  </script>
+		function onWindowResize() {
+			camera.aspect = window.innerWidth / window.innerHeight;
+			camera.updateProjectionMatrix();
+			renderer.setSize(window.innerWidth, window.innerHeight);
+		}
+	</script>
 </body>
+
 </html>
