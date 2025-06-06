@@ -1,739 +1,631 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-	<title>three.js webgpu – compute cloth (meshed patterns)</title>
-	<meta charset="utf-8">
-	<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
-	<style>
-		body {
-			margin: 0;
-			overflow: hidden;
-			background: #888;
-		}
-
-		#info {
-			position: absolute;
-			top: 10px;
-			left: 10px;
-			color: #fff;
-			font-family: sans-serif;
-			z-index: 1;
-		}
-	</style>
+  <title>three.js webgpu – compute cloth (Delaunay with filtered triangles)</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0" />
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: #888;
+    }
+    #info {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      color: #fff;
+      font-family: sans-serif;
+      z-index: 1;
+    }
+  </style>
 </head>
-
 <body>
-	<div id="info">
-		<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> webgpu – compute cloth<br />
-		Full interior mesh per pattern for realistic cloth simulation
-	</div>
-
-	<script type="importmap">
-		{
-			"imports": {
-				"three":        "https://unpkg.com/three@0.173.0/build/three.webgpu.js",
-				"three/webgpu": "https://unpkg.com/three@0.173.0/build/three.webgpu.js",
-				"three/tsl":    "https://unpkg.com/three@0.173.0/build/three.tsl.js",
-				"three/addons/":"https://unpkg.com/three@0.173.0/examples/jsm/"
-			}
-		}
-	</script>
-
-	<script type="module">
-		import * as THREE from 'three';
-		import {
-			Fn, If, Return, instancedArray, instanceIndex,
-			uniform, select, attribute, uint, Loop,
-			float, transformNormalToView, cross, triNoise3D, time
-		} from 'three/tsl';
-		import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
-		import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-		import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
-
-		let renderer, scene, camera, controls;
-		const sphereRadius = 0.15;
-
-		let vertexPositionBuffer, vertexForceBuffer, vertexParamsBuffer;
-		let springVertexIdBuffer, springRestLengthBuffer, springForceBuffer;
-		let springListBuffer;
-		let computeSpringForces, computeVertexForces;
-		let dampeningUniform, spherePositionUniform, stiffnessUniform, sphereUniform, windUniform;
-		let vertexWireframeObject, springWireframeObject;
-		let clothMesh, clothMaterial, sphere;
-		let timeSinceLastStep = 0;
-		let timestamp = 0;
-
-		// These arrays hold the “Verlet” data:
-		const verletVertices = [];
-		const verletSprings = [];
-		const verletVertexColumns = []; // per‐pattern grid maps
-
-		const clock = new THREE.Clock();
-
-		const params = {
-			wireframe: false,
-			sphere: true,
-			wind: 1.0,
-		};
-
-		// After loading JSON, this will hold patterns/seams:
-		let patternData = null;
-
-		// ─────────────────────────────────────────────────────────────────────────
-		// 1) LOAD THE JSON (patterns_with_seams.json)
-		// ─────────────────────────────────────────────────────────────────────────
-		async function loadConfig() {
-			try {
-				const response = await fetch('./patterns_with_seams.json');
-				if (!response.ok) {
-					throw new Error(`HTTP ${response.status} – ${response.statusText}`);
-				}
-				patternData = await response.json();
-				console.log('Loaded JSON data:', patternData);
-			} catch (err) {
-				console.error('Failed to load patterns_with_seams.json:', err);
-			}
-		}
-
-		// Kick things off:
-		init();
-
-		// ─────────────────────────────────────────────────────────────────────────
-		// 2) INITIALIZATION: Scene, Camera, Renderer, Load JSON, Build Cloth
-		// ─────────────────────────────────────────────────────────────────────────
-		async function init() {
-			await loadConfig();
-
-			// ─── RENDERER ─────────────────────────────────────────────────────
-			renderer = new THREE.WebGPURenderer({ antialias: true });
-			renderer.setPixelRatio(window.devicePixelRatio);
-			renderer.setSize(window.innerWidth, window.innerHeight);
-			renderer.toneMapping = THREE.NeutralToneMapping;
-			renderer.toneMappingExposure = 1;
-			document.body.appendChild(renderer.domElement);
-
-			// ─── SCENE ────────────────────────────────────────────────────────
-			scene = new THREE.Scene();
-
-			// ─── CAMERA ───────────────────────────────────────────────────────
-			camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.01, 10);
-			camera.position.set(-1.6, -0.1, -1.6);
-
-			// ─── CONTROLS ─────────────────────────────────────────────────────
-			controls = new OrbitControls(camera, renderer.domElement);
-			controls.minDistance = 1;
-			controls.maxDistance = 3;
-			controls.target.set(0, -0.1, 0);
-			controls.update();
-
-			// ─── HDR ENVIRONMENT ───────────────────────────────────────────────
-			const rgbeLoader = new RGBELoader().setPath('textures/equirectangular/');
-			const hdrTexture = await rgbeLoader.loadAsync('royal_esplanade_1k.hdr');
-			hdrTexture.mapping = THREE.EquirectangularReflectionMapping;
-			scene.background = hdrTexture;
-			scene.backgroundBlurriness = 0.5;
-			scene.environment = hdrTexture;
-
-			// ─── BUILD & SETUP THE “MESHED” VERTEX‐BASED PHYSICS (VERLET) ───────
-			setupVerletGeometryFromJSON();
-			setupVerletVertexBuffers();
-			setupVerletSpringBuffers();
-			setupUniforms();
-			setupComputeShaders();
-			setupWireframe();               // optional: shows vertices & springs as a wireframe
-			setupClothMeshFromJSON();
-			setupSphere();
-
-			// ─── GUI ───────────────────────────────────────────────────────────
-			const gui = new GUI();
-			gui.add(stiffnessUniform, 'value', 0.1, 0.5, 0.01).name('stiffness');
-			gui.add(params, 'wireframe');
-			gui.add(params, 'sphere');
-			gui.add(params, 'wind', 0, 5, 0.1);
-
-			const materialFolder = gui.addFolder('material');
-			materialFolder.addColor(clothMaterial, 'color');
-			materialFolder.add(clothMaterial, 'roughness', 0.0, 1, 0.01);
-			materialFolder.add(clothMaterial, 'sheen', 0.0, 1, 0.01);
-			materialFolder.add(clothMaterial, 'sheenRoughness', 0.0, 1, 0.01);
-			materialFolder.addColor(clothMaterial, 'sheenColor');
-
-			window.addEventListener('resize', onWindowResize);
-			renderer.setAnimationLoop(render);
-		}
-
-		// ─────────────────────────────────────────────────────────────────────────
-		// 3) SETUP VERTEX‐BASED PHYSICS (VERLET) FROM JSON, BUT MESH THE INTERIOR
-		// ─────────────────────────────────────────────────────────────────────────
-		function setupVerletGeometryFromJSON() {
-			// Clear any prior data
-			verletVertices.length = 0;
-			verletSprings.length = 0;
-			verletVertexColumns.length = 0;
-
-			//
-			// A) FIRST PASS: find global bounding‐box of all points so we can normalize
-			//
-			let minX = Infinity, maxX = -Infinity;
-			let minY = Infinity, maxY = -Infinity;
-			patternData.patterns.forEach(pattern => {
-				pattern.points.forEach(pt => {
-					minX = Math.min(minX, pt.x);
-					maxX = Math.max(maxX, pt.x);
-					minY = Math.min(minY, pt.y);
-					maxY = Math.max(maxY, pt.y);
-				});
-			});
-			const centerX = (minX + maxX) / 2;
-			const centerY = (minY + maxY) / 2;
-			const span = Math.max(maxX - minX, maxY - minY);
-
-			// We will scale everything by this so our cloth “envelopes” the sphere nicely:
-			const scaleFactor = 1.5;
-			// Starting Y so that the cloth “falls” onto the sphere:
-			const initialY = sphereRadius + 0.5; // ≈ 0.65
-
-			//
-			// B) Helper: Normalize an (x,y) JSON point into three.js coords (x→X, y→Z)
-			//
-			function normalizePoint(pt) {
-				return {
-					x: ((pt.x - centerX) / span) * scaleFactor,
-					z: ((pt.y - centerY) / span) * scaleFactor
-				};
-			}
-
-			//
-			// C) For every pattern, build a THREE.Shape so we can test “.containsPoint” via ShapeUtils
-			//
-			const patternShapes = []; // array of { bounds, contour: Vector2[] }
-
-			patternData.patterns.forEach(pattern => {
-				// Build one Shape per pattern (including Bezier handles if present)
-				const shape = new THREE.Shape();
-				const pts = pattern.points;
-				if (pts.length === 0) {
-					// skip empty pattern
-					patternShapes.push({ bounds: null, contour: [] });
-					return;
-				}
-
-				// 1) Move to first anchor
-				const firstRaw = pts[0];
-				const firstNorm = normalizePoint(firstRaw);
-				shape.moveTo(firstNorm.x, firstNorm.z);
-
-				// 2) For each segment, either lineTo or bezierCurveTo based on handleIn/handleOut
-				for (let i = 1; i < pts.length; i++) {
-					const prevRaw = pts[i - 1];
-					const currRaw = pts[i];
-					const prevNorm = normalizePoint(prevRaw);
-					const currNorm = normalizePoint(currRaw);
-
-					const cp1_abs = {
-						x: prevRaw.x + (prevRaw.handleOut?.dx || 0),
-						y: prevRaw.y + (prevRaw.handleOut?.dy || 0)
-					};
-					const cp2_abs = {
-						x: currRaw.x + (currRaw.handleIn?.dx || 0),
-						y: currRaw.y + (currRaw.handleIn?.dy || 0)
-					};
-
-					const hasBezier = (
-						(prevRaw.handleOut && (prevRaw.handleOut.dx !== 0 || prevRaw.handleOut.dy !== 0))
-						|| (currRaw.handleIn && (currRaw.handleIn.dx !== 0 || currRaw.handleIn.dy !== 0))
-					);
-
-					if (hasBezier) {
-						// normalize control points
-						const cp1_norm = {
-							x: ((cp1_abs.x - centerX) / span) * scaleFactor,
-							z: ((cp1_abs.y - centerY) / span) * scaleFactor
-						};
-						const cp2_norm = {
-							x: ((cp2_abs.x - centerX) / span) * scaleFactor,
-							z: ((cp2_abs.y - centerY) / span) * scaleFactor
-						};
-						shape.bezierCurveTo(
-							cp1_norm.x, cp1_norm.z,
-							cp2_norm.x, cp2_norm.z,
-							currNorm.x, currNorm.z
-						);
-					} else {
-						shape.lineTo(currNorm.x, currNorm.z);
-					}
-				}
-
-				// 3) If closed, connect last→first (with Bezier if needed)
-				if (pattern.closed) {
-					const lastRaw = pts[pts.length - 1];
-					const lastNorm = normalizePoint(lastRaw);
-					const cp1_abs_last = {
-						x: lastRaw.x + (lastRaw.handleOut?.dx || 0),
-						y: lastRaw.y + (lastRaw.handleOut?.dy || 0)
-					};
-					const cp2_abs_first = {
-						x: firstRaw.x + (firstRaw.handleIn?.dx || 0),
-						y: firstRaw.y + (firstRaw.handleIn?.dy || 0)
-					};
-
-					const hasClosingBezier = (
-						(lastRaw.handleOut && (lastRaw.handleOut.dx !== 0 || lastRaw.handleOut.dy !== 0))
-						|| (firstRaw.handleIn && (firstRaw.handleIn.dx !== 0 || firstRaw.handleIn.dy !== 0))
-					);
-
-					if (hasClosingBezier) {
-						const cp1_norm_last = {
-							x: ((cp1_abs_last.x - centerX) / span) * scaleFactor,
-							z: ((cp1_abs_last.y - centerY) / span) * scaleFactor
-						};
-						const cp2_norm_first = {
-							x: ((cp2_abs_first.x - centerX) / span) * scaleFactor,
-							z: ((cp2_abs_first.y - centerY) / span) * scaleFactor
-						};
-						shape.bezierCurveTo(
-							cp1_norm_last.x, cp1_norm_last.z,
-							cp2_norm_first.x, cp2_norm_first.z,
-							firstNorm.x, firstNorm.z
-						);
-					} else {
-						shape.lineTo(firstNorm.x, firstNorm.z);
-					}
-				}
-
-				// 4) Compute this shape’s 2D bounding box (in normalized coords)
-				const ptsNorm = pts.map(p => normalizePoint(p));
-				let pMinX = Infinity, pMaxX = -Infinity, pMinZ = Infinity, pMaxZ = -Infinity;
-				ptsNorm.forEach(nn => {
-					pMinX = Math.min(pMinX, nn.x);
-					pMaxX = Math.max(pMaxX, nn.x);
-					pMinZ = Math.min(pMinZ, nn.z);
-					pMaxZ = Math.max(pMaxZ, nn.z);
-				});
-
-				// 5) Precompute a “contour” of Vector2 points for isPointInside()
-				//    Use, for example, 50 segments to capture curves accurately.
-				const contourPoints = shape.getPoints(50);
-
-				patternShapes.push({
-					bounds: { minX: pMinX, maxX: pMaxX, minZ: pMinZ, maxZ: pMaxZ },
-					contour: contourPoints
-				});
-			});
-
-			//
-			// D) GRID RESOLUTION: how fine we tessellate? (smaller→more realistic but heavier)
-			//
-			const gridSpacing = 0.05; // try 0.03, 0.05, 0.1, etc.
-
-			//
-			// E) SECOND PASS: for each pattern, fill with grid points *inside* its Shape
-			//
-			patternShapes.forEach((pat, patIndex) => {
-				const { bounds, contour } = pat;
-				if (!bounds) {
-					// empty shape, skip
-					verletVertexColumns.push([]);
-					return;
-				}
-
-				const { minX: bx0, maxX: bx1, minZ: bz0, maxZ: bz1 } = bounds;
-				const cols = Math.floor((bx1 - bx0) / gridSpacing) + 1;
-				const rows = Math.floor((bz1 - bz0) / gridSpacing) + 1;
-
-				// A 2D array of “null” or a vertex‐ID
-				const gridMap = Array(cols).fill(null).map(() => Array(rows).fill(null));
-
-				for (let i = 0; i < cols; i++) {
-					const x = bx0 + i * gridSpacing;
-					for (let j = 0; j < rows; j++) {
-						const z = bz0 + j * gridSpacing;
-						// TEST: is (x,z) inside the shape’s contour?
-						if (THREE.ShapeUtils.isPointInside(new THREE.Vector2(x, z), contour)) {
-							// Create a new Verlet vertex at (x, initialY, z)
-							const id = verletVertices.length;
-							const vertex = {
-								id,
-								position: new THREE.Vector3(x, initialY, z),
-								isFixed: false,
-								springIds: []
-							};
-							// Store the JSON‐point id? (optional, only if we need “seams” by JSON ID)
-							// vertex.jsonId = … 
-							verletVertices.push(vertex);
-							gridMap[i][j] = id;
-						}
-					}
-				}
-
-				// Now connect springs to neighbors (4‐way + 4 diagonals for shear):
-				for (let i = 0; i < cols; i++) {
-					for (let j = 0; j < rows; j++) {
-						const vid = gridMap[i][j];
-						if (vid === null) continue;
-
-						// Horizontal neighbor (i+1, j)
-						if (i + 1 < cols && gridMap[i + 1][j] !== null) {
-							addVerletSpringById(vid, gridMap[i + 1][j]);
-						}
-						// Vertical neighbor (i, j+1)
-						if (j + 1 < rows && gridMap[i][j + 1] !== null) {
-							addVerletSpringById(vid, gridMap[i][j + 1]);
-						}
-						// Diagonal-right‐up (i+1, j+1)
-						if (i + 1 < cols && j + 1 < rows && gridMap[i + 1][j + 1] !== null) {
-							addVerletSpringById(vid, gridMap[i + 1][j + 1]);
-						}
-						// Diagonal-right‐down (i+1, j-1)
-						if (i + 1 < cols && j - 1 >= 0 && gridMap[i + 1][j - 1] !== null) {
-							addVerletSpringById(vid, gridMap[i + 1][j - 1]);
-						}
-					}
-				}
-
-				// Save this 2D map so we can triangulate later
-				verletVertexColumns.push(gridMap);
-			});
-
-			//
-			// F) FINALLY: ALSO ADD “SEAM” SPRINGS BETWEEN PATTERNS (if applicable)
-			//    If your JSON’s “seams” array references JSON‐point IDs, you need a mapping
-			//    from JSON ID → the new vertex ID in verletVertices[]. If you stored that in
-			//    each vertex (e.g. vertex.jsonId), just look it up here:
-			//
-			if (patternData.seams) {
-				patternData.seams.forEach(seamPair => {
-					seamPair.forEach(([idA, idB]) => {
-						const vA = verletVertices.find(v => v.jsonId === idA);
-						const vB = verletVertices.find(v => v.jsonId === idB);
-						if (vA && vB) {
-							addVerletSpringById(vA.id, vB.id);
-						}
-					});
-				});
-			}
-		}
-
-		// Helper: add a spring between two existing verlet‐vertices by ID
-		function addVerletSpringById(i0, i1) {
-			const v0 = verletVertices[i0];
-			const v1 = verletVertices[i1];
-			if (!v0 || !v1) return;
-			// Prevent duplicates:
-			for (let sid of v0.springIds) {
-				const sp = verletSprings[sid];
-				if ((sp.vertex0.id === i0 && sp.vertex1.id === i1) ||
-					(sp.vertex0.id === i1 && sp.vertex1.id === i0)) {
-					return;
-				}
-			}
-			const id = verletSprings.length;
-			const spring = { id, vertex0: v0, vertex1: v1 };
-			v0.springIds.push(id);
-			v1.springIds.push(id);
-			verletSprings.push(spring);
-		}
-
-		// ─────────────────────────────────────────────────────────────────────────
-		// 4) SETUP THE VERTEX BUFFERS FOR THE COMPUTE‐SHADERS
-		// ─────────────────────────────────────────────────────────────────────────
-		function setupVerletVertexBuffers() {
-			const vertexCount = verletVertices.length;
-			const springListArray = [];
-			const vertexPositionArray = new Float32Array(vertexCount * 3);
-			const vertexParamsArray = new Uint32Array(vertexCount * 3);
-
-			for (let i = 0; i < vertexCount; i++) {
-				const vertex = verletVertices[i];
-				vertexPositionArray[i * 3] = vertex.position.x;
-				vertexPositionArray[i * 3 + 1] = vertex.position.y;
-				vertexPositionArray[i * 3 + 2] = vertex.position.z;
-				vertexParamsArray[i * 3] = vertex.isFixed ? 1 : 0;
-				if (!vertex.isFixed) {
-					vertexParamsArray[i * 3 + 1] = vertex.springIds.length;
-					vertexParamsArray[i * 3 + 2] = springListArray.length;
-					springListArray.push(...vertex.springIds);
-				}
-			}
-
-			vertexPositionBuffer = instancedArray(vertexPositionArray, 'vec3').setPBO(true);
-			vertexForceBuffer = instancedArray(vertexCount, 'vec3');
-			vertexParamsBuffer = instancedArray(vertexParamsArray, 'uvec3');
-			springListBuffer = instancedArray(new Uint32Array(springListArray), 'uint').setPBO(true);
-		}
-
-		function setupVerletSpringBuffers() {
-			const springCount = verletSprings.length;
-			const springVertexIdArray = new Uint32Array(springCount * 2);
-			const springRestLengthArray = new Float32Array(springCount);
-
-			for (let i = 0; i < springCount; i++) {
-				const spring = verletSprings[i];
-				springVertexIdArray[i * 2] = spring.vertex0.id;
-				springVertexIdArray[i * 2 + 1] = spring.vertex1.id;
-				springRestLengthArray[i] = spring.vertex0.position.distanceTo(spring.vertex1.position);
-			}
-
-			springVertexIdBuffer = instancedArray(springVertexIdArray, 'uvec2').setPBO(true);
-			springRestLengthBuffer = instancedArray(springRestLengthArray, 'float');
-			springForceBuffer = instancedArray(springCount * 3, 'vec3').setPBO(true);
-		}
-
-		// ─────────────────────────────────────────────────────────────────────────
-		// 5) BUILD & ADD THE CLOTH “MESH” FROM THE GRIDED VERTICES
-		// ─────────────────────────────────────────────────────────────────────────
-		function setupClothMeshFromJSON() {
-			// Remove any old clothMesh if present
-			if (clothMesh) {
-				scene.remove(clothMesh);
-				clothMesh.geometry.dispose();
-				clothMesh.material.dispose();
-				clothMesh = null;
-			}
-
-			//
-			// A) We know verletVertices[] contains all our “grid” vertices in correct order.
-			//    Build one BufferGeometry whose vertex count = verletVertices.length.
-			//
-			const totalVerts = verletVertices.length;
-			const geometry = new THREE.BufferGeometry();
-
-			// 1) Build a “vertexId” attribute so each rendered vertex knows which Verlet‐index to fetch
-			const vertexIdArray = new Uint32Array(totalVerts);
-			for (let i = 0; i < totalVerts; i++) {
-				vertexIdArray[i] = i;
-			}
-			geometry.setAttribute('vertexId', new THREE.BufferAttribute(vertexIdArray, 1, false));
-
-			// 2) Build the index buffer (triangulate each grid cell)
-			const indices = [];
-
-			// Walk through each pattern’s gridMap (stored in verletVertexColumns):
-			for (let patIndex = 0; patIndex < verletVertexColumns.length; patIndex++) {
-				const gridMap = verletVertexColumns[patIndex];
-				if (!Array.isArray(gridMap) || gridMap.length === 0) continue;
-
-				const cols = gridMap.length;
-				const rows = gridMap[0].length;
-
-				for (let i = 0; i < cols - 1; i++) {
-					for (let j = 0; j < rows - 1; j++) {
-						const v00 = gridMap[i][j];
-						const v10 = gridMap[i + 1][j];
-						const v01 = gridMap[i][j + 1];
-						const v11 = gridMap[i + 1][j + 1];
-						if (v00 !== null && v10 !== null && v01 !== null) {
-							// Triangle (v00, v10, v01)
-							indices.push(v00, v10, v01);
-						}
-						if (v10 !== null && v11 !== null && v01 !== null) {
-							// Triangle (v10, v11, v01)
-							indices.push(v10, v11, v01);
-						}
-					}
-				}
-			}
-
-			const indexArray = new Uint32Array(indices);
-			geometry.setIndex(new THREE.BufferAttribute(indexArray, 1));
-
-			// 3) We do NOT set a static “position” attribute—
-			//    our NodeMaterial will fetch positions on the GPU via vertexPositionBuffer.
-
-			// 4) Create a NodeMaterial that uses “vertexId” → vertexPositionBuffer
-			clothMaterial = new THREE.MeshPhysicalNodeMaterial({
-				color: 0x204080,
-				side: THREE.DoubleSide,
-				transparent: true,
-				opacity: 0.85,
-				sheen: 1.0,
-				sheenRoughness: 0.5,
-				sheenColor: 0xffffff
-			});
-
-			// Override positionNode so each vertex fetches its current position from the GPU buffer
-			clothMaterial.positionNode = Fn(() => {
-				const vid = attribute('vertexId');
-				return vertexPositionBuffer.element(vid);
-			})();
-
-			// ─── NOTE ON NORMALS ─────────────────────────────────────────────────
-			// Because we only override positionNode, the “static” normals baked into this geometry
-			// WILL NOT UPDATE as the cloth deforms. If you want correct lighting, you need a normalNode
-			// that samples from neighboring vertices (e.g. fetch +x & +z neighbors and cross). This code
-			// leaves static normals, which still show the cloth moving—just shading may look slightly off.
-			// You can add a `normalNode` block here later if you need perfect shading.
-
-			// 5) Finally create the mesh and add it
-			clothMesh = new THREE.Mesh(geometry, clothMaterial);
-			clothMesh.frustumCulled = false;
-			scene.add(clothMesh);
-		}
-
-		// ─────────────────────────────────────────────────────────────────────────
-		// 6) SPHERE FOR COLLISION
-		// ─────────────────────────────────────────────────────────────────────────
-		function setupSphere() {
-			const geometry = new THREE.IcosahedronGeometry(sphereRadius * 0.95, 4);
-			const material = new THREE.MeshStandardNodeMaterial();
-			sphere = new THREE.Mesh(geometry, material);
-			scene.add(sphere);
-		}
-
-		// ─────────────────────────────────────────────────────────────────────────
-		// 7) COMPUTE‐SHADERS (VERLET SIMULATION)
-		// ─────────────────────────────────────────────────────────────────────────
-		function setupUniforms() {
-			dampeningUniform = uniform(0.99);
-			spherePositionUniform = uniform(new THREE.Vector3(0, 0, 0));
-			sphereUniform = uniform(1.0);
-			windUniform = uniform(1.0);
-			stiffnessUniform = uniform(0.2);
-		}
-
-		function setupComputeShaders() {
-			const vertexCount = verletVertices.length;
-			const springCount = verletSprings.length;
-
-			// 1) computeSpringForces
-			computeSpringForces = Fn(() => {
-				If(instanceIndex.greaterThanEqual(uint(springCount)), () => {
-					Return();
-				});
-				const vertexIds = springVertexIdBuffer.element(instanceIndex);
-				const restLength = springRestLengthBuffer.element(instanceIndex);
-				const v0pos = vertexPositionBuffer.element(vertexIds.x);
-				const v1pos = vertexPositionBuffer.element(vertexIds.y);
-				const delta = v1pos.sub(v0pos).toVar();
-				const dist = delta.length().max(0.000001).toVar();
-				const force = dist.sub(restLength).mul(stiffnessUniform).mul(delta).mul(0.5).div(dist);
-				springForceBuffer.element(instanceIndex).assign(force);
-			})().compute(springCount);
-
-			// 2) computeVertexForces
-			computeVertexForces = Fn(() => {
-				If(instanceIndex.greaterThanEqual(uint(vertexCount)), () => {
-					Return();
-				});
-				const paramsLocal = vertexParamsBuffer.element(instanceIndex).toVar();
-				const isFixedLocal = paramsLocal.x;
-				const springCountL = paramsLocal.y;
-				const springPointer = paramsLocal.z;
-				If(isFixedLocal, () => {
-					Return();
-				});
-
-				const position = vertexPositionBuffer.element(instanceIndex).toVar('vertexPosition');
-				const force = vertexForceBuffer.element(instanceIndex).toVar('vertexForce');
-				force.mulAssign(dampeningUniform);
-
-				const ptrStart = springPointer.toVar('ptrStart');
-				const ptrEnd = ptrStart.add(springCountL).toVar('ptrEnd');
-				Loop({ start: ptrStart, end: ptrEnd, type: 'uint', condition: '<' }, ({ i }) => {
-					const springId = springListBuffer.element(i).toVar('springId');
-					const springForceV = springForceBuffer.element(springId);
-					const springVertexI = springVertexIdBuffer.element(springId);
-					const factor = select(springVertexI.x.equal(instanceIndex), 1.0, -1.0);
-					force.addAssign(springForceV.mul(factor));
-				});
-
-				// gravity
-				force.y.subAssign(0.00005);
-				// wind
-				const noise = triNoise3D(position, 1, time).sub(0.2).mul(0.0001);
-				const windForce = noise.mul(windUniform);
-				force.z.subAssign(windForce);
-
-				// collision with sphere
-				const deltaSphere = position.add(force).sub(spherePositionUniform);
-				const dist = deltaSphere.length();
-				const sphereForce = float(sphereRadius).sub(dist).max(0).mul(deltaSphere).div(dist).mul(sphereUniform);
-				force.addAssign(sphereForce);
-
-				vertexForceBuffer.element(instanceIndex).assign(force);
-				vertexPositionBuffer.element(instanceIndex).addAssign(force);
-			})().compute(vertexCount);
-		}
-
-		// ─────────────────────────────────────────────────────────────────────────
-		// 8) OPTIONAL: WIREFRAME VISUALIZATION OF VERTICES & SPRINGS
-		// ─────────────────────────────────────────────────────────────────────────
-		function setupWireframe() {
-			// (a) SHOW each Verlet vertex as a tiny sprite:
-			const vertexWireframeMaterial = new THREE.SpriteNodeMaterial();
-			vertexWireframeMaterial.positionNode = vertexPositionBuffer.element(instanceIndex);
-			vertexWireframeObject = new THREE.Mesh(new THREE.PlaneGeometry(0.01, 0.01), vertexWireframeMaterial);
-			vertexWireframeObject.frustumCulled = false;
-			vertexWireframeObject.count = verletVertices.length;
-			scene.add(vertexWireframeObject);
-
-			// (b) SHOW each spring as a line:
-			const springWireframePositionBuffer = new THREE.BufferAttribute(new Float32Array(6), 3, false);
-			const springWireframeIndexBuffer = new THREE.BufferAttribute(new Uint32Array([0, 1]), 1, false);
-			const springWireframeMaterial = new THREE.LineBasicNodeMaterial();
-			springWireframeMaterial.positionNode = Fn(() => {
-				const vertexIds = springVertexIdBuffer.element(instanceIndex);
-				const vertexId = select(attribute('vertexIndex').equal(0), vertexIds.x, vertexIds.y);
-				return vertexPositionBuffer.element(vertexId);
-			})();
-
-			const springWireframeGeometry = new THREE.InstancedBufferGeometry();
-			springWireframeGeometry.setAttribute('position', springWireframePositionBuffer);
-			springWireframeGeometry.setAttribute('vertexIndex', springWireframeIndexBuffer);
-			springWireframeGeometry.instanceCount = verletSprings.length;
-
-			springWireframeObject = new THREE.Line(springWireframeGeometry, springWireframeMaterial);
-			springWireframeObject.frustumCulled = false;
-			springWireframeObject.count = verletSprings.length;
-			scene.add(springWireframeObject);
-		}
-
-		// ─────────────────────────────────────────────────────────────────────────
-		// 9) THE RENDER LOOP
-		// ─────────────────────────────────────────────────────────────────────────
-		async function render() {
-			// Show/hide the sphere
-			sphere.visible = params.sphere;
-			sphereUniform.value = params.sphere ? 1 : 0;
-
-			// Update wind
-			windUniform.value = params.wind;
-
-			// Show/hide cloth mesh
-			clothMesh.visible = !params.wireframe;
-
-			// Toggle wireframe (if present)
-			if (vertexWireframeObject) vertexWireframeObject.visible = params.wireframe;
-			if (springWireframeObject) springWireframeObject.visible = params.wireframe;
-
-			const deltaTime = Math.min(clock.getDelta(), 1 / 60);
-			const stepsPerSecond = 360;
-			const timePerStep = 1 / stepsPerSecond;
-
-			timeSinceLastStep += deltaTime;
-			while (timeSinceLastStep >= timePerStep) {
-				timestamp += timePerStep;
-				timeSinceLastStep -= timePerStep;
-				updateSphere();
-				await renderer.computeAsync(computeSpringForces);
-				await renderer.computeAsync(computeVertexForces);
-			}
-
-			await renderer.renderAsync(scene, camera);
-		}
-
-		function updateSphere() {
-			sphere.position.set(Math.sin(timestamp * 2.1) * 0.1, 0, Math.sin(timestamp * 0.8));
-			spherePositionUniform.value.copy(sphere.position);
-		}
-
-		function onWindowResize() {
-			camera.aspect = window.innerWidth / window.innerHeight;
-			camera.updateProjectionMatrix();
-			renderer.setSize(window.innerWidth, window.innerHeight);
-		}
-	</script>
+  <div id="info">
+    <a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> webgpu – compute cloth<br />
+    Smooth boundary + corrected Delaunay (triangles outside removed)
+  </div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three":         "https://unpkg.com/three@0.173.0/build/three.webgpu.js",
+      "three/webgpu":  "https://unpkg.com/three@0.173.0/build/three.webgpu.js",
+      "three/tsl":     "https://unpkg.com/three@0.173.0/build/three.tsl.js",
+      "three/addons/": "https://unpkg.com/three@0.173.0/examples/jsm/",
+      "delaunator":    "https://esm.sh/delaunator@5.0.0"
+    }
+  }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import {
+      Fn, If, Return, instancedArray, instanceIndex,
+      uniform, select, attribute, uint, Loop,
+      float, triNoise3D, time
+    } from 'three/tsl';
+    import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+    import Delaunator from 'delaunator';
+
+    let renderer, scene, camera, controls;
+    const sphereRadius = 0.15;
+
+    let vertexPositionBuffer, vertexForceBuffer, vertexParamsBuffer;
+    let springListBuffer, springVertexIdBuffer, springRestLengthBuffer, springForceBuffer;
+    let computeSpringForces, computeVertexForces;
+    let dampeningUniform, spherePositionUniform, stiffnessUniform, sphereUniform, windUniform;
+    let clothMesh, clothMaterial, sphere;
+    let triangleWireframe;
+
+    let timeSinceLastStep = 0;
+    let timestamp = 0;
+
+    const verletVertices = [];
+    const verletSprings = [];
+    const clock = new THREE.Clock();
+
+    const params = {
+      showWireframe: false,
+      sphere: true,
+      wind: 1.0,
+      stiffness: 0.2
+    };
+
+    let patternData = null;
+    let normalizePoint;
+
+    // ────────────────────────────────────────────────────────────────────────
+    // Utility: pointInPolygon for 2D array of {x, y}
+    // ────────────────────────────────────────────────────────────────────────
+    function pointInPolygon(px, py, verts) {
+      let inside = false;
+      const n = verts.length;
+      for (let i = 0, j = n - 1; i < n; j = i++) {
+        const xi = verts[i].x, yi = verts[i].y;
+        const xj = verts[j].x, yj = verts[j].y;
+        const intersect =
+          ((yi > py) !== (yj > py)) &&
+          (px < (xj - xi) * (py - yi) / (yj - yi) + xi);
+        if (intersect) inside = !inside;
+      }
+      return inside;
+    }
+
+    async function loadConfig() {
+      try {
+        const response = await fetch('./patterns_with_seams.json');
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status} – ${response.statusText}`);
+        }
+        patternData = await response.json();
+        console.log('Loaded JSON data:', patternData);
+      } catch (err) {
+        console.error('Failed to load patterns_with_seams.json:', err);
+      }
+    }
+
+    init();
+
+    async function init() {
+      await loadConfig();
+
+      // ────────────────────────────────────────────────────────────────────
+      // Compute JSON bounding box → set normalizePoint
+      // ────────────────────────────────────────────────────────────────────
+      let minX = +Infinity, maxX = -Infinity;
+      let minY = +Infinity, maxY = -Infinity;
+      if (patternData && Array.isArray(patternData.patterns)) {
+        patternData.patterns.forEach(pattern => {
+          if (pattern.points) {
+            pattern.points.forEach(pt => {
+              minX = Math.min(minX, pt.x);
+              maxX = Math.max(maxX, pt.x);
+              minY = Math.min(minY, pt.y);
+              maxY = Math.max(maxY, pt.y);
+            });
+          }
+        });
+      }
+      const centerX = (minX + maxX) / 2;
+      const centerY = (minY + maxY) / 2;
+      const width   = maxX - minX;
+      const height  = maxY - minY;
+      const uniformScale = 1.0 / Math.max(width, height);
+      normalizePoint = (pt) => ({
+        x: ((pt.x - centerX) * uniformScale),
+        z: ((pt.y - centerY) * uniformScale)
+      });
+
+      // ────────────────────────────────────────────────────────────────────
+      // Renderer, Scene, Camera, Controls
+      // ────────────────────────────────────────────────────────────────────
+      renderer = new THREE.WebGPURenderer({ antialias: true });
+      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.toneMapping = THREE.NeutralToneMapping;
+      renderer.toneMappingExposure = 1;
+      document.body.appendChild(renderer.domElement);
+
+      scene = new THREE.Scene();
+
+      camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.01, 10);
+      camera.position.set(-1.6, -0.1, -1.6);
+
+      controls = new OrbitControls(camera, renderer.domElement);
+      controls.minDistance = 1;
+      controls.maxDistance = 3;
+      controls.target.set(0, -0.1, 0);
+      controls.update();
+
+      const rgbeLoader = new RGBELoader().setPath('textures/equirectangular/');
+      const hdrTexture = await rgbeLoader.loadAsync('royal_esplanade_1k.hdr');
+      hdrTexture.mapping = THREE.EquirectangularReflectionMapping;
+      scene.background = hdrTexture;
+      scene.backgroundBlurriness = 0.5;
+      scene.environment = hdrTexture;
+
+      // ────────────────────────────────────────────────────────────────────
+      // Build Verlet data + mesh using corrected Delaunay triangulation
+      // ────────────────────────────────────────────────────────────────────
+      const success = setupVerletFromDelaunay();
+      if (!success) {
+        console.warn("init(): Triangulation failed, aborting.");
+        return;
+      }
+
+      setupUniforms();
+      setupComputeShaders();
+      setupWireframe();
+      setupSphere();
+
+      // ────────────────────────────────────────────────────────────────────
+      // GUI Controls
+      // ────────────────────────────────────────────────────────────────────
+      const gui = new GUI();
+      gui.add(params, 'showWireframe').name("triangle wireframe");
+      gui.add(params, 'sphere').name("show sphere");
+      gui.add(params, 'wind', 0, 5, 0.1).name("wind strength");
+      gui.add(stiffnessUniform, 'value', 0.1, 0.5, 0.01).name('stiffness');
+
+      const materialFolder = gui.addFolder('material');
+      materialFolder.addColor(clothMaterial, 'color');
+      materialFolder.add(clothMaterial, 'roughness', 0.0, 1, 0.01);
+      materialFolder.add(clothMaterial, 'sheen', 0.0, 1, 0.01);
+      materialFolder.add(clothMaterial, 'sheenRoughness', 0.0, 1, 0.01);
+      materialFolder.addColor(clothMaterial, 'sheenColor');
+
+      window.addEventListener('resize', onWindowResize);
+      renderer.setAnimationLoop(render);
+    }
+
+    function setupVerletFromDelaunay() {
+      if (
+        !patternData ||
+        !Array.isArray(patternData.patterns) ||
+        patternData.patterns.length === 0
+      ) {
+        console.error("setupVerletFromDelaunay(): no patterns available.");
+        return false;
+      }
+
+      const pattern = patternData.patterns[0];
+      if (!pattern.points || pattern.points.length === 0) {
+        console.error("setupVerletFromDelaunay(): pattern.points missing.");
+        return false;
+      }
+
+      // ────────────────────────────────────────────────────────────────────
+      // 1) Build a THREE.Shape from JSON (including Béziers)
+      // ────────────────────────────────────────────────────────────────────
+      const shape = new THREE.Shape();
+      {
+        const pts = pattern.points;
+        const firstRaw = pts[0];
+        if (!firstRaw || typeof firstRaw.x !== 'number' || typeof firstRaw.y !== 'number') {
+          console.error("setupVerletFromDelaunay(): invalid first point.");
+          return false;
+        }
+        const first = normalizePoint(firstRaw);
+        shape.moveTo(first.x, first.z);
+
+        for (let i = 1; i < pts.length; i++) {
+          const prevRaw = pts[i - 1];
+          const currRaw = pts[i];
+          if (!prevRaw || !currRaw) {
+            console.warn(`Skipping malformed points ${i-1},${i}`);
+            continue;
+          }
+          const prev = normalizePoint(prevRaw);
+          const curr = normalizePoint(currRaw);
+
+          const hasBez =
+            (prevRaw.handleOut && (prevRaw.handleOut.dx !== 0 || prevRaw.handleOut.dy !== 0)) ||
+            (currRaw.handleIn  && (currRaw.handleIn.dx  !== 0 || currRaw.handleIn.dy  !== 0));
+
+          if (hasBez) {
+            // compute absolute control points, normalize
+            const cp1_abs = {
+              x: prevRaw.x + (prevRaw.handleOut?.dx || 0),
+              y: prevRaw.y + (prevRaw.handleOut?.dy || 0)
+            };
+            const cp2_abs = {
+              x: currRaw.x + (currRaw.handleIn?.dx || 0),
+              y: currRaw.y + (currRaw.handleIn?.dy || 0)
+            };
+            if (
+              typeof cp1_abs.x !== "number" ||
+              typeof cp1_abs.y !== "number" ||
+              typeof cp2_abs.x !== "number" ||
+              typeof cp2_abs.y !== "number"
+            ) {
+              console.warn(`Malformed control points at index ${i}, using lineTo.`);
+              shape.lineTo(curr.x, curr.z);
+              continue;
+            }
+            const cp1 = normalizePoint(cp1_abs);
+            const cp2 = normalizePoint(cp2_abs);
+            shape.bezierCurveTo(cp1.x, cp1.z, cp2.x, cp2.z, curr.x, curr.z);
+          } else {
+            shape.lineTo(curr.x, curr.z);
+          }
+        }
+        // close loop
+        shape.lineTo(normalizePoint(pts[0]).x, normalizePoint(pts[0]).z);
+      }
+
+      // ────────────────────────────────────────────────────────────────────
+      // 2) Sample the smooth boundary for Delaunay
+      // ────────────────────────────────────────────────────────────────────
+      const boundarySegments = 400;
+      const boundaryPoints2D = shape.getSpacedPoints(boundarySegments);
+      if (!Array.isArray(boundaryPoints2D) || boundaryPoints2D.length < 3) {
+        console.error("Too few boundary points for Delaunay.");
+        return false;
+      }
+      console.log("Boundary points:", boundaryPoints2D.length);
+
+      // Determine bounding box in normalized coords for interior grid
+      let bx0 = Infinity, bx1 = -Infinity, bz0 = Infinity, bz1 = -Infinity;
+      boundaryPoints2D.forEach(v2 => {
+        bx0 = Math.min(bx0, v2.x);
+        bx1 = Math.max(bx1, v2.x);
+        bz0 = Math.min(bz0, v2.y);
+        bz1 = Math.max(bz1, v2.y);
+      });
+
+      // ────────────────────────────────────────────────────────────────────
+      // 3) Generate interior points on a uniform grid
+      // ────────────────────────────────────────────────────────────────────
+      const gridSpacing = 0.02; // adjust for density
+      const interiorPoints2D = [];
+      for (let x = bx0; x <= bx1; x += gridSpacing) {
+        for (let z = bz0; z <= bz1; z += gridSpacing) {
+          if (pointInPolygon(x, z, boundaryPoints2D)) {
+            interiorPoints2D.push({ x, y: z });
+          }
+        }
+      }
+      console.log("Interior points:", interiorPoints2D.length);
+
+      // ────────────────────────────────────────────────────────────────────
+      // 4) Combine boundary & interior for Delaunay
+      // ────────────────────────────────────────────────────────────────────
+      const allPoints = boundaryPoints2D.map(v2 => ({ x: v2.x, y: v2.y }));
+      const boundaryCount = allPoints.length;
+      interiorPoints2D.forEach(pt => allPoints.push(pt));
+      const totalVerts = allPoints.length;
+
+      // Build an array of [x,y] for Delaunator.from()
+      const ptsForDelaunay = allPoints.map(p => [p.x, p.y]);
+      const dela = Delaunator.from(ptsForDelaunay);
+      if (!dela || !dela.triangles || dela.triangles.length < 3) {
+        console.error("setupVerletFromDelaunay(): Delaunator failed.");
+        return false;
+      }
+      const rawTriangles = dela.triangles; // flat Int32Array
+
+      console.log("Raw Delaunay triangles:", rawTriangles.length / 3);
+
+      // ────────────────────────────────────────────────────────────────────
+      // 5) Filter out triangles whose centroids fall outside the boundary
+      // ────────────────────────────────────────────────────────────────────
+      const filteredIndices = [];
+      for (let t = 0; t < rawTriangles.length; t += 3) {
+        const a = rawTriangles[t],
+              b = rawTriangles[t + 1],
+              c = rawTriangles[t + 2];
+        const pa = allPoints[a], pb = allPoints[b], pc = allPoints[c];
+        // centroid:
+        const cx = (pa.x + pb.x + pc.x) / 3;
+        const cy = (pa.y + pb.y + pc.y) / 3;
+        if (pointInPolygon(cx, cy, boundaryPoints2D)) {
+          filteredIndices.push(a, b, c);
+        }
+      }
+      console.log("Filtered triangles:", filteredIndices.length / 3);
+
+      // ────────────────────────────────────────────────────────────────────
+      // 6) Build verletVertices array from allPoints
+      // ────────────────────────────────────────────────────────────────────
+      verletVertices.length = 0;
+      verletSprings.length = 0;
+      for (let i = 0; i < totalVerts; i++) {
+        const pt = allPoints[i];
+        const worldPos = new THREE.Vector3(pt.x, sphereRadius + 0.5, pt.y);
+        const isBoundary = (i < boundaryCount);
+        verletVertices.push({
+          id: i,
+          position: worldPos,
+          isFixed: isBoundary ? 1 : 0,
+          springIds: []
+        });
+      }
+
+      // ────────────────────────────────────────────────────────────────────
+      // 7) Build springs from each filtered triangle edge
+      // ────────────────────────────────────────────────────────────────────
+      function addSpring(i0, i1) {
+        const v0 = verletVertices[i0];
+        const v1 = verletVertices[i1];
+        if (!v0 || !v1) return;
+        for (let sid of v0.springIds) {
+          const sp = verletSprings[sid];
+          if ((sp.vertex0.id === i0 && sp.vertex1.id === i1) ||
+              (sp.vertex0.id === i1 && sp.vertex1.id === i0)) {
+            return;
+          }
+        }
+        const sid = verletSprings.length;
+        const spring = { id: sid, vertex0: v0, vertex1: v1 };
+        v0.springIds.push(sid);
+        v1.springIds.push(sid);
+        verletSprings.push(spring);
+      }
+
+      for (let t = 0; t < filteredIndices.length; t += 3) {
+        const a = filteredIndices[t],
+              b = filteredIndices[t + 1],
+              c = filteredIndices[t + 2];
+        addSpring(a, b);
+        addSpring(b, c);
+        addSpring(c, a);
+      }
+
+      console.log("Verlet vertices:", verletVertices.length);
+      console.log("Verlet springs:", verletSprings.length);
+
+      // ────────────────────────────────────────────────────────────────────
+      // 8) Upload Verlet data to GPU buffers
+      // ────────────────────────────────────────────────────────────────────
+      setupVerletVertexBuffers();
+      setupVerletSpringBuffers();
+
+      // ────────────────────────────────────────────────────────────────────
+      // 9) Build clothMesh from filtered indices, using NodeMaterial
+      // ────────────────────────────────────────────────────────────────────
+      const nodeGeo = new THREE.BufferGeometry();
+      const indexArray = new Uint32Array(filteredIndices);
+      nodeGeo.setIndex(new THREE.BufferAttribute(indexArray, 1));
+
+      const vertexIdArray = new Uint32Array(totalVerts);
+      for (let i = 0; i < totalVerts; i++) {
+        vertexIdArray[i] = i;
+      }
+      nodeGeo.setAttribute("vertexId", new THREE.BufferAttribute(vertexIdArray, 1, false));
+
+      clothMaterial = new THREE.MeshPhysicalNodeMaterial({
+        color: 0x204080,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.85,
+        sheen: 1.0,
+        sheenRoughness: 0.5,
+        sheenColor: 0xffffff,
+      });
+      clothMaterial.positionNode = Fn(() => {
+        const vid = attribute("vertexId");
+        return vertexPositionBuffer.element(vid);
+      })();
+
+      clothMesh = new THREE.Mesh(nodeGeo, clothMaterial);
+      clothMesh.frustumCulled = false;
+      scene.add(clothMesh);
+
+      // ────────────────────────────────────────────────────────────────────
+      // 10) Build static geometry for clean wireframe (no outline, only triangles)
+      // ────────────────────────────────────────────────────────────────────
+      const staticGeo = new THREE.BufferGeometry();
+      // 10A) position attribute from verletVertices
+      const posArr = new Float32Array(totalVerts * 3);
+      for (let i = 0; i < totalVerts; i++) {
+        const p = verletVertices[i].position;
+        posArr[i * 3    ] = p.x;
+        posArr[i * 3 + 1] = p.y;
+        posArr[i * 3 + 2] = p.z;
+      }
+      staticGeo.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
+      // 10B) index buffer from filtered indices
+      staticGeo.setIndex(new THREE.BufferAttribute(indexArray, 1));
+
+      // 10C) triangle‐wireframe, initially hidden
+      triangleWireframe = new THREE.LineSegments(
+        new THREE.WireframeGeometry(staticGeo),
+        new THREE.LineBasicMaterial({ color: 0x000000 })
+      );
+      triangleWireframe.visible = false;
+      scene.add(triangleWireframe);
+
+      return true;
+    }
+
+    function setupVerletVertexBuffers() {
+      const vertexCount = verletVertices.length;
+      const springListArray = [];
+      const vertexPositionArray = new Float32Array(vertexCount * 3);
+      const vertexParamsArray   = new Uint32Array(vertexCount * 3);
+
+      for (let i = 0; i < vertexCount; i++) {
+        const v = verletVertices[i];
+        vertexPositionArray[i * 3    ] = v.position.x;
+        vertexPositionArray[i * 3 + 1] = v.position.y;
+        vertexPositionArray[i * 3 + 2] = v.position.z;
+        vertexParamsArray[i * 3    ] = v.isFixed ? 1 : 0;
+        if (!v.isFixed) {
+          vertexParamsArray[i * 3 + 1] = v.springIds.length;
+          vertexParamsArray[i * 3 + 2] = springListArray.length;
+          springListArray.push(...v.springIds);
+        }
+      }
+
+      vertexPositionBuffer = instancedArray(vertexPositionArray, 'vec3').setPBO(true);
+      vertexForceBuffer    = instancedArray(vertexCount,        'vec3');
+      vertexParamsBuffer   = instancedArray(vertexParamsArray,  'uvec3');
+      springListBuffer     = instancedArray(new Uint32Array(springListArray), 'uint').setPBO(true);
+    }
+
+    function setupVerletSpringBuffers() {
+      const springCount = verletSprings.length;
+      const springVertexIdArray   = new Uint32Array(springCount * 2);
+      const springRestLengthArray = new Float32Array(springCount);
+
+      for (let i = 0; i < springCount; i++) {
+        const s = verletSprings[i];
+        springVertexIdArray[i * 2    ] = s.vertex0.id;
+        springVertexIdArray[i * 2 + 1] = s.vertex1.id;
+        springRestLengthArray[i] = s.vertex0.position.distanceTo(s.vertex1.position);
+      }
+
+      springVertexIdBuffer   = instancedArray(springVertexIdArray,   'uvec2').setPBO(true);
+      springRestLengthBuffer = instancedArray(springRestLengthArray, 'float');
+      springForceBuffer      = instancedArray(springCount * 3,      'vec3').setPBO(true);
+    }
+
+    function setupUniforms() {
+      dampeningUniform      = uniform(0.99);
+      spherePositionUniform = uniform(new THREE.Vector3(0, 0, 0));
+      sphereUniform         = uniform(1.0);
+      windUniform           = uniform(params.wind);
+      stiffnessUniform      = uniform(params.stiffness);
+    }
+
+    function setupComputeShaders() {
+      const vertexCount = verletVertices.length;
+      const springCount = verletSprings.length;
+
+      computeSpringForces = Fn(() => {
+        If(instanceIndex.greaterThanEqual(uint(springCount)), () => {
+          Return();
+        });
+        const vertexIds = springVertexIdBuffer.element(instanceIndex);
+        const restLength = springRestLengthBuffer.element(instanceIndex);
+        const v0pos = vertexPositionBuffer.element(vertexIds.x);
+        const v1pos = vertexPositionBuffer.element(vertexIds.y);
+        const delta = v1pos.sub(v0pos).toVar();
+        const dist = delta.length().max(0.000001).toVar();
+        const force = dist.sub(restLength)
+                           .mul(stiffnessUniform)
+                           .mul(delta)
+                           .mul(0.5)
+                           .div(dist);
+        springForceBuffer.element(instanceIndex).assign(force);
+      })().compute(springCount);
+
+      computeVertexForces = Fn(() => {
+        If(instanceIndex.greaterThanEqual(uint(vertexCount)), () => {
+          Return();
+        });
+        const paramsLocal   = vertexParamsBuffer.element(instanceIndex).toVar();
+        const isFixedLocal  = paramsLocal.x;
+        const springCountL  = paramsLocal.y;
+        const springPointer = paramsLocal.z;
+        If(isFixedLocal, () => {
+          Return();
+        });
+
+        const position = vertexPositionBuffer.element(instanceIndex).toVar('vertexPosition');
+        const force    = vertexForceBuffer.element(instanceIndex).toVar('vertexForce');
+        force.mulAssign(dampeningUniform);
+
+        const ptrStart = springPointer.toVar('ptrStart');
+        const ptrEnd   = ptrStart.add(springCountL).toVar('ptrEnd');
+        Loop({ start: ptrStart, end: ptrEnd, type: 'uint', condition: '<' }, ({ i }) => {
+          const springId       = springListBuffer.element(i).toVar('springId');
+          const springForceV   = springForceBuffer.element(springId);
+          const springVertexI  = springVertexIdBuffer.element(springId);
+          const factor = select(springVertexI.x.equal(instanceIndex), 1.0, -1.0);
+          force.addAssign(springForceV.mul(factor));
+        });
+
+        force.y.subAssign(0.00005);
+        const noise = triNoise3D(position, 1, time).sub(0.2).mul(0.0001);
+        const windForce = noise.mul(windUniform);
+        force.z.subAssign(windForce);
+
+        const deltaSphere = position.add(force).sub(spherePositionUniform);
+        const dist = deltaSphere.length();
+        const sphereForce = float(sphereRadius)
+                             .sub(dist)
+                             .max(0)
+                             .mul(deltaSphere)
+                             .div(dist)
+                             .mul(sphereUniform);
+        force.addAssign(sphereForce);
+
+        vertexForceBuffer.element(instanceIndex).assign(force);
+        vertexPositionBuffer.element(instanceIndex).addAssign(force);
+      })().compute(vertexCount);
+    }
+
+    function setupWireframe() {
+      // Only the static triangle wireframe is used (initially hidden).
+      // triangleWireframe was created earlier in setupVerletFromDelaunay().
+    }
+
+    async function render() {
+      sphere.visible = params.sphere;
+      sphereUniform.value = params.sphere ? 1 : 0;
+
+      windUniform.value = params.wind;
+      clothMesh.visible = !params.showWireframe;
+
+      if (triangleWireframe) triangleWireframe.visible = params.showWireframe;
+
+      const deltaTime = Math.min(clock.getDelta(), 1/60);
+      const stepsPerSecond = 360;
+      const timePerStep = 1/stepsPerSecond;
+
+      timeSinceLastStep += deltaTime;
+      while (timeSinceLastStep >= timePerStep) {
+        timestamp += timePerStep;
+        timeSinceLastStep -= timePerStep;
+        updateSphere();
+        await renderer.computeAsync(computeSpringForces);
+        await renderer.computeAsync(computeVertexForces);
+      }
+
+      await renderer.renderAsync(scene, camera);
+    }
+
+    function updateSphere() {
+      sphere.position.set(Math.sin(timestamp * 2.1) * 0.1, 0, Math.sin(timestamp * 0.8));
+      spherePositionUniform.value.copy(sphere.position);
+    }
+
+    function onWindowResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    function setupSphere() {
+      const geometry = new THREE.IcosahedronGeometry(sphereRadius * 0.95, 4);
+      const material = new THREE.MeshStandardNodeMaterial();
+      sphere = new THREE.Mesh(geometry, material);
+      scene.add(sphere);
+    }
+  </script>
 </body>
-
 </html>
