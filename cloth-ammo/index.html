@@ -1,27 +1,41 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-  <meta charset="utf-8" />
-  <title>Three.js WebGPU Cloth – Smooth Curves + Sphere Collision</title>
-  <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0" />
-  <style>
-    body { margin:0; overflow:hidden; background:#888 }
-    #info { position:absolute; top:10px; left:10px; color:#fff; font-family:sans-serif; z-index:1; }
-  </style>
-  <script type="importmap">
-  {
-    "imports": {
-      "three":         "https://unpkg.com/three@0.173.0/build/three.webgpu.js",
-      "three/webgpu":  "https://unpkg.com/three@0.173.0/build/three.webgpu.js",
-      "three/tsl":     "https://unpkg.com/three@0.173.0/build/three.tsl.js",
-      "three/addons/": "https://unpkg.com/three@0.173.0/examples/jsm/",
-      "delaunator":    "https://esm.sh/delaunator@5.0.0"
+	<meta charset="utf-8" />
+	<title>Three.js WebGPU Cloth – Debug Sewn T-Shirt (Fixed Compute Order)</title>
+	<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0" />
+	<style>
+		body {
+			margin: 0;
+			overflow: hidden;
+			background: #888;
+		}
+
+		#info {
+			position: absolute;
+			top: 10px;
+			left: 10px;
+			color: #fff;
+			font-family: sans-serif;
+			z-index: 1;
+		}
+	</style>
+	<script type="importmap">
+    {
+      "imports": {
+        "three":         "https://unpkg.com/three@0.173.0/build/three.webgpu.js",
+        "three/webgpu":  "https://unpkg.com/three@0.173.0/build/three.webgpu.js",
+        "three/tsl":     "https://unpkg.com/three@0.173.0/build/three.tsl.js",
+        "three/addons/": "https://unpkg.com/three@0.173.0/examples/jsm/",
+        "delaunator":    "https://esm.sh/delaunator@5.0.0"
+      }
     }
-  }
-  </script>
+    </script>
 </head>
+
 <body>
-  <div id="info"></div>
-  <script type="module" src="./js/main.js"></script>
+	<script type="module" src="./js/main.js"></script>
 </body>
+
 </html>
