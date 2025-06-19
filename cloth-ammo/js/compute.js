@@ -1,4 +1,4 @@
-// js/compute.js
+// File: js/compute.js
 
 import * as THREE from 'three';
 import {
@@ -8,13 +8,9 @@ import {
 } from 'three/tsl';
 
 export let stiffnessUniform, windUniform,
-  spherePositionUniform, sphereUniform,
-  sphereRadiusUniform,
   dampingUniform,
   gravityBaseUniform, gravityAccelUniform,
-  // NEW:
   seamTightnessUniform,
-  // BUFFERS:
   vertexPositionBuffer,
   vertexForceBuffer,
   vertexParamsBuffer,
@@ -22,27 +18,21 @@ export let stiffnessUniform, windUniform,
   springVertexIdBuffer,
   springRestLengthBuffer,
   springForceBuffer,
-  // NEW:
   springSeamFlagBuffer,
   computeSpringForces,
   computeVertexForces;
 
-// — UNIFORMS — 
+// — UNIFORMS —
 export function setupUniforms(params) {
   stiffnessUniform = uniform(params.stiffness);
   windUniform = uniform(params.wind);
-  spherePositionUniform = uniform(new THREE.Vector3());
-  sphereUniform = uniform(1.0);
-  sphereRadiusUniform = uniform(params.sphereRadius);
   dampingUniform = uniform(0.98);
   gravityBaseUniform = uniform(0.0);
   gravityAccelUniform = uniform(0.00002);
-  // 0 → 1 over the first frames; set from main.js: 
-  //   Compute.seamTightnessUniform.value = Math.min(timestamp*2, 1);
   seamTightnessUniform = uniform(0.0);
 }
 
-// — BUFFERS — 
+// — BUFFERS —
 export function setupBuffers(verletVertices, verletSprings, seamDebugPairs) {
   const n = verletVertices.length;
   const m = verletSprings.length;
@@ -68,7 +58,6 @@ export function setupBuffers(verletVertices, verletSprings, seamDebugPairs) {
     const s = verletSprings[i];
     idArr[i * 2 + 0] = s.v0;
     idArr[i * 2 + 1] = s.v1;
-    // store the ORIGINAL distance
     restArr[i] = verletVertices[s.v0].position.distanceTo(verletVertices[s.v1].position);
   }
 
@@ -87,56 +76,44 @@ export function setupBuffers(verletVertices, verletSprings, seamDebugPairs) {
   springSeamFlagBuffer = instancedArray(seamFlagArr, 'uint');
 }
 
-// — COMPUTE SHADERS — 
+// — COMPUTE SHADERS —
 export function setupComputeShaders(verletVertices, verletSprings) {
   const vCount = verletVertices.length;
   const sCount = verletSprings.length;
 
-  // 1) compute each spring’s force
+  // 1) compute spring forces
   computeSpringForces = Fn(() => {
     If(instanceIndex.greaterThanEqual(uint(sCount)), () => Return());
-
-    // endpoints
     const sv = springVertexIdBuffer.element(instanceIndex);
     const p0 = vertexPositionBuffer.element(sv.x);
     const p1 = vertexPositionBuffer.element(sv.y);
     const d = p1.sub(p0).toVar();
     const dist = d.length().max(0.000001).toVar();
-
-    // original rest
-    const baseRest = springRestLengthBuffer.element(instanceIndex);
-    // is it a seam?
-    const isSeam = springSeamFlagBuffer.element(instanceIndex).equal(uint(1));
-    // ramp rest from baseRest → 0 over [0…1] in seamTightnessUniform
-    // when seamTightness==0: rest=baseRest; when ==1: rest=0.
+    const baseR = springRestLengthBuffer.element(instanceIndex);
+    const isS = springSeamFlagBuffer.element(instanceIndex).equal(uint(1));
     const rest = select(
-      isSeam,
-      baseRest.sub(baseRest.mul(seamTightnessUniform)),
-      baseRest
+      isS,
+      baseR.sub(baseR.mul(seamTightnessUniform)),
+      baseR
     );
-
-    // Hooke’s law
     const f = dist.sub(rest)
       .mul(stiffnessUniform)
       .mul(d)
       .mul(0.5)
       .div(dist);
-
     springForceBuffer.element(instanceIndex).assign(f);
   })().compute(sCount);
 
-  // 2) accumulate per-vertex forces, apply damping, gravity, sphere
+  // 2) accumulate vertex forces, apply damping, gravity, wind
   computeVertexForces = Fn(() => {
     If(instanceIndex.greaterThanEqual(uint(vCount)), () => Return());
     const param = vertexParamsBuffer.element(instanceIndex).toVar();
     If(param.x.greaterThan(0), () => Return());
 
-    // read current
     let pos = vertexPositionBuffer.element(instanceIndex).toVar('pos');
     let force = vertexForceBuffer.element(instanceIndex).toVar('force');
     force.mulAssign(dampingUniform);
 
-    // add all connected springs
     const end = param.z.add(param.y).toVar('end');
     Loop({ start: param.z, end, type: 'uint', condition: '<' }, ({ i }) => {
       const sid = springListBuffer.element(i).toVar();
@@ -146,26 +123,13 @@ export function setupComputeShaders(verletVertices, verletSprings) {
       force.addAssign(sf.mul(sign));
     });
 
-    // gravity + wind noise
     const gDyn = gravityAccelUniform.mul(time).add(gravityBaseUniform);
     force.y.subAssign(gDyn);
     const noise = triNoise3D(pos, 1, time).sub(0.2).mul(0.0002);
     force.x.addAssign(noise.mul(windUniform));
     force.z.addAssign(noise.mul(windUniform));
 
-    // sphere collision
-    let nextPos = pos.add(force).toVar('nextPos');
-    const dir = nextPos.sub(spherePositionUniform).toVar('dir');
-    const dist = dir.length().toVar('dist');
-    If(dist.lessThan(sphereRadiusUniform), () => {
-      const nDir = dir.div(dist);
-      nextPos.assign(spherePositionUniform.add(nDir.mul(sphereRadiusUniform)));
-      const v = nextPos.sub(pos);
-      const speed = v.length();
-      const restF = select(speed.greaterThan(float(0.005)), float(1.2), float(0.8));
-      force.assign(v.mul(restF));
-    });
-
+    const nextPos = pos.add(force).toVar('nextPos');
     vertexForceBuffer.element(instanceIndex).assign(force);
     vertexPositionBuffer.element(instanceIndex).assign(nextPos);
   })().compute(vCount);
