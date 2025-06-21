@@ -34,27 +34,31 @@ export async function setupGPU(
     size: 4,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
   });
-  device.queue.writeBuffer(countBuf, 0, new Uint32Array([ verletVertices.length ]));
+  device.queue.writeBuffer(countBuf, 0, new Uint32Array([verletVertices.length]));
   console.log("  • countBuf:", countBuf);
 
   console.log("🔧 setupGPU(): running warm-up computeAsync()");
   await renderer.computeAsync(Compute.computeSpringForces);
   await renderer.computeAsync(Compute.computeVertexForces);
 
-  // ——— MANUAL FALLBACK: read back and re-upload into your own GPUBuffer ———
+  // Allocate & upload a single shared GPUBuffer for cloth positions
   const arrayBuf = await renderer.getArrayBufferAsync(
     Compute.vertexPositionBuffer.value
   );
   const posArray = new Float32Array(arrayBuf);
-  const clothPositionGPUBuffer = device.createBuffer({
+  const sharedPosBuffer = device.createBuffer({
     size: posArray.byteLength,
     usage:
       GPUBufferUsage.STORAGE |
       GPUBufferUsage.COPY_DST |
       GPUBufferUsage.COPY_SRC
   });
-  device.queue.writeBuffer(clothPositionGPUBuffer, 0, posArray);
-  console.log("  • clothPositionGPUBuffer:", clothPositionGPUBuffer);
+  device.queue.writeBuffer(sharedPosBuffer, 0, posArray);
+  console.log("  • sharedPosBuffer:", sharedPosBuffer);
+
+  // Point TSL at it so sim writes here, and material reads here
+  Compute.vertexPositionBuffer.buffer       = sharedPosBuffer;
+  Compute.vertexPositionBuffer.value.buffer = sharedPosBuffer;
 
   console.log("🔧 setupGPU(): initializing collision pipeline");
   await initCollisionPipeline(
@@ -62,12 +66,11 @@ export async function setupGPU(
     triangleVertexBuffer,
     bvhNodeBuffer,
     {
-      positionBuffer: { buffer: clothPositionGPUBuffer },
+      positionBuffer: { buffer: sharedPosBuffer },
       countBuffer:    countBuf
     }
   );
   console.log("✅ collision pipeline initialized");
 
-  // return both nodeCount and the manual buffer
-  return { nodeCount, clothPositionGPUBuffer };
+  return nodeCount;
 }

@@ -1,8 +1,8 @@
 // File: js/main.js
 
-import { init }              from './init/index.js';
+import { init }           from './init/index.js';
 import { startLoop,
-         onWindowResize }    from './loop.js';
+         onWindowResize } from './loop.js';
 
 (async function(){
   const {
@@ -14,8 +14,7 @@ import { startLoop,
     seamLines,
     params,
     nodeCount,
-    vertexCount,
-    clothPositionGPUBuffer
+    vertexCount
   } = await init();
 
   window.addEventListener('resize', () =>
@@ -31,7 +30,6 @@ import { startLoop,
     seamLines,
     params,
     nodeCount,
-    vertexCount,
-    clothPositionGPUBuffer
+    vertexCount
   );
 })();

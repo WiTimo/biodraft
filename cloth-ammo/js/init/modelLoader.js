@@ -17,44 +17,41 @@ export async function loadModelBVH(scene) {
   });
   if (!mesh) throw new Error('No mesh found in man.glb');
 
-  // 2) Make the geometry 10% of its original size
-  const geom = mesh.geometry.index
-    ? mesh.geometry.toNonIndexed()
-    : mesh.geometry;
+  // 2) Ensure non-indexed geometry so we can modify vertex positions
+  const orig = mesh.geometry;
+  const geom = orig.index ? orig.toNonIndexed() : orig;
+
+  // 3) Scale the raw positions to 10%
   geom.scale(0.1, 0.1, 0.1);
   mesh.geometry = geom;
 
-  // 3) Add a BoxHelper to visualize the collision bounds
+  // 4) Visualize bounds
   const box = new THREE.BoxHelper(mesh, 0xff0000);
   scene.add(box);
-
-  // 4) Add the (now scaled) mesh to the scene
   scene.add(mesh);
 
-  // 5) Build the BVH eagerly (so boundsTree is populated)
+  // 5) Build the BVH eagerly
   geom.computeBoundsTree({ lazyGeneration: false });
   const bvh = geom.boundsTree;
   if (!bvh) throw new Error('BVH build failed');
 
-  // 6) Extract flat triangle positions
+  // 6) Extract triangle data
   const posAttr = geom.getAttribute('position');
   const triData = new Float32Array(posAttr.array);
 
-  // 7) Traverse the BVH to collect each node
-  const allNodes = [];
-  bvh.traverse((_, __, node) => {
-    allNodes.push(node);
-  });
-  console.log('Flattened BVH raw nodes:', allNodes.length);
+  // 7) Collect BVH nodes
+  const all = [];
+  bvh.traverse((_, __, node) => all.push(node));
+  console.log('Flattened BVH raw nodes:', all.length);
 
-  // 8) Build WGSL‐friendly nodeData with empty bounds (GPU will fill them)
-  const nodeData = allNodes.map(node => ({
-    min:   [0, 0, 0],
-    max:   [0, 0, 0],
-    left:  typeof node.left   === 'number' ? node.left   : 0,
-    right: typeof node.right  === 'number' ? node.right  : 0,
-    start: typeof node.offset === 'number' ? node.offset : 0,
-    count: typeof node.count  === 'number' ? node.count  : 0
+  // 8) Pack for WGSL (min/max zeroed—GPU will fill them)
+  const nodeData = all.map(n => ({
+    min:   [0,0,0],
+    max:   [0,0,0],
+    left:  typeof n.left   === 'number' ? n.left   : 0,
+    right: typeof n.right  === 'number' ? n.right  : 0,
+    start: typeof n.offset === 'number' ? n.offset : 0,
+    count: typeof n.count  === 'number' ? n.count  : 0
   }));
   console.log('Final nodeData count:', nodeData.length);
 

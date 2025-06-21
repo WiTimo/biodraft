@@ -1,9 +1,8 @@
 // File: js/loop.js
-
+import * as THREE from 'three';
 import * as Compute          from './compute/index.js';
 import { dispatchBVH }       from './gpu/bvhBuilder.js';
 import { dispatchCollision } from './gpu/collisionBuilder.js';
-import * as THREE            from 'three';
 
 export function startLoop(
   renderer,
@@ -14,8 +13,7 @@ export function startLoop(
   seamLines,
   params,
   nodeCount,
-  vertexCount,
-  clothPositionGPUBuffer
+  vertexCount
 ) {
   const clock = new THREE.Clock();
   let tAccum = 0, timestamp = 0;
@@ -29,7 +27,7 @@ export function startLoop(
       tAccum    -= step;
       timestamp += step;
 
-      // 1) Refit full‐mesh BVH
+      // 1) Refit mesh BVH on GPU
       dispatchBVH(device, nodeCount);
 
       // 2) Update uniforms
@@ -38,21 +36,11 @@ export function startLoop(
       Compute.seamTightnessUniform.value = Math.min(timestamp * 2, 1);
       Compute.sphereRadiusUniform.value  = params.sphereRadius;
 
-      // 3) Cloth sim passes
+      // 3) Cloth sim
       await renderer.computeAsync(Compute.computeSpringForces);
       await renderer.computeAsync(Compute.computeVertexForces);
 
-      // 4a) Fallback: read back the updated positions & re-upload into your GPUBuffer
-      const arrayBuf = await renderer.getArrayBufferAsync(
-        Compute.vertexPositionBuffer.value
-      );
-      device.queue.writeBuffer(
-        clothPositionGPUBuffer,
-        0,
-        new Float32Array(arrayBuf)
-      );
-
-      // 4b) Full BVH collision against cloth on GPU
+      // 4) GPU collision
       dispatchCollision(device, vertexCount);
     }
 
