@@ -68,6 +68,6 @@ export async function setupGPU(
   );
   console.log("✅ collision pipeline initialized");
 
-  // return both nodeCount and clothPositionGPUBuffer
+  // return both nodeCount and the manual buffer
   return { nodeCount, clothPositionGPUBuffer };
 }
