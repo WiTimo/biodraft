@@ -1,13 +1,10 @@
+let bvhBuildPipeline  = null;
+let bvhBuildBindGroup = null;
+let bvhBuildEmptyBG   = null;
+
 /**
- * initBVHPipeline(device, triangleVertexBuffer, bvhNodeBuffer, nodeCount)
- *   – compiles the WGSL, creates the bindGroup with our two buffers + a uniform count.
- * dispatchBVH(device, nodeCount)
- *   – runs the compute‐pass to refit the BVH each frame/substep.
+ * Compile the BVH-build WGSL and set up bind group 0.
  */
-
-let bvhBuildPipeline = null;
-let bvhBindGroup     = null;
-
 export async function initBVHPipeline(
   device,
   triangleVertexBuffer,
@@ -18,9 +15,9 @@ export async function initBVHPipeline(
   const resp = await fetch('./js/gpu/shaders/bvh_build.wgsl');
   const code = await resp.text();
 
-  // 2) Create compute pipeline (now with an explicit layout)
+  // 2) Create compute pipeline with automatic layout
   bvhBuildPipeline = device.createComputePipeline({
-    layout: 'auto',      // ← ensure automatic layout generation
+    layout: 'auto',
     compute: {
       module: device.createShaderModule({ code }),
       entryPoint: 'main'
@@ -34,8 +31,8 @@ export async function initBVHPipeline(
   });
   device.queue.writeBuffer(nodeCountBuf, 0, new Uint32Array([ nodeCount ]));
 
-  // 4) BindGroup: triBuf @0, nodeBuf @1, count @2
-  bvhBindGroup = device.createBindGroup({
+  // 4) Bind group 0: triBuf @0, nodeBuf @1, count @2
+  bvhBuildBindGroup = device.createBindGroup({
     layout: bvhBuildPipeline.getBindGroupLayout(0),
     entries: [
       { binding: 0, resource: { buffer: triangleVertexBuffer } },
@@ -43,14 +40,43 @@ export async function initBVHPipeline(
       { binding: 2, resource: { buffer: nodeCountBuf          } }
     ]
   });
+
+  // 5) Prepare an “empty” bind group for index 1 (if declared)
+  try {
+    const layout1 = bvhBuildPipeline.getBindGroupLayout(1);
+    bvhBuildEmptyBG = device.createBindGroup({
+      layout:  layout1,
+      entries: []
+    });
+  } catch {
+    bvhBuildEmptyBG = null;
+  }
 }
 
+/**
+ * Dispatch the BVH-build pass.
+ */
 export function dispatchBVH(device, nodeCount) {
   const encoder = device.createCommandEncoder();
   const pass    = encoder.beginComputePass();
+
   pass.setPipeline(bvhBuildPipeline);
-  pass.setBindGroup(0, bvhBindGroup);
-  pass.dispatchWorkgroups(nodeCount);
+  pass.setBindGroup(0, bvhBuildBindGroup);
+
+  if (bvhBuildEmptyBG) {
+    pass.setBindGroup(1, bvhBuildEmptyBG);
+  }
+
+  // clamp & coerce nodeCount to a GPUSize32 (unsigned 32-bit integer)
+  const wgCount = Math.floor(Number(nodeCount));
+  if (!Number.isInteger(wgCount) || wgCount < 0) {
+    console.warn('dispatchBVH got invalid nodeCount:', nodeCount);
+  }
+  // clamp to [0, 2^32-1]
+  const dispatchCount = Math.min(Math.max(wgCount, 0), 0xFFFFFFFF);
+
+  pass.dispatchWorkgroups(dispatchCount);
+
   pass.end();
   device.queue.submit([ encoder.finish() ]);
 }

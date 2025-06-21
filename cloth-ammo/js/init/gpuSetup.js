@@ -1,46 +1,73 @@
-// js/init/gpuSetup.js
+// File: js/init/gpuSetup.js
 
-import * as Compute        from '../compute/index.js';
-import { initBVHPipeline } from '../gpu/bvhBuilder.js';
-import { createBVHBuffers } from './bvhBuffers.js';
+import * as Compute              from '../compute/index.js';
+import { initBVHPipeline }       from '../gpu/bvhBuilder.js';
+import { initCollisionPipeline } from '../gpu/collisionBuilder.js';
+import { createBVHBuffers }      from './bvhBuffers.js';
 
-/**
- * @param {GPUDevice} device
- */
 export async function setupGPU(
+  renderer,
   device,
   verletVertices,
   verletSprings,
   seamDebugPairs,
-  params
+  params,
+  triData,
+  nodeData
 ) {
-  // 1) Set up cloth‐sim buffers & compute shaders
+  console.log("🔧 setupGPU(): creating TSL compute buffers");
   Compute.setupBuffers(verletVertices, verletSprings, seamDebugPairs);
   Compute.setupUniforms(params);
   Compute.setupComputeShaders(verletVertices, verletSprings);
 
-  // 2) A tiny test BVH: two triangles forming a 1×1 square in XY
-  const triData = new Float32Array([
-    0,0,0,   1,0,0,   0,1,0,
-    1,0,0,   1,1,0,   0,1,0
-  ]);
-
-  const nodeData = [
-    // root: interior node covering both triangles
-    { min:[0,0,0], max:[1,1,0], left:1, right:2, start:0, count:0 },
-    // leaf 1: first triangle
-    { min:[0,0,0], max:[1,1,0], left:0, right:0, start:0, count:1 },
-    // leaf 2: second triangle
-    { min:[0,0,0], max:[1,1,0], left:0, right:0, start:1, count:1 }
-  ];
-
-  // 3) Pack and upload BVH buffers
+  console.log("🔧 setupGPU(): uploading BVH buffers");
   const { triangleVertexBuffer, bvhNodeBuffer, nodeCount } =
     createBVHBuffers(device, triData, nodeData);
-
-  // 4) Compile and bind the BVH build pipeline
+  console.log("  • triangleVertexBuffer:", triangleVertexBuffer);
+  console.log("  • bvhNodeBuffer:",       bvhNodeBuffer);
+  console.log("  • nodeCount:",           nodeCount);
   await initBVHPipeline(device, triangleVertexBuffer, bvhNodeBuffer, nodeCount);
+  console.log("✅ BVH pipeline initialized");
 
-  // 5) Return the node count so the loop can dispatch correctly
-  return nodeCount;
+  console.log("🔧 setupGPU(): creating cloth-vertex count buffer");
+  const countBuf = device.createBuffer({
+    size: 4,
+    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+  });
+  device.queue.writeBuffer(countBuf, 0, new Uint32Array([ verletVertices.length ]));
+  console.log("  • countBuf:", countBuf);
+
+  console.log("🔧 setupGPU(): running warm-up computeAsync()");
+  await renderer.computeAsync(Compute.computeSpringForces);
+  await renderer.computeAsync(Compute.computeVertexForces);
+
+  // ——— MANUAL FALLBACK: read back and re-upload into your own GPUBuffer ———
+  const arrayBuf = await renderer.getArrayBufferAsync(
+    Compute.vertexPositionBuffer.value
+  );
+  const posArray = new Float32Array(arrayBuf);
+  const clothPositionGPUBuffer = device.createBuffer({
+    size: posArray.byteLength,
+    usage:
+      GPUBufferUsage.STORAGE |
+      GPUBufferUsage.COPY_DST |
+      GPUBufferUsage.COPY_SRC
+  });
+  device.queue.writeBuffer(clothPositionGPUBuffer, 0, posArray);
+  console.log("  • clothPositionGPUBuffer:", clothPositionGPUBuffer);
+
+  console.log("🔧 setupGPU(): initializing collision pipeline");
+  await initCollisionPipeline(
+    device,
+    triangleVertexBuffer,
+    bvhNodeBuffer,
+    {
+      positionBuffer: { buffer: clothPositionGPUBuffer },
+      countBuffer:    countBuf
+    }
+  );
+  console.log("✅ collision pipeline initialized");
+
+  // return both nodeCount and clothPositionGPUBuffer
+  return { nodeCount, clothPositionGPUBuffer };
 }

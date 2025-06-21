@@ -1,4 +1,4 @@
-// js/compute/shaders.js
+// File: js/compute/shaders.js
 
 import {
   Fn,
@@ -20,10 +20,9 @@ import {
   springVertexIdBuffer,
   springRestLengthBuffer,
   springForceBuffer,
-  springSeamFlagBuffer,
-  sphereBuffer,
-  sphereCountUniform
+  springSeamFlagBuffer
 } from './buffers.js';
+
 import {
   stiffnessUniform,
   windUniform,
@@ -34,15 +33,20 @@ import {
   sphereRadiusUniform
 } from './uniforms.js';
 
-export let computeSpringForces, computeVertexForces, computeCollision;
+export let computeSpringForces, computeVertexForces;
 
+/**
+ * Set up the two compute shaders:
+ *  1) spring forces
+ *  2) Verlet integration
+ */
 export function setupComputeShaders(verletVertices, verletSprings) {
   const vCount = verletVertices.length;
   const sCount = verletSprings.length;
 
   // 1) compute spring forces
   computeSpringForces = Fn(() => {
-    If(instanceIndex.greaterThanEqual(uint(sCount)), () => Return());
+    // (no explicit idx-guard needed—.compute(sCount) already clamps dispatch)
     const sv    = springVertexIdBuffer.element(instanceIndex);
     const p0    = vertexPositionBuffer.element(sv.x);
     const p1    = vertexPositionBuffer.element(sv.y);
@@ -65,8 +69,10 @@ export function setupComputeShaders(verletVertices, verletSprings) {
 
   // 2) integrate Verlet + forces
   computeVertexForces = Fn(() => {
-    If(instanceIndex.greaterThanEqual(uint(vCount)), () => Return());
+    // (no idx-guard here either)
     const param = vertexParamsBuffer.element(instanceIndex).toVar();
+
+    // skip fixed vertices
     If(param.x.greaterThan(uint(0)), () => Return());
 
     let pos   = vertexPositionBuffer.element(instanceIndex).toVar('pos');
@@ -91,26 +97,5 @@ export function setupComputeShaders(verletVertices, verletSprings) {
     const nextPos = pos.add(force).toVar('nextPos');
     vertexForceBuffer.element(instanceIndex).assign(force);
     vertexPositionBuffer.element(instanceIndex).assign(nextPos);
-  })().compute(vCount);
-
-  // 3) SPHERE COLLISION PASS
-  computeCollision = Fn(() => {
-    If(instanceIndex.greaterThanEqual(uint(vCount)), () => Return());
-    let p = vertexPositionBuffer.element(instanceIndex).toVar('p');
-
-    Loop(
-      { start: uint(0), end: sphereCountUniform, type: 'uint', condition: '<' },
-      ({ i }) => {
-        const c   = sphereBuffer.element(i);
-        const dir = p.sub(c).toVar();
-        const d   = dir.length().toVar();
-        If(d.lessThan(sphereRadiusUniform), () => {
-          const n = dir.div(d);
-          p = c.add(n.mul(sphereRadiusUniform));
-        });
-      }
-    );
-
-    vertexPositionBuffer.element(instanceIndex).assign(p);
   })().compute(vCount);
 }

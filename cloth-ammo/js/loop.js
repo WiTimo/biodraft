@@ -1,22 +1,10 @@
-// js/loop.js
+// File: js/loop.js
 
-import * as THREE from 'three';
-import * as Compute from './compute/index.js';
-import { dispatchBVH } from './gpu/bvhBuilder.js';
+import * as Compute          from './compute/index.js';
+import { dispatchBVH }       from './gpu/bvhBuilder.js';
+import { dispatchCollision } from './gpu/collisionBuilder.js';
+import * as THREE            from 'three';
 
-/**
- * Starts the animation loop, rebuilding the BVH and then running cloth steps.
- *
- * @param {THREE.WebGPURenderer} renderer
- * @param {GPUDevice}           device
- * @param {THREE.Scene}         scene
- * @param {THREE.Camera}        camera
- * @param {THREE.Mesh}          clothMesh
- * @param {THREE.LineSegments}  seamLines
- * @param {Float32Array|null}   meshWorldPositions
- * @param {Object}              params
- * @param {number}              nodeCount  – number of BVH nodes from setupGPU
- */
 export function startLoop(
   renderer,
   device,
@@ -24,38 +12,48 @@ export function startLoop(
   camera,
   clothMesh,
   seamLines,
-  meshWorldPositions,
   params,
-  nodeCount
+  nodeCount,
+  vertexCount,
+  clothPositionGPUBuffer
 ) {
   const clock = new THREE.Clock();
-  let timeSinceLastStep = 0,
-      timestamp         = 0;
+  let tAccum = 0, timestamp = 0;
 
   renderer.setAnimationLoop(async () => {
-    const dt = Math.min(clock.getDelta(), 1/60);
-    timeSinceLastStep += dt;
-    const tStep = 1/300;
+    const dt   = Math.min(clock.getDelta(), 1/60);
+    tAccum    += dt;
+    const step = 1/300;
 
-    while (timeSinceLastStep >= tStep) {
-      timeSinceLastStep -= tStep;
-      timestamp += tStep;
+    while (tAccum >= step) {
+      tAccum    -= step;
+      timestamp += step;
 
-      // Refit the BVH on the GPU
+      // 1) Refit full‐mesh BVH
       dispatchBVH(device, nodeCount);
 
-      // Update cloth uniforms
+      // 2) Update uniforms
       Compute.windUniform.value          = params.wind;
       Compute.stiffnessUniform.value     = params.stiffness;
       Compute.seamTightnessUniform.value = Math.min(timestamp * 2, 1);
       Compute.sphereRadiusUniform.value  = params.sphereRadius;
 
-      // Cloth integration
+      // 3) Cloth sim passes
       await renderer.computeAsync(Compute.computeSpringForces);
       await renderer.computeAsync(Compute.computeVertexForces);
-      if (meshWorldPositions) {
-        await renderer.computeAsync(Compute.computeCollision);
-      }
+
+      // 4a) Fallback: read back the updated positions & re-upload into your GPUBuffer
+      const arrayBuf = await renderer.getArrayBufferAsync(
+        Compute.vertexPositionBuffer.value
+      );
+      device.queue.writeBuffer(
+        clothPositionGPUBuffer,
+        0,
+        new Float32Array(arrayBuf)
+      );
+
+      // 4b) Full BVH collision against cloth on GPU
+      dispatchCollision(device, vertexCount);
     }
 
     clothMesh.material.wireframe = params.showWireframe;
@@ -63,9 +61,7 @@ export function startLoop(
   });
 }
 
-/**
- * Window resize handler.
- */
+
 export function onWindowResize(camera, renderer) {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();

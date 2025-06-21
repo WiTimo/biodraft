@@ -1,26 +1,39 @@
+// File: js/init/sceneSetup.js
+
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 
 export async function initRenderer() {
-  // 1) Request the GPU adapter + device manually:
+  // 1) Make sure WebGPU is available
   if (!navigator.gpu) {
     throw new Error('WebGPU not supported in this browser');
   }
+
+  // 2) Request adapter + device, including timestamp-query support
   const adapter = await navigator.gpu.requestAdapter();
   if (!adapter) {
     throw new Error('Failed to get GPU adapter');
   }
-  const device = await adapter.requestDevice();
+  const device = await adapter.requestDevice({
+    requiredFeatures: ['timestamp-query']
+  });
 
-  // 2) Create the Three.js WebGPURenderer, passing in our device:
-  const renderer = new THREE.WebGPURenderer({ antialias: true, device });
-  // 3) Standard setup
+  // 3) Create the Three.js WebGPURenderer with timestamp tracking
+  const renderer = new THREE.WebGPURenderer({
+    antialias:      true,
+    device,
+    trackTimestamp: true
+  });
+
+  // 4) Wait for the renderer backend to be fully initialized
+  await renderer.init();
+
+  // 5) Standard size/pixel‐ratio setup
   renderer.setPixelRatio(window.devicePixelRatio);
   renderer.setSize(window.innerWidth, window.innerHeight);
   document.body.appendChild(renderer.domElement);
 
-  // Return both renderer and the raw device
   return { renderer, device };
 }
 

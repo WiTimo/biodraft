@@ -1,7 +1,8 @@
-// js/main.js
+// File: js/main.js
 
-import { init } from './init/index.js';
-import { startLoop, onWindowResize } from './loop.js';
+import { init }              from './init/index.js';
+import { startLoop,
+         onWindowResize }    from './loop.js';
 
 (async function(){
   const {
@@ -11,9 +12,10 @@ import { startLoop, onWindowResize } from './loop.js';
     camera,
     clothMesh,
     seamLines,
-    meshWorldPositions,
     params,
-    nodeCount    // ← now passed through from init()
+    nodeCount,
+    vertexCount,
+    clothPositionGPUBuffer
   } = await init();
 
   window.addEventListener('resize', () =>
@@ -27,8 +29,9 @@ import { startLoop, onWindowResize } from './loop.js';
     camera,
     clothMesh,
     seamLines,
-    meshWorldPositions,
     params,
-    nodeCount     // ← supply it here
+    nodeCount,
+    vertexCount,
+    clothPositionGPUBuffer
   );
 })();
