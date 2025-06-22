@@ -14,7 +14,8 @@ import { startLoop,
     seamLines,
     params,
     nodeCount,
-    vertexCount
+    vertexCount,
+    bvhVis           
   } = await init();
 
   window.addEventListener('resize', () =>
@@ -30,6 +31,7 @@ import { startLoop,
     seamLines,
     params,
     nodeCount,
-    vertexCount
+    vertexCount,
+    bvhVis
   );
 })();

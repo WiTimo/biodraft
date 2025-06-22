@@ -1,50 +1,57 @@
-// File: js/init/modelLoader.js
+import MeshBVHVisualizer
+  from 'https://unpkg.com/three-mesh-bvh@0.4.0/src/MeshBVHVisualizer.js';
 
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { computeBoundsTree, disposeBoundsTree } from 'three-mesh-bvh';
-
-// Install BVH helpers onto BufferGeometry
-THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
-THREE.BufferGeometry.prototype.disposeBoundsTree  = disposeBoundsTree;
+import { MeshBVH } from 'three-mesh-bvh';
+import { mergeGeometries as mergeBufferGeometries } from 'https://unpkg.com/three@0.177.0/examples/jsm/utils/BufferGeometryUtils.js';
 
 export async function loadModelBVH(scene) {
-  // 1) Load the GLTF and find its first mesh
+  // 1) Load the GLTF
   const gltf = await new GLTFLoader().loadAsync('./models/man.glb');
-  let mesh = null;
+
+  // 2) Collect & non-index each mesh’s geometry
+  const geoms = [];
   gltf.scene.traverse(o => {
-    if (o.isMesh && !mesh) mesh = o;
+    if (o.isMesh) {
+      const g = o.geometry;
+      geoms.push(g.index ? g.toNonIndexed() : g.clone());
+    }
   });
-  if (!mesh) throw new Error('No mesh found in man.glb');
+  if (geoms.length === 0) throw new Error('No meshes found in man.glb');
 
-  // 2) Ensure non-indexed geometry so we can modify vertex positions
-  const orig = mesh.geometry;
-  const geom = orig.index ? orig.toNonIndexed() : orig;
+  // 3) Merge into one big BufferGeometry
+  const merged = mergeBufferGeometries(geoms, false);
 
-  // 3) Scale the raw positions to 10%
-  geom.scale(0.1, 0.1, 0.1);
-  mesh.geometry = geom;
+  // 4) Scale down to 10%
+  merged.scale(0.1, 0.1, 0.1);
 
-  // 4) Visualize bounds
-  const box = new THREE.BoxHelper(mesh, 0xff0000);
-  scene.add(box);
+  // 5) Create a mesh and add it
+  const mesh = new THREE.Mesh(
+    merged,
+    new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: false })
+  );
   scene.add(mesh);
 
-  // 5) Build the BVH eagerly
-  geom.computeBoundsTree({ lazyGeneration: false });
-  const bvh = geom.boundsTree;
-  if (!bvh) throw new Error('BVH build failed');
+  // 6) Build a deep BVH: split leaves at 10 tris max
+  const bvh = new MeshBVH(merged, { lazyGeneration: false, maxLeafTris: 10 });
+  merged.boundsTree = bvh;
 
-  // 6) Extract triangle data
-  const posAttr = geom.getAttribute('position');
+  // 7) Visualize it
+  const bvhVis = new MeshBVHVisualizer(mesh, /* maxDepth=*/ 10);
+  scene.add(bvhVis);
+
+  // 8) Extract triangle data for GPU
+  const posAttr = merged.getAttribute('position');
   const triData = new Float32Array(posAttr.array);
 
-  // 7) Collect BVH nodes
+  // 9) **Flatten BVH nodes** — use the simpler single-arg traverse
   const all = [];
-  bvh.traverse((_, __, node) => all.push(node));
+  bvh.traverse(node => {
+    all.push(node);
+  });
   console.log('Flattened BVH raw nodes:', all.length);
 
-  // 8) Pack for WGSL (min/max zeroed—GPU will fill them)
   const nodeData = all.map(n => ({
     min:   [0,0,0],
     max:   [0,0,0],
@@ -53,7 +60,6 @@ export async function loadModelBVH(scene) {
     start: typeof n.offset === 'number' ? n.offset : 0,
     count: typeof n.count  === 'number' ? n.count  : 0
   }));
-  console.log('Final nodeData count:', nodeData.length);
 
-  return { triData, nodeData };
+  return { triData, nodeData, bvhVis };
 }

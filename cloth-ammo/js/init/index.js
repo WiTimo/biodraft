@@ -22,8 +22,17 @@ export async function init() {
   }
 
   // 2) Sample & merge
-  const { halves, ids0, boundarySegments, initialClothHeight, separationY } =
-    samplePatterns(patternData);
+  let {
+    halves,
+    ids0,
+    boundarySegments,
+    initialClothHeight,
+    separationY
+  } = samplePatterns(patternData);
+
+  // start the cloth at a reasonable height above the model
+  initialClothHeight = 1.0;
+
   const { Apts, Bpts, globalIdx } = mergeHalves(halves);
 
   // 3) Verlet data
@@ -41,12 +50,18 @@ export async function init() {
   // 6) Scene & camera
   const dummyMesh  = new THREE.Object3D();
   const dummyLines = new THREE.Object3D();
-  const params     = { showWireframe: true, wind: 0, stiffness: 0.5, sphereRadius: 0.15 };
+  const params     = {
+    showWireframe: true,
+    wind: 0,
+    stiffness: 0.5,
+    sphereRadius: 0.15
+  };
   const { scene, camera, controls } =
     initScene(renderer, dummyMesh, dummyLines, params);
 
   // 7) Load & scale CPU BVH
-  const { triData, nodeData } = await loadModelBVH(scene);
+  const { triData, nodeData, bvhVis } = await loadModelBVH(scene);
+  console.log('🔍 CPU BVH node count:', nodeData.length);
 
   // 8) GPU setup
   const nodeCount = await setupGPU(
@@ -70,6 +85,7 @@ export async function init() {
     seamLines,
     params,
     nodeCount,
-    vertexCount: verletVertices.length
+    vertexCount: verletVertices.length,
+    bvhVis
   };
 }
