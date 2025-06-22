@@ -1,5 +1,3 @@
-// File: js/compute/shaders.js
-
 import {
   Fn,
   If,
@@ -30,23 +28,18 @@ import {
   gravityBaseUniform,
   gravityAccelUniform,
   seamTightnessUniform,
-  sphereRadiusUniform
+  sphereRadiusUniform,
+  sphereCenterUniform
 } from './uniforms.js';
 
 export let computeSpringForces, computeVertexForces;
 
-/**
- * Set up the two compute shaders:
- *  1) spring forces
- *  2) Verlet integration
- */
 export function setupComputeShaders(verletVertices, verletSprings) {
   const vCount = verletVertices.length;
   const sCount = verletSprings.length;
 
   // 1) compute spring forces
   computeSpringForces = Fn(() => {
-    // (no explicit idx-guard needed—.compute(sCount) already clamps dispatch)
     const sv    = springVertexIdBuffer.element(instanceIndex);
     const p0    = vertexPositionBuffer.element(sv.x);
     const p1    = vertexPositionBuffer.element(sv.y);
@@ -67,9 +60,8 @@ export function setupComputeShaders(verletVertices, verletSprings) {
     springForceBuffer.element(instanceIndex).assign(f);
   })().compute(sCount);
 
-  // 2) integrate Verlet + forces
+  // 2) integrate Verlet + forces + sphere‐collision
   computeVertexForces = Fn(() => {
-    // (no idx-guard here either)
     const param = vertexParamsBuffer.element(instanceIndex).toVar();
 
     // skip fixed vertices
@@ -94,7 +86,19 @@ export function setupComputeShaders(verletVertices, verletSprings) {
     force.x.addAssign(noise.mul(windUniform));
     force.z.addAssign(noise.mul(windUniform));
 
+    // Verlet: predict nextPos
     const nextPos = pos.add(force).toVar('nextPos');
+
+    // --- sphere collision: if inside, push out to surface ---
+    const sc      = sphereCenterUniform.toVar();
+    const dir     = nextPos.sub(sc).toVar('dir');
+    const dist    = dir.length().toVar('dist');
+    const isIn    = dist.lessThan(sphereRadiusUniform);
+    const normDir = dir.div(dist).toVar('normDir');
+    const sphPos  = sc.add(normDir.mul(sphereRadiusUniform));
+    nextPos.assign(isIn.select(sphPos, nextPos));
+
+    // write back
     vertexForceBuffer.element(instanceIndex).assign(force);
     vertexPositionBuffer.element(instanceIndex).assign(nextPos);
   })().compute(vCount);

@@ -1,79 +1,71 @@
 // File: js/init/index.js
 
-import * as THREE                   from 'three';
-import { loadConfig, patternData }  from '../config.js';
-import { samplePatterns }           from './patternSampler.js';
-import { mergeHalves }              from './patternMerger.js';
-import { buildVerlet }              from './verletBuilder.js';
-import { buildSeams }               from './seamBuilder.js';
-import { initRenderer, initScene }  from './sceneSetup.js';
-import { buildCloth }               from './clothBuilder.js';
-import { loadModelBVH }             from './modelLoader.js';
-import { setupGPU }                 from './gpuSetup.js';
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { BufferGeometry, BufferAttribute } from 'three';
+import { initRenderer }                   from './sceneSetup.js';
+import { loadModelTriData }               from './modelLoader.js';
+import { setupGPU }                       from './gpuSetup.js';
 
 export async function init() {
-  console.log("🔧 init(): starting initialization");
-
-  // 1) Patterns
-  await loadConfig();
-  if (!patternData || patternData.patterns.length !== 2) {
-    console.error('❌ Need exactly two patterns');
-    return;
-  }
-
-  // 2) Sample & merge
-  let {
-    halves,
-    ids0,
-    boundarySegments,
-    initialClothHeight,
-    separationY
-  } = samplePatterns(patternData);
-
-  // start the cloth at a reasonable height above the model
-  initialClothHeight = 1.0;
-
-  const { Apts, Bpts, globalIdx } = mergeHalves(halves);
-
-  // 3) Verlet data
-  const { verletVertices, verletSprings, addSpring } =
-    buildVerlet(Apts, Bpts, initialClothHeight, separationY, globalIdx);
-
-  // 4) Seams
-  const seamDebugPairs = buildSeams(
-    patternData.seams, halves, ids0, Apts.length, addSpring
-  );
-
-  // 5) Renderer & device
+  // 1) Renderer & WebGPU device
   const { renderer, device } = await initRenderer();
 
-  // 6) Scene & camera
-  const dummyMesh  = new THREE.Object3D();
-  const dummyLines = new THREE.Object3D();
-  const params     = {
-    showWireframe: true,
-    wind: 0,
-    stiffness: 0.5,
-    sphereRadius: 0.15
-  };
-  const { scene, camera, controls } =
-    initScene(renderer, dummyMesh, dummyLines, params);
-
-  // 7) Load & scale CPU BVH
-  const { triData, nodeData, bvhVis } = await loadModelBVH(scene);
-  console.log('🔍 CPU BVH node count:', nodeData.length);
-
-  // 8) GPU setup
-  const nodeCount = await setupGPU(
-    renderer, device,
-    verletVertices, verletSprings, seamDebugPairs,
-    params, triData, nodeData
+  // 2) Scene & camera
+  const scene  = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(
+    40,
+    window.innerWidth / window.innerHeight,
+    0.01,
+    10
   );
+  camera.position.set(0, 1, 2);
 
-  // 9) Build cloth + seams
-  const { clothMesh, seamLines } =
-    buildCloth(globalIdx, verletVertices, seamDebugPairs, params);
-  scene.add(clothMesh, seamLines);
+  // 3) Orbit controls
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.update();
+
+  // 4) Lights
+  scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+  scene.add(new THREE.DirectionalLight(0xffffff, 1));
+
+  // 5) Load the merged, scaled triangle data for the model
+  const triData = await loadModelTriData();
+
+  // 6) **Visualize** that same triangle data as a Mesh so you can *see* the model
+  const geom = new BufferGeometry();
+  geom.setAttribute('position', new BufferAttribute(triData, 3));
+  geom.computeVertexNormals();
+  const modelMesh = new THREE.Mesh(
+    geom,
+    new THREE.MeshStandardMaterial({ color: 0xdddddd, side: THREE.DoubleSide })
+  );
+  scene.add(modelMesh);
+
+  // 7) Sphere‐collision params
+  const params = {
+    sphereRadius:   0.15,
+    spherePosition: new THREE.Vector3(0, 1.5, 0)
+  };
+
+  // 8) GPU setup (naive all‐triangles collision)
+  const { spherePosBinding } = await setupGPU(renderer, device, params, triData);
+
+  // 9) Create & add your visible sphere
+  const sphereVel  = new THREE.Vector3(0, 0, 0);
+  const sphereMesh = new THREE.Mesh(
+    new THREE.SphereGeometry(params.sphereRadius, 32, 32),
+    new THREE.MeshStandardMaterial({ color: 0xff0000 })
+  );
+  sphereMesh.position.copy(params.spherePosition);
+  scene.add(sphereMesh);
+
+  // 10) Handle resize
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
 
   return {
     renderer,
@@ -81,11 +73,8 @@ export async function init() {
     scene,
     camera,
     controls,
-    clothMesh,
-    seamLines,
-    params,
-    nodeCount,
-    vertexCount: verletVertices.length,
-    bvhVis
+    sphereMesh,
+    sphereVel,
+    spherePosBinding
   };
 }

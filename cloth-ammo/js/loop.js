@@ -1,63 +1,61 @@
 // File: js/loop.js
 
 import * as THREE from 'three';
-import * as Compute          from './compute/index.js';
-import { dispatchBVH }       from './gpu/bvhBuilder.js';
-import { dispatchCollision } from './gpu/collisionBuilder.js';
+import { dispatchSphereCollision, debugBuffer } from './gpu/collisionBuilder.js';
 
 export function startLoop(
   renderer,
   device,
   scene,
   camera,
-  clothMesh,
-  seamLines,
-  params,
-  nodeCount,
-  vertexCount
+  sphereMesh,
+  sphereVel,
+  spherePosBinding
 ) {
   const clock = new THREE.Clock();
-  let tAccum    = 0;
-  let timestamp = 0;
-
-  // original step that felt good
-  const step = 1 / 300;
+  let frame = 0;
 
   renderer.setAnimationLoop(async () => {
-    const dt = Math.min(clock.getDelta(), 1 / 60);
-    tAccum += dt;
+    const dt = Math.min(clock.getDelta(), 1/60);
 
-    while (tAccum >= step) {
-      tAccum    -= step;
-      timestamp += step;
+    // -- CPU gravity on sphere --
+    sphereVel.addScaledVector(new THREE.Vector3(0, -9.8, 0), dt);
+    sphereMesh.position.addScaledVector(sphereVel, dt);
 
-      // 1) refit CPU-built BVH on GPU
-      dispatchBVH(device, nodeCount);
+    // **DEBUG** log the current sphere center going into the GPU:
+    console.log('🔍 Loop frame', frame, 'spherePos =', sphereMesh.position.toArray());
 
-      // 2) update your cloth uniforms
-      Compute.windUniform.value          = params.wind;
-      Compute.stiffnessUniform.value     = params.stiffness;
-      Compute.seamTightnessUniform.value = Math.min(timestamp * 2, 1);
-      Compute.sphereRadiusUniform.value  = params.sphereRadius;
+    // -- upload sphere center --
+    device.queue.writeBuffer(
+      spherePosBinding.buffer,
+      spherePosBinding.offset,
+      new Float32Array([
+        sphereMesh.position.x,
+        sphereMesh.position.y,
+        sphereMesh.position.z,
+        0
+      ])
+    );
 
-      // 3) standard cloth sim
-      await renderer.computeAsync(Compute.computeSpringForces);
-      await renderer.computeAsync(Compute.computeVertexForces);
+    // -- run GPU collision --
+    dispatchSphereCollision(device);
 
-      // 4) project onto mesh
-      dispatchCollision(device, vertexCount);
-
-      // 5) copy the collided positions back into the TSL buffer
-      // so both the next sim step and the material see them
-      const src = Compute.vertexPositionBuffer.buffer;       // sharedPosBuffer
-      const dst = Compute.vertexPositionBuffer.value.buffer; // TSL's internal buffer
-      const size = vertexCount * 3 * 4; // bytes per vec3<f32>
-      const encoder = device.createCommandEncoder();
-      encoder.copyBufferToBuffer(src, 0, dst, 0, size);
-      device.queue.submit([encoder.finish()]);
+    frame++;
+    if (frame % 60 === 0) {
+      // **DEBUG** read back the raw debugBuffer so you can inspect all 8 floats
+      const readB = device.createBuffer({
+        size: 32,
+        usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ
+      });
+      const enc = device.createCommandEncoder();
+      enc.copyBufferToBuffer(debugBuffer, 0, readB, 0, 32);
+      device.queue.submit([enc.finish()]);
+      await readB.mapAsync(GPUMapMode.READ);
+      const raw = new Float32Array(readB.getMappedRange());
+      readB.unmap();
+      console.log('🔍 debugBuf contents:', raw);
     }
 
-    clothMesh.material.wireframe = params.showWireframe;
     await renderer.renderAsync(scene, camera);
   });
 }

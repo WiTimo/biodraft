@@ -1,37 +1,36 @@
 // File: js/main.js
 
-import { init }           from './init/index.js';
-import { startLoop,
-         onWindowResize } from './loop.js';
+import { init } from './init/index.js';
+import { startLoop } from './loop.js';
 
-(async function(){
+(async function() {
   const {
     renderer,
     device,
     scene,
     camera,
-    clothMesh,
-    seamLines,
-    params,
-    nodeCount,
-    vertexCount,
-    bvhVis           
+    sphereMesh,
+    sphereVel,
+    spherePosBinding,
+    params
   } = await init();
 
-  window.addEventListener('resize', () =>
-    onWindowResize(camera, renderer)
-  );
+  // Handle window resize
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
 
+  // Kick off the animation loop
   startLoop(
     renderer,
     device,
     scene,
     camera,
-    clothMesh,
-    seamLines,
-    params,
-    nodeCount,
-    vertexCount,
-    bvhVis
+    sphereMesh,
+    sphereVel,
+    spherePosBinding,
+    params
   );
 })();

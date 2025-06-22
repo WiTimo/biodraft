@@ -1,76 +1,69 @@
 // File: js/init/gpuSetup.js
 
-import * as Compute              from '../compute/index.js';
-import { initBVHPipeline }       from '../gpu/bvhBuilder.js';
-import { initCollisionPipeline } from '../gpu/collisionBuilder.js';
-import { createBVHBuffers }      from './bvhBuffers.js';
+import * as Compute from '../compute/index.js';
+import { initSphereCollisionPipeline } from '../gpu/collisionBuilder.js';
 
-export async function setupGPU(
-  renderer,
-  device,
-  verletVertices,
-  verletSprings,
-  seamDebugPairs,
-  params,
-  triData,
-  nodeData
-) {
-  console.log("🔧 setupGPU(): creating TSL compute buffers");
-  Compute.setupBuffers(verletVertices, verletSprings, seamDebugPairs);
-  Compute.setupUniforms(params);
-  Compute.setupComputeShaders(verletVertices, verletSprings);
+/**
+ * Set up the “naive” sphere-vs-all-triangles collision on the GPU,
+ * with debug logs for triData and buffer bindings.
+ */
+export async function setupGPU(renderer, device, params, triData) {
+  // Debug: show triData
+  console.log('🔍 setupGPU: triData.length =', triData.length);
+  console.log('🔍 setupGPU: triData.slice(0, 9) =', triData.slice(0, 9));
 
-  console.log("🔧 setupGPU(): uploading BVH buffers");
-  const { triangleVertexBuffer, bvhNodeBuffer, nodeCount } =
-    createBVHBuffers(device, triData, nodeData);
-  console.log("  • triangleVertexBuffer:", triangleVertexBuffer);
-  console.log("  • bvhNodeBuffer:",       bvhNodeBuffer);
-  console.log("  • nodeCount:",           nodeCount);
-  await initBVHPipeline(device, triangleVertexBuffer, bvhNodeBuffer, nodeCount);
-  console.log("✅ BVH pipeline initialized");
+  // Upload triangle buffer as array<vec3<f32>>
+  const triangleVertexBuffer = device.createBuffer({
+    size: triData.byteLength,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+  });
+  device.queue.writeBuffer(triangleVertexBuffer, 0, triData);
 
-  console.log("🔧 setupGPU(): creating cloth-vertex count buffer");
-  const countBuf = device.createBuffer({
-    size: 4,
+  // Compute triangle count (9 floats per triangle)
+  const triangleCount = triData.length / 9;
+  console.log('🔍 setupGPU: triangleCount =', triangleCount);
+
+  // Sphere position buffer (padded vec3 -> vec4)
+  const spherePosArr = new Float32Array([
+    params.spherePosition.x,
+    params.spherePosition.y,
+    params.spherePosition.z,
+    0
+  ]);
+  const spherePosBuffer = device.createBuffer({
+    size: spherePosArr.byteLength,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC
+  });
+  device.queue.writeBuffer(spherePosBuffer, 0, spherePosArr);
+  const spherePosBinding = {
+    buffer: spherePosBuffer,
+    offset: 0,
+    size:   spherePosArr.byteLength
+  };
+  console.log('🔍 setupGPU: spherePosBinding =', spherePosBinding);
+
+  // Sphere-data uniform buffer
+  const sphereDataBuf = device.createBuffer({
+    size: 16,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
   });
-  device.queue.writeBuffer(countBuf, 0, new Uint32Array([verletVertices.length]));
-  console.log("  • countBuf:", countBuf);
-
-  console.log("🔧 setupGPU(): running warm-up computeAsync()");
-  await renderer.computeAsync(Compute.computeSpringForces);
-  await renderer.computeAsync(Compute.computeVertexForces);
-
-  // Allocate & upload a single shared GPUBuffer for cloth positions
-  const arrayBuf = await renderer.getArrayBufferAsync(
-    Compute.vertexPositionBuffer.value
+  device.queue.writeBuffer(
+    sphereDataBuf,
+    0,
+    new Float32Array([ params.sphereRadius, 0, 0, 0 ])
   );
-  const posArray = new Float32Array(arrayBuf);
-  const sharedPosBuffer = device.createBuffer({
-    size: posArray.byteLength,
-    usage:
-      GPUBufferUsage.STORAGE |
-      GPUBufferUsage.COPY_DST |
-      GPUBufferUsage.COPY_SRC
-  });
-  device.queue.writeBuffer(sharedPosBuffer, 0, posArray);
-  console.log("  • sharedPosBuffer:", sharedPosBuffer);
+  console.log('🔍 setupGPU: sphereDataBuf =', sphereDataBuf);
 
-  // Point TSL at it so sim writes here, and material reads here
-  Compute.vertexPositionBuffer.buffer       = sharedPosBuffer;
-  Compute.vertexPositionBuffer.value.buffer = sharedPosBuffer;
-
-  console.log("🔧 setupGPU(): initializing collision pipeline");
-  await initCollisionPipeline(
+  // Initialize sphere collision pipeline and get debug buffers
+  const { debugBuffer, triCountBuffer } = await initSphereCollisionPipeline(
     device,
     triangleVertexBuffer,
-    bvhNodeBuffer,
-    {
-      positionBuffer: { buffer: sharedPosBuffer },
-      countBuffer:    countBuf
-    }
+    triangleCount,
+    { position: spherePosBinding },
+    sphereDataBuf
   );
-  console.log("✅ collision pipeline initialized");
+  console.log('🔍 setupGPU: debugBuffer =', debugBuffer);
+  console.log('🔍 setupGPU: triCountBuffer =', triCountBuffer);
 
-  return nodeCount;
+  return { spherePosBinding };
 }

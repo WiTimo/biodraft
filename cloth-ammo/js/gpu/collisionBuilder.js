@@ -1,92 +1,74 @@
 // File: js/gpu/collisionBuilder.js
 
-let collisionPipeline      = null;
-let collisionBG            = null;
-let clothPositionBindGroup = null;
+export let sphereCollisionPipeline = null;
+export let sphereBG0              = null;
+export let sphereBG1              = null;
+
+// Debug + uniform buffers
+export let debugBuffer    = null;
+export let triCountBuffer = null;
 
 /**
- * Compile the collision‐BVH WGSL and set up both bind groups.
- *
- * @param {GPUDevice} device
- * @param {GPUBuffer} triangleVertexBuffer
- * @param {GPUBuffer} bvhNodeBuffer
- * @param {{ positionBuffer: GPUBufferBinding, countBuffer: GPUBuffer }} clothBuffers
+ * Compile the naive sphere‐vs‐triangles WGSL, set up both bind groups:
+ *  · group0: triBuf
+ *  · group1: spherePos, sphereData, triCount, debugBuf
  */
-export async function initCollisionPipeline(
+export async function initSphereCollisionPipeline(
   device,
   triangleVertexBuffer,
-  bvhNodeBuffer,
-  clothBuffers
+  triangleCount,
+  sphereBuffers,    // { position: GPUBufferBinding }
+  sphereDataBuffer  // GPUBuffer (uniform vec4<f32> where x=radius)
 ) {
-  console.log("🔧 initCollisionPipeline(): clothBuffers =", clothBuffers);
-
-  const { positionBuffer, countBuffer } = clothBuffers;
-
-  // 1) Fetch WGSL
-  const code = await fetch('./js/gpu/shaders/collision_bvh.wgsl')
-    .then(r => r.text());
-
-  // 2) Create compute pipeline
-  collisionPipeline = device.createComputePipeline({
+  const code = await fetch('./js/gpu/shaders/sphere_collision.wgsl').then(r => r.text());
+  sphereCollisionPipeline = device.createComputePipeline({
     layout: 'auto',
-    compute: {
-      module:     device.createShaderModule({ code }),
-      entryPoint: 'main'
-    }
+    compute: { module: device.createShaderModule({ code }), entryPoint: 'main' }
   });
-  console.log("✅ collision compute pipeline created");
 
-  // 3) BindGroup 0: mesh BVH data
-  collisionBG = device.createBindGroup({
-    layout: collisionPipeline.getBindGroupLayout(0),
-    entries: [
-      { binding: 0, resource: { buffer: triangleVertexBuffer } },
-      { binding: 1, resource: { buffer: bvhNodeBuffer         } }
-    ]
+  // group0: triangles
+  sphereBG0 = device.createBindGroup({
+    layout: sphereCollisionPipeline.getBindGroupLayout(0),
+    entries: [{ binding: 0, resource: { buffer: triangleVertexBuffer } }]
   });
-  console.log("✅ collision BG0 created");
 
-  // 4) BindGroup 1: cloth positions + vertex count
-  const layout1 = collisionPipeline.getBindGroupLayout(1);
-  console.log(
-    "🔧 initCollisionPipeline(): BG1 entries →",
-    "positionBuffer=", positionBuffer,
-    "countBuffer=",    countBuffer
-  );
-  clothPositionBindGroup = device.createBindGroup({
+  // triCount uniform (pad to 16 bytes)
+  triCountBuffer = device.createBuffer({
+    size: 16,
+    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+  });
+  device.queue.writeBuffer(triCountBuffer, 0, new Uint32Array([triangleCount]));
+
+  // debugBuffer = 8 floats = 32 bytes
+  debugBuffer = device.createBuffer({
+    size: 32,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
+  });
+
+  // group1: spherePos, sphereData, triCount, debugBuf
+  const layout1 = sphereCollisionPipeline.getBindGroupLayout(1);
+  sphereBG1 = device.createBindGroup({
     layout: layout1,
     entries: [
-      { binding: 0, resource: positionBuffer },
-      { binding: 1, resource: { buffer: countBuffer } }
+      { binding: 0, resource: sphereBuffers.position },
+      { binding: 1, resource: { buffer: sphereDataBuffer } },
+      { binding: 2, resource: { buffer: triCountBuffer } },
+      { binding: 3, resource: { buffer: debugBuffer } }
     ]
   });
-  console.log("✅ collision BG1 created");
 }
 
 /**
- * Dispatch the collision pass.
+ * Dispatch the sphere↔mesh pass (single workgroup).
  */
-export function dispatchCollision(device, vertexCount) {
-  console.log("🔧 dispatchCollision(): device, vertexCount =", device, vertexCount);
-
-  if (!collisionPipeline || !collisionBG || !clothPositionBindGroup) {
-    console.error('❌ collisionBuilder not initialized!');
-    return;
-  }
-
-  const encoder = device.createCommandEncoder();
-  const pass    = encoder.beginComputePass();
-
-  pass.setPipeline(collisionPipeline);
-  pass.setBindGroup(0, collisionBG);
-  pass.setBindGroup(1, clothPositionBindGroup);
-
-  // one workgroup per 64 vertices
-  const groups = Math.ceil(vertexCount / 64);
-  console.log(`🔧 dispatchCollision(): dispatchWorkgroups(${groups})`);
-  pass.dispatchWorkgroups(groups);
-
+export function dispatchSphereCollision(device) {
+  if (!sphereCollisionPipeline) throw new Error('Not initialized');
+  const enc  = device.createCommandEncoder();
+  const pass = enc.beginComputePass();
+  pass.setPipeline(sphereCollisionPipeline);
+  pass.setBindGroup(0, sphereBG0);
+  pass.setBindGroup(1, sphereBG1);
+  pass.dispatchWorkgroups(1);
   pass.end();
-  device.queue.submit([encoder.finish()]);
-  console.log("✅ dispatchCollision(): submitted");
+  device.queue.submit([enc.finish()]);
 }

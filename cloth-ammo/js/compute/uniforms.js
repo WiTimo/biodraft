@@ -1,5 +1,3 @@
-// js/compute/uniforms.js
-
 import { uniform } from 'three/tsl';
 
 export let stiffnessUniform,
@@ -8,7 +6,8 @@ export let stiffnessUniform,
            gravityBaseUniform,
            gravityAccelUniform,
            seamTightnessUniform,
-           sphereRadiusUniform;
+           sphereRadiusUniform,
+           sphereCenterUniform;
 
 export function setupUniforms(params) {
   stiffnessUniform     = uniform(params.stiffness);
@@ -21,4 +20,5 @@ export function setupUniforms(params) {
 
   seamTightnessUniform = uniform(0.0);
   sphereRadiusUniform  = uniform(params.sphereRadius);
+  sphereCenterUniform  = uniform(params.spherePosition);
 }
