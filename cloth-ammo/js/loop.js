@@ -14,49 +14,48 @@ export function startLoop(
   seamLines,
   params,
   nodeCount,
-  vertexCount,
-  bvhVis
+  vertexCount
 ) {
   const clock = new THREE.Clock();
-  let tAccum = 0;
+  let tAccum    = 0;
+  let timestamp = 0;
 
-  // Slower substep so cloth moves visibly
-  const step = 1 / 100;
+  // original step that felt good
+  const step = 1 / 300;
 
   renderer.setAnimationLoop(async () => {
-    const dt = Math.min(clock.getDelta(), 1/60);
+    const dt = Math.min(clock.getDelta(), 1 / 60);
     tAccum += dt;
 
-    if (tAccum >= step) {
-      tAccum -= step;
+    while (tAccum >= step) {
+      tAccum    -= step;
+      timestamp += step;
 
-      // 1) Refit mesh BVH on GPU
+      // 1) refit CPU-built BVH on GPU
       dispatchBVH(device, nodeCount);
 
-      // 2) Update uniforms
+      // 2) update your cloth uniforms
       Compute.windUniform.value          = params.wind;
       Compute.stiffnessUniform.value     = params.stiffness;
-      Compute.seamTightnessUniform.value = Math.min(clock.elapsedTime * 2, 1);
+      Compute.seamTightnessUniform.value = Math.min(timestamp * 2, 1);
       Compute.sphereRadiusUniform.value  = params.sphereRadius;
 
-      // 3) Collision pass
+      // 3) standard cloth sim
+      await renderer.computeAsync(Compute.computeSpringForces);
+      await renderer.computeAsync(Compute.computeVertexForces);
+
+      // 4) project onto mesh
       dispatchCollision(device, vertexCount);
 
-      // 4) Copy collided positions back into the TSL position buffer
-      const src = Compute.vertexPositionBuffer.buffer;               // sharedPosBuffer
-      const dst = Compute.vertexPositionBuffer.value.buffer;         // TSL’s internal buffer
-      const size = vertexCount * 3 * 4; // bytes = count * vec3<f32> * sizeof(f32)
+      // 5) copy the collided positions back into the TSL buffer
+      // so both the next sim step and the material see them
+      const src = Compute.vertexPositionBuffer.buffer;       // sharedPosBuffer
+      const dst = Compute.vertexPositionBuffer.value.buffer; // TSL's internal buffer
+      const size = vertexCount * 3 * 4; // bytes per vec3<f32>
       const encoder = device.createCommandEncoder();
       encoder.copyBufferToBuffer(src, 0, dst, 0, size);
       device.queue.submit([encoder.finish()]);
-
-      // 5) Cloth sim: spring forces + Verlet integration
-      await renderer.computeAsync(Compute.computeSpringForces);
-      await renderer.computeAsync(Compute.computeVertexForces);
     }
-
-    // 6) BVH visualizer update
-    if (bvhVis) bvhVis.update();
 
     clothMesh.material.wireframe = params.showWireframe;
     await renderer.renderAsync(scene, camera);

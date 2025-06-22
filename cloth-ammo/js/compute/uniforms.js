@@ -16,8 +16,8 @@ export function setupUniforms(params) {
   dampingUniform       = uniform(0.98);
 
   // gentler gravity so cloth settles on the mesh
-  gravityBaseUniform   = uniform(0.0001);
-  gravityAccelUniform  = uniform(0.00005);
+  gravityBaseUniform   = uniform(0.000007);
+  gravityAccelUniform  = uniform(0.00001);
 
   seamTightnessUniform = uniform(0.0);
   sphereRadiusUniform  = uniform(params.sphereRadius);
