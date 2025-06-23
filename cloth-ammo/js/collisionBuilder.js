@@ -37,7 +37,7 @@ export async function initSphereCollisionPipeline(
     size: 16,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
   });
-  device.queue.writeBuffer(triCountBuffer, 0, new Uint32Array([triangleCount]));
+  device.queue.writeBuffer(triCountBuffer, 0, new Uint32Array([ triangleCount ]));
 
   // debugBuffer = 8 floats = 32 bytes
   debugBuffer = device.createBuffer({
@@ -56,6 +56,9 @@ export async function initSphereCollisionPipeline(
       { binding: 3, resource: { buffer: debugBuffer } }
     ]
   });
+
+  // **Return the buffers so callers can destructure them**
+  return { debugBuffer, triCountBuffer };
 }
 
 /**
