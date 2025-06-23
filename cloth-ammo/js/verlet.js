@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import Delaunator from 'delaunator';
-import { pointInAnyPolygon } from './utils.js';
-import { normalizePoint, patternData } from './config.js';
+import { pointInAnyPolygon } from '../utils.js';
+import { normalizePoint, patternData } from '../config.js';
 
 /**
  * Module‐level exports for main.js
