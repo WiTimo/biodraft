@@ -1,27 +1,16 @@
 import * as THREE from 'three';
 import Delaunator from 'delaunator';
-import { pointInAnyPolygon } from '../utils.js';
-import { normalizePoint, patternData } from '../config.js';
+import { pointInAnyPolygon } from './utils.js';
+import { normalizePoint, patternData } from './config.js';
 
-/**
- * Module‐level exports for main.js
- */
 export let verletVertices    = [];
 export let initialPositions  = [];
 export let springs           = [];
 
-/**
- * Build a single‐pattern cloth via Delaunay + Verlet springs.
- * @param {Object} pat               One pattern from patternData.patterns
- * @param {number} boundarySegments  How many boundary samples
- * @param {number} initialClothHeight  Y‐offset for all points
- * @returns {Object|null}  { vertices, springs, initialPositions, indices } or null if invalid
- */
 export function setupVerletFromPattern(pat, boundarySegments, initialClothHeight) {
   const pts = pat.points;
   if (!pts || pts.length < 3) return null;
 
-  // [1] sample Bézier boundary
   const shape = new THREE.Shape();
   const p0 = normalizePoint(pts[0]);
   shape.moveTo(p0.x, p0.y);
@@ -48,7 +37,6 @@ export function setupVerletFromPattern(pat, boundarySegments, initialClothHeight
   const boundary = shape.getSpacedPoints(boundarySegments);
   if (boundary.length < 3) return null;
 
-  // [2] compute bounding box
   let bbMinX = Infinity, bbMaxX = -Infinity,
       bbMinY = Infinity, bbMaxY = -Infinity;
   for (let v of boundary) {
@@ -58,7 +46,6 @@ export function setupVerletFromPattern(pat, boundarySegments, initialClothHeight
     bbMaxY = Math.max(bbMaxY, v.y);
   }
 
-  // [3] sample interior grid
   const interior = [];
   const step = (bbMaxX - bbMinX) / 50;
   for (let x = bbMinX; x <= bbMaxX; x += step) {
@@ -69,15 +56,12 @@ export function setupVerletFromPattern(pat, boundarySegments, initialClothHeight
     }
   }
 
-  // [4] combine boundary + interior
   const allPts = [ ...boundary, ...interior ];
 
-  // [5] Delaunay triangulation
   const coords = allPts.map(p => [ p.x, p.y ]);
   const dela   = Delaunator.from(coords);
   const rawT   = dela.triangles;
 
-  // [6] filter triangles by centroid‐inside test
   const idx = [];
   for (let i = 0; i < rawT.length; i += 3) {
     const [ a, b, c ] = [ rawT[i], rawT[i+1], rawT[i+2] ];
@@ -89,7 +73,6 @@ export function setupVerletFromPattern(pat, boundarySegments, initialClothHeight
     }
   }
 
-  // [7] create Verlet vertices + springs
   const verts   = [];
   const sprs    = [];
 
@@ -105,7 +88,7 @@ export function setupVerletFromPattern(pat, boundarySegments, initialClothHeight
 
   function addSpring(i0, i1) {
     const v0 = verts[i0], v1 = verts[i1];
-    // avoid duplicates
+
     if (v0.springIds.some(sid => {
       const sp = sprs[sid];
       return (sp.vertex0.id === i0 && sp.vertex1.id === i1)
@@ -123,7 +106,6 @@ export function setupVerletFromPattern(pat, boundarySegments, initialClothHeight
     addSpring(idx[i+2], idx[i]);
   }
 
-  // [8] record initial positions
   const initialPoss = verts.map(v => v.position.clone());
 
   return {

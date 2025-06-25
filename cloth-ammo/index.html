@@ -21,21 +21,31 @@
 			z-index: 1;
 		}
 	</style>
+
 	<script type="importmap">
     {
-      "imports": {
-        "three":         "https://unpkg.com/three@0.173.0/build/three.webgpu.js",
-        "three/webgpu":  "https://unpkg.com/three@0.173.0/build/three.webgpu.js",
-        "three/tsl":     "https://unpkg.com/three@0.173.0/build/three.tsl.js",
-        "three/addons/": "https://unpkg.com/three@0.173.0/examples/jsm/",
-        "delaunator":    "https://esm.sh/delaunator@5.0.0"
-      }
+		"imports": {
+			"three":         "https://unpkg.com/three@0.177.0/build/three.webgpu.js",
+			"three/webgpu":  "https://unpkg.com/three@0.177.0/build/three.webgpu.js",
+			"three/tsl":     "https://unpkg.com/three@0.177.0/build/three.tsl.js",
+			"three/addons/": "https://unpkg.com/three@0.177.0/examples/jsm/",
+			"three-mesh-bvh":"https://unpkg.com/three-mesh-bvh@0.9.1/build/index.module.js",
+			"delaunator":    "https://esm.sh/delaunator@5.0.1"
+		  }
     }
-    </script>
+  </script>
 </head>
 
 <body>
-	<script type="module" src="./js/main.js"></script>
+	<script src="https://cdn.jsdelivr.net/npm/ammojs3@0.0.11/builds/ammo.wasm.js"></script>
+	<script type="module">
+		Ammo().then((AmmoLib) => {
+			window.Ammo = AmmoLib;
+			import('./js/main.js');
+		}).catch(err => {
+			console.error("Failed to initialize Ammo:", err);
+		});
+	</script>
 </body>
 
 </html>
