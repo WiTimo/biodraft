@@ -304,13 +304,31 @@ async function loadHumanColliderAndInitCompute() {
             geoms.push(g);
           }
         });
+
+        // BVH
         const merged = BufferGeometryUtils.mergeGeometries(geoms, false);
+        merged.computeBoundsTree({ lazyGeneration: false });
 
-        const bvh = new MeshBVH(merged, { lazyGeneration: false });
+        const bvh = merged.boundsTree;
+        const serialized    = MeshBVH.serialize( bvh, { cloneBuffers: true } );
+        const colliderMesh = new THREE.Mesh(
+          merged,
+          new THREE.MeshBasicMaterial({ visible: false })
+        );
+        scene.add(colliderMesh);
 
-        const serialized = MeshBVH.serialize(bvh, { cloneBuffers: true });
+        manBVHHelper = new MeshBVHHelper(colliderMesh, /* depth = */ 10);
 
-        const { roots, index, indirect } = serialized;
+        const helperLine = manBVHHelper.children.find(
+          (c) => c.isLineSegments
+        );
+        helperLine.material.depthTest = false;
+        helperLine.material.transparent = true;
+        helperLine.material.opacity = 0.2;
+
+        scene.add(manBVHHelper);
+
+        manBVHHelper.update();
 
         const posAttr = merged.attributes.position;
         const positions = posAttr.array;
@@ -343,19 +361,44 @@ async function loadHumanColliderAndInitCompute() {
         ammoManBody = new Ammo.btRigidBody(info);
         physicsWorld.addRigidBody(ammoManBody);
 
+        console.log('raw roots array length:', serialized.roots.length);
+
+        // serialize the BVH into ArrayBuffers
+        const rootBuf      = serialized.roots[0];                    // ArrayBuffer of packed nodes
+        const nodeCount    = rootBuf.byteLength / (8 * 4);          // 8 words (6 floats + 2 uints) × 4 bytes
+
+        // slice out first 6 floats per node → world-space AABBs
+        const aabbBytes    = nodeCount * 6 * Float32Array.BYTES_PER_ELEMENT;
+        const aabbBuf      = rootBuf.slice(0, aabbBytes);
+        const aabbFloats   = new Float32Array(aabbBuf);
+
+        // slice out the 2 uint child indices per node
+        const childBuf     = rootBuf.slice(aabbBytes);
+        const childInts    = new Uint32Array(childBuf);
+
         Compute.setupColliderBuffers({
           positions,
-          indices: new Uint32Array(indices),
-          bvhRoots: roots,
-          bvhIndex: index,
-          bvhIndirect: indirect,
+          indices:       new Uint32Array(indices),   // your mesh’s triangle index buffer
+          bvhAABBFloats: aabbFloats,                  // Float32Array of min/max floats
+          bvhChildIndices: childInts,                 // Uint32Array of child-pointers
+          bvhIndirect:   serialized.indirectBuffer,   // can be null if you’re only doing AABB tests
+          bvhNodeCount:  nodeCount
         });
-        console.log('▶ human collider: ', {
+        /*Compute.setupColliderBuffers({
+          positions,
+          indices: new Uint32Array(indices),
+          bvhRoots: rootsTyped, // works
+          bvhIndex: new Float32Array(indirect.buffer),
+          bvhIndirect: indirectTyped,
+        });*/
+        //console.log("bvhIndex sample:", indexTyped.slice(0, 12));
+
+        /*console.log('▶ human collider: ', {
           vertexCount: positions.length / 3,
           verticies: positions
           //sample0: positions.slice(0, 3),
           //sample1: positions.slice(positions.length - 3, positions.length)
-        });
+        });*/
 
         const colliderGeo = new THREE.BufferGeometry();
         colliderGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
