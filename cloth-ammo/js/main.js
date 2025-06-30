@@ -1,5 +1,3 @@
-// js/main.js
-
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import Delaunator from 'delaunator';
@@ -7,37 +5,142 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 import { attribute } from 'three/tsl';
 
-import { computeBoundsTree, acceleratedRaycast, MeshBVHHelper } from 'three-mesh-bvh';
-
 import { loadConfig, patternData } from './config.js';
 import { pointInPolygon } from './utils.js';
 import * as Compute from './compute.js';
 
-// Hook BVH into Three.js
+import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
+
+import {
+  computeBoundsTree,
+  disposeBoundsTree,
+  acceleratedRaycast,
+  MeshBVH,
+  MeshBVHHelper
+} from 'three-mesh-bvh';
+
+function halfToFloat(h) {
+  const s = (h & 0x8000) >>> 15;
+  const e = (h & 0x7C00) >>> 10;
+  const f = h & 0x03FF;
+  if (e === 0) {
+    // subnormal or zero
+    return (s ? -1 : 1) * Math.pow(2, -14) * (f / 1024);
+  }
+  if (e === 0x1F) {
+    // Inf or NaN
+    return f ? NaN : (s ? -Infinity : Infinity);
+  }
+  // normal
+  return (s ? -1 : 1) * Math.pow(2, e - 15) * (1 + f / 1024);
+}
+
 THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
+THREE.BufferGeometry.prototype.disposeBoundsTree = disposeBoundsTree;
 THREE.Mesh.prototype.raycast = acceleratedRaycast;
 
-// — PARAMETERS —
-const sphereRadius = 0.15;
-const initialClothHeight = sphereRadius + 0.5;
+let physicsWorld = null, ammoManBody = null;
+
+const initialClothHeight = 0.15 + 0.5;
 const boundarySegments = 300;
 const separationY = 0.2;
 const params = {
   showWireframe: true,
   wind: 0.0,
   stiffness: 0.5,
-  sphereRadius
+  seamSpeed: 0.1
 };
 
-// — GLOBALS —
+export async function buildHumanBVH({ scene, geoms, physicsWorld, Compute }) {
+  // 1) Merge + BVH
+  const merged = BufferGeometryUtils.mergeGeometries(geoms, false);
+  merged.computeBoundsTree({ lazyGeneration: false, indirect: true });
+  const bvh = merged.boundsTree;
+
+  // 2) (Optional) debug helper
+  const debugMesh = new THREE.Mesh(merged, new THREE.MeshBasicMaterial({ visible: false }));
+  scene.add(debugMesh);
+  const helper = new MeshBVHHelper(debugMesh, 7);
+  helper.children
+    .filter(c => c.isLineSegments)
+    .forEach(line => {
+      line.material.depthTest = false;
+      line.material.transparent = true;
+      line.material.opacity = 0.2;
+    });
+  scene.add(helper);
+  helper.update();
+
+  // 3) Ammo triangle mesh
+  const positions = merged.attributes.position.array;
+  let indices = merged.index ? merged.index.array : null;
+  if (!indices) {
+    const vc = positions.length / 3;
+    indices = new Uint32Array(vc);
+    for (let i = 0; i < vc; i++) indices[i] = i;
+  }
+  const triMesh = new Ammo.btTriangleMesh();
+  for (let i = 0; i < indices.length; i += 3) {
+    const ia = indices[i] * 3;
+    const ib = indices[i + 1] * 3;
+    const ic = indices[i + 2] * 3;
+    const a = new Ammo.btVector3(positions[ia], positions[ia + 1], positions[ia + 2]);
+    const b = new Ammo.btVector3(positions[ib], positions[ib + 1], positions[ib + 2]);
+    const c = new Ammo.btVector3(positions[ic], positions[ic + 1], positions[ic + 2]);
+    triMesh.addTriangle(a, b, c, true);
+  }
+  const shape = new Ammo.btBvhTriangleMeshShape(triMesh, true, true);
+  const ms = new Ammo.btDefaultMotionState();
+  const rbInfo = new Ammo.btRigidBodyConstructionInfo(0, ms, shape, new Ammo.btVector3(0, 0, 0));
+  const body = new Ammo.btRigidBody(rbInfo);
+  physicsWorld.addRigidBody(body);
+
+  // 4) Serialize the BVH into half-floats & 16-bit ints
+  const { index: halfIndex, indirectBuffer: halfIndirect } =
+    MeshBVH.serialize(bvh, { cloneBuffers: true });
+
+  // 5) Decode half-floats directly into world-space AABBs (8 floats per node)
+  const bvhIndexFloats = new Float32Array(halfIndex.length);
+  for (let i = 0; i < halfIndex.length; i++) {
+    bvhIndexFloats[i] = halfToFloat(halfIndex[i]);
+  }
+
+  // 6) Pair every two 16-bit words into a single 32-bit index
+  const nodeCount = halfIndirect.length / 2;
+  const bvhIndirectUInts = new Uint32Array(nodeCount);
+  for (let i = 0; i < nodeCount; i++) {
+    const lo = halfIndirect[i * 2];
+    const hi = halfIndirect[i * 2 + 1];
+    bvhIndirectUInts[i] = lo | (hi << 16);
+  }
+
+  // 7) Single-tree root index is always 0
+  const rootIndices = new Uint32Array([0]);
+
+  // 8) Debug logs
+  console.log('First AABB floats:   ', bvhIndexFloats.slice(0, 6));    // e.g. [-0.5, -1.2, 0.1, 0.5, 1.3, 0.9]
+  console.log('First indirect ints:', bvhIndirectUInts.slice(0, 8));   // e.g. [1, 2, 3, 4, 5, 6, 7, 8]
+  console.log('Root indices:       ', rootIndices);                   // [0]
+
+  // 9) Bind into your compute shader
+  Compute.setupColliderBuffers({
+    positions: new Float32Array(positions),
+    indices: new Uint32Array(indices),
+    bvhIndexFloats,
+    bvhIndirectUInts,
+    rootIndices
+  });
+
+  return { body, helper, merged, positions, indices };
+}
+
+
 let renderer, scene, camera, controls;
 let verletVertices = [], verletSprings = [], seamDebugPairs = [];
 let clothMesh, clothMaterial, seamLines;
 const clock = new THREE.Clock();
-let timeSinceLastStep = 0, timestamp = 0;
-let manMesh = null;
+let timeSinceLastStep = 0, timestamp = 0, frameCount = 0;
 
-init();
 async function init() {
   await loadConfig();
   if (!patternData || patternData.patterns.length !== 2) {
@@ -45,222 +148,291 @@ async function init() {
     return;
   }
 
-  // [1] Sample & triangulate each half
-  const ids0 = new Set(patternData.patterns[0].points.map(p => p.id));
-  const halves = patternData.patterns.map(pat => {
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    pat.points.forEach(p => {
-      minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
-      minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
-    });
-    const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
-    const scl = 1 / Math.max(maxX - minX, maxY - minY);
-    const norm = p => ({ x: (p.x - cx) * scl, y: (p.y - cy) * scl });
+  let globalIdx;
 
-    const shape = new THREE.Shape();
-    const P0 = norm(pat.points[0]);
-    shape.moveTo(P0.x, P0.y);
-    for (let i = 1; i < pat.points.length; i++) {
-      const A = pat.points[i - 1], B = pat.points[i];
-      const nA = norm(A), nB = norm(B);
-      const hasBez = (A.handleOut.dx || A.handleOut.dy) || (B.handleIn.dx || B.handleIn.dy);
-      if (hasBez) {
-        const cp1 = norm({ x: A.x + (A.handleOut.dx || 0), y: A.y + (A.handleOut.dy || 0) });
-        const cp2 = norm({ x: B.x + (B.handleIn.dx || 0), y: B.y + (B.handleIn.dy || 0) });
-        shape.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, nB.x, nB.y);
-      } else shape.lineTo(nB.x, nB.y);
+  function setupRenderer() {
+    renderer = new THREE.WebGPURenderer({ antialias: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+  }
+
+  function setupScene() {
+    scene = new THREE.Scene();
+  }
+
+  function setupCameraControls() {
+    camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.01, 10);
+    camera.position.set(-1.6, -0.1, -1.6);
+    controls = new OrbitControls(camera, renderer.domElement);
+    controls.minDistance = 1;
+    controls.maxDistance = 3;
+    controls.target.set(0, -0.1, 0);
+    controls.update();
+  }
+
+  function setupLights() {
+    scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+    const dl = new THREE.DirectionalLight(0xffffff, 1);
+    dl.position.set(1, 1, 1);
+    scene.add(dl);
+  }
+
+  function setupEventListeners() {
+    window.addEventListener('resize', onWindowResize);
+  }
+
+  function computeHalves() {
+    const ids0 = new Set(patternData.patterns[0].points.map(p => p.id));
+    return patternData.patterns.map(pat => {
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      pat.points.forEach(p => {
+        minX = Math.min(minX, p.x);
+        maxX = Math.max(maxX, p.x);
+        minY = Math.min(minY, p.y);
+        maxY = Math.max(maxY, p.y);
+      });
+      const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+      const scl = 1 / Math.max(maxX - minX, maxY - minY);
+      const norm = p => ({ x: (p.x - cx) * scl, y: (p.y - cy) * scl });
+      const shape = new THREE.Shape();
+      const P0 = norm(pat.points[0]);
+      shape.moveTo(P0.x, P0.y);
+      for (let i = 1; i < pat.points.length; i++) {
+        const A = pat.points[i - 1], B = pat.points[i];
+        const nA = norm(A), nB = norm(B);
+        const hasBez = (A.handleOut?.dx || A.handleOut?.dy) || (B.handleIn?.dx || B.handleIn?.dy);
+        if (hasBez) {
+          const cp1 = norm({ x: A.x + (A.handleOut?.dx || 0), y: A.y + (A.handleOut?.dy || 0) });
+          const cp2 = norm({ x: B.x + (B.handleIn?.dx || 0), y: B.y + (B.handleIn?.dy || 0) });
+          shape.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, nB.x, nB.y);
+        } else {
+          shape.lineTo(nB.x, nB.y);
+        }
+      }
+      shape.lineTo(P0.x, P0.y);
+      const boundary = shape.getSpacedPoints(boundarySegments);
+      let bbMinX = Infinity, bbMaxX = -Infinity, bbMinY = Infinity, bbMaxY = -Infinity;
+      boundary.forEach(v => {
+        bbMinX = Math.min(bbMinX, v.x);
+        bbMaxX = Math.max(bbMaxX, v.x);
+        bbMinY = Math.min(bbMinY, v.y);
+        bbMaxY = Math.max(bbMaxY, v.y);
+      });
+      const interior = [];
+      for (let x = bbMinX; x <= bbMaxX; x += 0.02) {
+        for (let y = bbMinY; y <= bbMaxY; y += 0.02) {
+          if (pointInPolygon(x, y, boundary)) interior.push({ x, y });
+        }
+      }
+      const pts2D = boundary.concat(interior);
+      const dela = Delaunator.from(pts2D.map(p => [p.x, p.y]));
+      const idx = [];
+      for (let i = 0; i < dela.triangles.length; i += 3) {
+        const a = dela.triangles[i], b = dela.triangles[i + 1], c = dela.triangles[i + 2];
+        const pa = pts2D[a], pb = pts2D[b], pc = pts2D[c];
+        const mx = (pa.x + pb.x + pc.x) / 3, my = (pa.y + pb.y + pc.y) / 3;
+        if (pointInPolygon(mx, my, boundary)) idx.push(a, b, c);
+      }
+      return { norm, boundary, pts2D, idx, original: pat.points };
+    });
+  }
+
+  function setupVerlet(halves) {
+    const Apts = halves[0].pts2D, Bpts = halves[1].pts2D;
+    const allPts = Apts.concat(Bpts);
+    const globalIdxLocal = halves[0].idx.concat(halves[1].idx.map(i => i + Apts.length));
+    const quatX = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
+    const quatY = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI);
+    verletVertices = allPts.map((p, i) => {
+      const offsetY = initialClothHeight + (i < Apts.length ? -separationY : separationY);
+      const pos = new THREE.Vector3(p.x, offsetY, p.y);
+      if (i >= Apts.length) pos.applyQuaternion(quatY);
+      pos.applyQuaternion(quatX);
+      return { id: i, position: pos, isFixed: 0, springIds: [] };
+    });
+    verletSprings = [];
+    seamDebugPairs = [];
+    function addSpring(i0, i1) {
+      const v0 = verletVertices[i0], v1 = verletVertices[i1];
+      for (const sid of v0.springIds) {
+        const sp = verletSprings[sid];
+        if ((sp.v0 === i0 && sp.v1 === i1) || (sp.v0 === i1 && sp.v1 === i0)) return;
+      }
+      const sid = verletSprings.length;
+      verletSprings.push({ v0: i0, v1: i1 });
+      v0.springIds.push(sid);
+      v1.springIds.push(sid);
     }
-    shape.lineTo(P0.x, P0.y);
-    const boundary = shape.getSpacedPoints(boundarySegments);
-
-    let bbMinX = Infinity, bbMaxX = -Infinity, bbMinY = Infinity, bbMaxY = -Infinity;
-    boundary.forEach(v => {
-      bbMinX = Math.min(bbMinX, v.x); bbMaxX = Math.max(bbMaxX, v.x);
-      bbMinY = Math.min(bbMinY, v.y); bbMaxY = Math.max(bbMaxY, v.y);
-    });
-
-    const interior = [];
-    for (let x = bbMinX; x <= bbMaxX; x += 0.02) {
-      for (let y = bbMinY; y <= bbMaxY; y += 0.02) {
-        if (pointInPolygon(x, y, boundary)) interior.push({ x, y });
+    for (let i = 0; i < globalIdxLocal.length; i += 3) {
+      addSpring(globalIdxLocal[i], globalIdxLocal[i + 1]);
+      addSpring(globalIdxLocal[i + 1], globalIdxLocal[i + 2]);
+      addSpring(globalIdxLocal[i + 2], globalIdxLocal[i]);
+    }
+    function getBoundaryIndex(pid, half) {
+      const po = half.original.find(p => p.id === pid);
+      const np = half.norm(po);
+      let best = 0, d2 = Infinity;
+      half.boundary.forEach((v, i) => {
+        const dd = (v.x - np.x) ** 2 + (v.y - np.y) ** 2;
+        if (dd < d2) { d2 = dd; best = i; }
+      });
+      return best;
+    }
+    function getBoundarySequence(start, end, N) {
+      const seqF = [], seqB = [];
+      let cur = start;
+      do { seqF.push(cur); cur = (cur + 1) % N; } while (cur !== (end + 1) % N);
+      cur = start;
+      do { seqB.push(cur); cur = (cur - 1 + N) % N; } while (cur !== (end - 1 + N) % N);
+      return seqF.length <= seqB.length ? seqF : seqB;
+    }
+    const ids0 = new Set(halves[0].original.map(p => p.id));
+    for (const seam of patternData.seams) {
+      const [aPair, bPair] = seam;
+      const half0 = ids0.has(aPair[0]) ? aPair : bPair;
+      const half1 = ids0.has(aPair[0]) ? bPair : aPair;
+      let seq0 = getBoundarySequence(getBoundaryIndex(half0[0], halves[0]), getBoundaryIndex(half0[1], halves[0]), halves[0].boundary.length);
+      let seq1 = getBoundarySequence(getBoundaryIndex(half1[0], halves[1]), getBoundaryIndex(half1[1], halves[1]), halves[1].boundary.length);
+      const L = Math.max(seq0.length, seq1.length);
+      const resample = (seq, T) => Array.from({ length: T }, (_, k) => seq[Math.floor(k * seq.length / T)]);
+      if (seq0.length !== L) seq0 = resample(seq0, L);
+      if (seq1.length !== L) seq1 = resample(seq1, L);
+      for (let k = 0; k < L; k++) {
+        const i0 = seq0[k];
+        const i1 = seq1[k] + Apts.length;
+        addSpring(i0, i1);
+        seamDebugPairs.push([i0, i1]);
       }
     }
-
-    const pts2D = boundary.concat(interior);
-    const coords = pts2D.map(p => [p.x, p.y]);
-    const dela = Delaunator.from(coords);
-    const idx = [];
-    for (let i = 0; i < dela.triangles.length; i += 3) {
-      const a = dela.triangles[i], b = dela.triangles[i + 1], c = dela.triangles[i + 2];
-      const pa = pts2D[a], pb = pts2D[b], pc = pts2D[c];
-      const mx = (pa.x + pb.x + pc.x) / 3, my = (pa.y + pb.y + pc.y) / 3;
-      if (pointInPolygon(mx, my, boundary)) idx.push(a, b, c);
-    }
-    return { norm, boundary, pts2D, idx, original: pat.points };
-  });
-
-  // [2] Merge halves
-  const Apts = halves[0].pts2D, Bpts = halves[1].pts2D;
-  const allPts = Apts.concat(Bpts);
-  const idxA = halves[0].idx;
-  const idxB = halves[1].idx.map(i => i + Apts.length);
-  const globalIdx = idxA.concat(idxB);
-
-  const quatX = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
-  const quatY = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI);
-
-  verletVertices = allPts.map((p, i) => {
-    const yOff = initialClothHeight + (i < Apts.length ? -separationY : +separationY);
-    const pos = new THREE.Vector3(p.x, yOff, p.y);
-    if (i >= Apts.length) pos.applyQuaternion(quatY);
-    pos.applyQuaternion(quatX);
-    return { id: i, position: pos, isFixed: 0, springIds: [] };
-  });
-  verletSprings = []; seamDebugPairs = [];
-
-  function addSpring(i0, i1) {
-    const v0 = verletVertices[i0], v1 = verletVertices[i1];
-    if (v0.springIds.some(sid => {
-      const sp = verletSprings[sid];
-      return (sp.v0 === i0 && sp.v1 === i1) || (sp.v0 === i1 && sp.v1 === i0);
-    })) return;
-    const sid = verletSprings.length;
-    verletSprings.push({ v0: i0, v1: i1 });
-    v0.springIds.push(sid); v1.springIds.push(sid);
+    globalIdx = globalIdxLocal;
   }
 
-  // [4] structural
-  for (let i = 0; i < globalIdx.length; i += 3) {
-    addSpring(globalIdx[i], globalIdx[i + 1]);
-    addSpring(globalIdx[i + 1], globalIdx[i + 2]);
-    addSpring(globalIdx[i + 2], globalIdx[i]);
-  }
-
-  // [5] seams
-  const getIdx = (pid, half) => {
-    const po = half.original.find(p => p.id === pid), np = half.norm(po);
-    let best = 0, d2 = Infinity;
-    half.boundary.forEach((v, i) => {
-      const dd = (v.x - np.x) ** 2 + (v.y - np.y) ** 2;
-      if (dd < d2) { d2 = dd; best = i; }
+  function createClothMesh() {
+    const geom = new THREE.BufferGeometry();
+    geom.setIndex(new THREE.BufferAttribute(new Uint32Array(globalIdx), 1));
+    const vid = Uint32Array.from({ length: verletVertices.length }, (_, i) => i);
+    geom.setAttribute('vertexId', new THREE.BufferAttribute(vid, 1));
+    const nVerts = verletVertices.length;
+    geom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(nVerts * 3), 3));
+    geom.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(nVerts * 3), 3));
+    clothMaterial = new THREE.MeshPhysicalNodeMaterial({
+      color: 0x204080,
+      side: THREE.DoubleSide,
+      roughness: 1,
+      metalness: 0.3
     });
-    return best;
-  };
-  const seqFn = (s, e, N) => {
-    const f = [], b = []; let c = s;
-    do { f.push(c); c = (c + 1) % N; } while (c !== (e + 1) % N);
-    c = s;
-    do { b.push(c); c = (c - 1 + N) % N; } while (c !== (e - 1 + N) % N);
-    return f.length <= b.length ? f : b;
-  };
-  const resamp = (s, T) => Array.from({ length: T }, (_, k) => s[Math.floor(k * s.length / T)]);
-
-  for (const seam of patternData.seams) {
-    const [a, b] = seam;
-    const half0 = ids0.has(a[0]) ? a : b;
-    const half1 = ids0.has(a[0]) ? b : a;
-    let s0 = seqFn(getIdx(half0[0], halves[0]), getIdx(half0[1], halves[0]), halves[0].boundary.length);
-    let s1 = seqFn(getIdx(half1[0], halves[1]), getIdx(half1[1], halves[1]), halves[1].boundary.length);
-    const L = Math.max(s0.length, s1.length);
-    if (s0.length !== L) s0 = resamp(s0, L);
-    if (s1.length !== L) s1 = resamp(s1, L);
-    for (let k = 0; k < L; k++) {
-      const i0 = s0[k], i1 = s1[k] + Apts.length;
-      addSpring(i0, i1);
-      seamDebugPairs.push([i0, i1]);
-    }
+    clothMaterial.positionNode = Compute.vertexPositionBuffer.element(attribute('vertexId'));
+    clothMesh = new THREE.Mesh(geom, clothMaterial);
+    clothMesh.frustumCulled = false;
+    scene.add(clothMesh);
   }
 
-  // [6] GPU setup
+  function createSeamLines() {
+    const lineGeo = new THREE.BufferGeometry();
+    const posArr = new Float32Array(seamDebugPairs.length * 6);
+    seamDebugPairs.forEach(([i0, i1], k) => {
+      const p0 = verletVertices[i0].position;
+      const p1 = verletVertices[i1].position;
+      posArr.set([p0.x, p0.y, p0.z, p1.x, p1.y, p1.z], k * 6);
+    });
+    lineGeo.setAttribute('position', new THREE.BufferAttribute(posArr, 3).setUsage(THREE.DynamicDrawUsage));
+    seamLines = new THREE.LineSegments(lineGeo, new THREE.LineBasicMaterial({ color: 0xff0000 }));
+    scene.add(seamLines);
+  }
+
+  function setupGUI() {
+    const gui = new GUI();
+    gui.add(params, 'showWireframe').name('Wireframe');
+    gui.add(params, 'wind', 0, 2, 0.01).name('Wind');
+    gui.add(params, 'stiffness', 0.1, 1, 0.01).name('Stiffness');
+    gui.add(params, 'seamSpeed', 0.1, 5, 0.1).name('Seam Speed');
+    gui.add({ reset: () => window.location.reload() }, 'reset').name('Reset');
+  }
+
+  setupRenderer();
+  setupScene();
+  setupCameraControls();
+  setupLights();
+  setupEventListeners();
+  setupPhysicsWorld();
+  const halves = computeHalves();
+  setupVerlet(halves);
   Compute.setupBuffers(verletVertices, verletSprings, seamDebugPairs);
+  console.log('▶ initial cloth collider vertices:', {
+    vertexCount: verletVertices.length,
+    vertices: verletVertices
+    //firstPos: verletVertices[0].position.toArray(),
+    //lastPos: verletVertices[verletVertices.length - 1].position.toArray()
+  });
   Compute.setupUniforms(params);
+  await loadHumanColliderAndInitCompute();
   Compute.setupComputeShaders(verletVertices, verletSprings);
-
-  // [7] Cloth mesh
-  const geom = new THREE.BufferGeometry();
-  geom.setIndex(new THREE.BufferAttribute(new Uint32Array(globalIdx), 1));
-  // **NEW** cpu‐side position attribute
-  const cpuPos = new Float32Array(verletVertices.length * 3);
-  verletVertices.forEach((v, i) => {
-    cpuPos[i * 3] = v.position.x;
-    cpuPos[i * 3 + 1] = v.position.y;
-    cpuPos[i * 3 + 2] = v.position.z;
-  });
-  geom.setAttribute('position', new THREE.BufferAttribute(cpuPos, 3));
-
-  const vid = new Uint32Array(verletVertices.length).map((_, i) => i);
-  geom.setAttribute('vertexId', new THREE.BufferAttribute(vid, 1));
-
-  clothMaterial = new THREE.MeshPhysicalNodeMaterial({
-    color: 0x204080, side: THREE.DoubleSide, roughness: 1, metalness: 0.3
-  });
-  clothMaterial.positionNode = Compute.vertexPositionBuffer.element(attribute('vertexId'));
-
-  clothMesh = new THREE.Mesh(geom, clothMaterial);
-  clothMesh.frustumCulled = false;
-
-  // [8] seam debug
-  const lineGeo = new THREE.BufferGeometry();
-  const arr = new Float32Array(seamDebugPairs.length * 6);
-  seamDebugPairs.forEach(([i0, i1], k) => {
-    const p0 = verletVertices[i0].position, p1 = verletVertices[i1].position;
-    arr.set([p0.x, p0.y, p0.z, p1.x, p1.y, p1.z], k * 6);
-  });
-  lineGeo.setAttribute('position', new THREE.BufferAttribute(arr, 3).setUsage(THREE.DynamicDrawUsage));
-  seamLines = new THREE.LineSegments(lineGeo, new THREE.LineBasicMaterial({ color: 0xff0000 }));
-
-  // [9] scene & GUI
-  renderer = new THREE.WebGPURenderer({ antialias: true });
-  renderer.setPixelRatio(window.devicePixelRatio);
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  document.body.appendChild(renderer.domElement);
-
-  scene = new THREE.Scene();
-  camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.01, 10);
-  camera.position.set(-1.6, -0.1, -1.6);
-
-  controls = new OrbitControls(camera, renderer.domElement);
-  controls.minDistance = 1; controls.maxDistance = 3;
-  controls.target.set(0, -0.1, 0); controls.update();
-
-  scene.add(new THREE.AmbientLight(0xffffff, 0.5));
-  const dl = new THREE.DirectionalLight(0xffffff, 1);
-  dl.position.set(1, 1, 1);
-  scene.add(dl, clothMesh, seamLines);
-
-  // load BVH mesh
-  const loader2 = new GLTFLoader();
-  loader2.load('./models/man.glb', gltf => {
-    const man = gltf.scene;
-    man.scale.set(0.25, 0.25, 0.25);
-    man.position.set(0, -0.8, 0);
-    scene.add(man);
-    man.traverse(ch => {
-      if (ch.isMesh) {
-        ch.geometry.computeBoundsTree();
-        manMesh = ch;
-
-        // …and now visualize it:
-        const bvhHelper = new MeshBVHHelper(ch, 10);
-        bvhHelper.visible = true;   // turn it on
-        scene.add(bvhHelper);
-
-        // optional: toggle via GUI
-        gui.add({ showBVH: true }, 'showBVH')
-          .name('Show BVH')
-          .onChange(v => bvhHelper.visible = v);
-      }
-    });
-  });
-
-  const gui = new GUI();
-  gui.add(params, 'showWireframe').name('Wireframe');
-  gui.add(params, 'wind', 0, 2, 0.01).name('Wind');
-  gui.add(params, 'stiffness', 0.1, 1, 0.01).name('Stiffness');
-  gui.add({ reset: () => window.location.reload() }, 'reset').name('Reset');
-
-  window.addEventListener('resize', onWindowResize);
+  createClothMesh();
+  createSeamLines();
+  setupGUI();
   renderer.setAnimationLoop(render);
+}
+
+init();
+
+THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
+THREE.BufferGeometry.prototype.disposeBoundsTree = disposeBoundsTree;
+THREE.Mesh.prototype.raycast = acceleratedRaycast;
+
+async function loadHumanColliderAndInitCompute() {
+  return new Promise((resolve, reject) => {
+    const loader = new GLTFLoader();
+    loader.load(
+      './models/man.glb',
+      async (gltf) => {
+
+        gltf.scene.scale.set(0.25, 0.25, 0.25);
+        gltf.scene.position.set(0, -0.8, 0);
+        gltf.scene.updateMatrixWorld(true);
+
+        const geoms = [];
+        gltf.scene.traverse(o => {
+          if (o.isMesh && o.geometry) {
+            const g = o.geometry.clone();
+            g.applyMatrix4(o.matrixWorld);
+            geoms.push(g);
+          }
+        });
+
+        const { body: ammoManBody, helper: manBVHHelper,
+          merged, positions, indices } = await buildHumanBVH({
+            scene, geoms, physicsWorld, Compute
+          });
+
+        const colliderGeo = new THREE.BufferGeometry();
+        colliderGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        colliderGeo.setIndex(new THREE.BufferAttribute(new Uint32Array(indices), 1));
+        const colliderMat = new THREE.MeshBasicMaterial({
+          color: 0x00ff00, wireframe: true, opacity: 0.3, transparent: true
+        });
+        scene.add(new THREE.Mesh(colliderGeo, colliderMat));
+
+        const debugMat = new THREE.MeshBasicMaterial({
+          wireframe: true, opacity: 0.3, transparent: true
+        });
+        scene.add(new THREE.Mesh(merged, debugMat));
+
+        resolve();
+      },
+      undefined,
+      err => reject(err)
+    );
+  });
+}
+
+function setupPhysicsWorld() {
+  const cfg = new Ammo.btDefaultCollisionConfiguration();
+  const disp = new Ammo.btCollisionDispatcher(cfg);
+  const bp = new Ammo.btDbvtBroadphase();
+  const solver = new Ammo.btSequentialImpulseConstraintSolver();
+  physicsWorld = new Ammo.btDiscreteDynamicsWorld(disp, bp, solver, cfg);
+  physicsWorld.setGravity(new Ammo.btVector3(0, 0, 0));
 }
 
 async function render() {
@@ -268,43 +440,50 @@ async function render() {
   timeSinceLastStep += dt;
   const tStep = 1 / 300;
   while (timeSinceLastStep >= tStep) {
-    timeSinceLastStep -= tStep; timestamp += tStep;
+    timeSinceLastStep -= tStep;
+    timestamp += tStep;
+
     Compute.windUniform.value = params.wind;
     Compute.stiffnessUniform.value = params.stiffness;
-    Compute.seamTightnessUniform.value = Math.min(timestamp * 2, 1);
+    Compute.seamTightnessUniform.value = Math.min(timestamp * params.seamSpeed, 1.0);
+
     await renderer.computeAsync(Compute.computeSpringForces);
     await renderer.computeAsync(Compute.computeVertexForces);
+
+    await renderer.computeAsync(Compute.clearImpactFlag);
+
+    await renderer.computeAsync(Compute.computeCollision);
+    await renderer.computeAsync(Compute.computeSeamMomentumKill);
+
+    const arrayBuffer = await renderer.getArrayBufferAsync(Compute.impactFlagBuffer.value);
+    const flag = new Uint32Array(arrayBuffer)[0];
+
+    console.error('flag', flag)
+
+    if (flag === 1) {
+      console.error("⚠️ Cloth–mesh collision detected!");
+    }
   }
 
-  // update seams
-  const aAtt = seamLines.geometry.attributes.position;
-  const aArr = aAtt.array;
-  seamDebugPairs.forEach(([i0, i1], k) => {
-    const off = k * 6;
-    const p0 = verletVertices[i0].position;
-    const p1 = verletVertices[i1].position;
-    aArr[off] = p0.x; aArr[off + 1] = p0.y; aArr[off + 2] = p0.z;
-    aArr[off + 3] = p1.x; aArr[off + 4] = p1.y; aArr[off + 5] = p1.z;
-  });
-  aAtt.needsUpdate = true;
+  {
+    const attr = seamLines.geometry.attributes.position;
+    const arr = attr.array;
+    seamDebugPairs.forEach(([i0, i1], k) => {
+      const off = k * 6;
+      const p0 = verletVertices[i0].position, p1 = verletVertices[i1].position;
+      arr[off + 0] = p0.x; arr[off + 1] = p0.y; arr[off + 2] = p0.z;
+      arr[off + 3] = p1.x; arr[off + 4] = p1.y; arr[off + 5] = p1.z;
+    });
+    attr.needsUpdate = true;
+  }
+
+  frameCount++;
+  if (frameCount % 60 === 0) {
+    const [i0, i1] = seamDebugPairs[0];
+
+  }
 
   clothMesh.material.wireframe = params.showWireframe;
-
-  // BVH collision → update cpu‐side position attribute
-  if (manMesh) {
-    const posAtt = clothMesh.geometry.attributes.position;
-    const arr = posAtt.array;
-    const tmp = new THREE.Vector3(), cp = new THREE.Vector3();
-    for (let i = 0; i < arr.length; i += 3) {
-      tmp.set(arr[i], arr[i + 1], arr[i + 2]);
-      manMesh.geometry.boundsTree.closestPointToPoint(tmp, cp);
-      arr[i] = cp.x;
-      arr[i + 1] = cp.y;
-      arr[i + 2] = cp.z;
-    }
-    posAtt.needsUpdate = true;
-  }
-
   await renderer.renderAsync(scene, camera);
 }
 

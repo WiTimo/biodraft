@@ -1,0 +1,74 @@
+1. Positions des Humans speichern vor dem baken
+2. Seaming lines trigger collision
+
+
+# Performance
+1. GPU-side BVH traversal
+You already serialized your three-mesh-bvh into buffers (bvhRootsBuffer, bvhIndexBuffer, bvhIndirectBuffer). Instead of a flat loop over all triangles, do a stack-based traversal of the BVH:
+    1.	Load the root node’s AABB
+	2.	Test sphere‐AABB (vertex ± threshold)
+	3.	If it overlaps:
+	    •	If it’s an internal node, push both children onto a small local stack.
+	    •	If it’s a leaf, iterate only the few triangles in that leaf with your full distance test.
+	4.	Early-exit once collisionFlag is set.
+
+This converts an O(N) triangle scan into O(log N + k) where k is the tiny number of nearby triangles.
+
+2. Precompute a Signed-Distance Field (SDF)
+If your collider mesh is static, you can bake a 3D SDF texture (on the CPU) and then in the shader simply
+
+3. Spatial Hash / Uniform Grid
+Partition space into a coarse 3D grid (e.g. cell size = few × threshold). Precompute for each cell a short list of triangle indices. Upload that as a big “cell→triangle” buffer. Then in the shader:
+	1.	Hash your point into a cell index.
+	2.	Only loop the handful of triangles in that cell (and its 26 neighbors if you need to cover boundary cases).
+
+This trades some memory for much less looping.
+
+4. Workgroup-shared Culling
+If you bind your cloth vertices in workgroups (e.g. 32 or 64 threads per WG), you can:
+	•	Broadcast the same BVH traversal or grid-cell index among the group.
+	•	Share the small stack or cell’s triangle list in workgroup-local memory.
+This reduces redundant loads of the same BVH node or cell list.
+
+5. Lower Cloth/Triangle Resolution
+If you can tolerate it:
+	•	Coarsen your cloth mesh (fewer vertices).
+	•	Simplify the collider (decimate triangles where high fidelity isn’t needed).
+	•	LODs: Use a very coarse mesh until the cloth gets extremely close.
+
+7. Hardware-Accelerated Intersection (where available)
+If your target supports WebGPU ray-query extensions or a dedicated raytracing pipeline, dispatch a GPU ray/point query against the BLAS of your mesh instead of custom compute shaders.
+
+
+
+
+
+
+
+
+
+
+Debugging Plan
+1. roots, index, indirectBuffer checken
+	•	roots: an array of ArrayBuffers, each containing the top-level BVH node(s) serialized for GPU upload.
+	•	index: a flat Float32Array of every node’s AABB (6 floats per node: minX, minY, minZ, maxX, maxY, maxZ).
+	•	indirectBuffer: a typed array of child-pointer data (node offsets/indices) used for indirect, GPU-friendly BVH traversal.
+2. are they correct in the gpu
+3. bvhIndexBuffer und base checken
+4. inside richtig berechnen
+
+------
+
+Buffers
+bvhRootsBuffer:
+bvhIndexBuffer:
+bvhIndirectBuffer:
+bvhNodeCountUniform:
+
+----
+
+Next Steps
+1. Collisions via push out
+2. Add Detail to BVH with Trianglulation if needed
+
+(Optimize BVH Traversal BVHCount 10224)

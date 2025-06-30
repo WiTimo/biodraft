@@ -1,4 +1,3 @@
-// point‐in‐polygon test (ray‐casting)
 export function pointInPolygon(px, py, verts) {
   let inside = false, n = verts.length;
   for (let i = 0, j = n - 1; i < n; j = i++) {
