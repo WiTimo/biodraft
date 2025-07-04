@@ -1,11 +1,10 @@
-import * as THREE from 'three';
 import {
   atomicStore, Fn, If, Return, instancedArray, instanceIndex,
   uniform, select, uint, Loop,
-  float, triNoise3D, time, clamp, vec3
+  float, triNoise3D, time, clamp, vec3, array
 } from 'three/tsl';
 
-const MAX_DEPTH = 10224;
+const MAX_DEPTH = 60;
 
 export let
   stiffnessUniform, windUniform,
@@ -104,6 +103,7 @@ export function setupColliderBuffers({ positions, indices, bvhRoots, bvhBounds, 
 
   bvhRootsBuffer = instancedArray(bvhRoots, 'uint').setPBO(true);
   bvhBoundsBuffer = instancedArray(bvhBounds, 'float').setPBO(true);
+  console.log(bvhBoundsBuffer)
   bvhIndexBuffer = instancedArray(new Uint32Array(bvhIndex), 'uint').setPBO(true);
   bvhIndirectBuffer = instancedArray(new Uint32Array(bvhIndirect), 'uvec4').setPBO(true);
 
@@ -118,7 +118,7 @@ export function setupComputeShaders(verletVertices, verletSprings) {
   const sCount = verletSprings.length;
   const EPS = float(1e-6);
 
-  // spring forces
+  // spring forces (unchanged) …
   computeSpringForces = Fn(() => {
     const sid = instanceIndex;
     const sv = springVertexIdBuffer.element(sid);
@@ -140,69 +140,7 @@ export function setupComputeShaders(verletVertices, verletSprings) {
     });
   })().compute(sCount);
 
-  // collision detection → depth & projection
-  computeCollision = Fn(() => {
-    // clear flag
-    If(instanceIndex.equal(uint(0)), () => {
-      // atomicStore(impactFlagBuffer.element(uint(0)), uint(0));
-    });
-
-    const vid = instanceIndex;
-    const P = vertexPositionBuffer.element(vid);
-    collisionDepthBuffer.element(vid).assign(float(0));
-    collisionProjBuffer.element(vid).assign(vec3(0));
-
-    var bestD = float(0).toVar('bestD');
-    var bestP = vec3(0).toVar('bestP');
-    const MIN_DIST = float(-0.02);
-
-    Loop({ start: uint(0), end: uint(triCount), type: 'uint', condition: '<' }, ({ i: ti }) => {
-      const b = ti.mul(uint(3));
-      const i0 = colliderIndexBuffer.element(b).toUint();
-      const i1 = colliderIndexBuffer.element(b.add(1)).toUint();
-      const i2 = colliderIndexBuffer.element(b.add(2)).toUint();
-      const A = colliderPositionBuffer.element(i0);
-      const B = colliderPositionBuffer.element(i1);
-      const C = colliderPositionBuffer.element(i2);
-
-      const e1 = B.sub(A).toVar('e1');
-      const e2 = C.sub(A).toVar('e2');
-      const N = e1.cross(e2).normalize().toVar('N');
-      const vPA = P.sub(A).toVar('vPA');
-      const distPlane = vPA.dot(N).toVar('distPlane');
-
-      If(distPlane.lessThan(float(0)).and(distPlane.greaterThan(MIN_DIST)), () => {
-        const proj = P.sub(N.mul(distPlane)).toVar('proj');
-
-        // barycentric
-        const v0 = e1, v1 = e2, v2 = proj.sub(A);
-        const d00 = v0.dot(v0), d01 = v0.dot(v1), d11 = v1.dot(v1);
-        const d20 = v2.dot(v0), d21 = v2.dot(v1);
-        const denom = d00.mul(d11).sub(d01.mul(d01)).toVar('den');
-        const vv = d11.mul(d20).sub(d01.mul(d21)).div(denom).toVar('vv');
-        const ww = d00.mul(d21).sub(d01.mul(d20)).div(denom).toVar('ww');
-        const uu = float(1).sub(vv).sub(ww);
-
-        If(uu.greaterThanEqual(float(0))
-          .and(vv.greaterThanEqual(float(0)))
-          .and(uu.add(vv).lessThanEqual(float(1))), () => {
-            const depth = distPlane.mul(float(-1)).toVar('depth');
-            If(depth.greaterThan(bestD), () => {
-              bestD.assign(depth);
-              bestP.assign(proj);
-            });
-          });
-      });
-    });
-
-    If(bestD.greaterThan(float(0)), () => {
-      // atomicStore(impactFlagBuffer.element(uint(0)), uint(1));
-      collisionDepthBuffer.element(vid).assign(bestD);
-      collisionProjBuffer.element(vid).assign(bestP);
-    });
-  })().compute(vCount);
-
-  // clear collision for next frame
+  // clear collision for next frame (unchanged) …
   clearCollisionBuffers = Fn(() => {
     If(instanceIndex.equal(uint(0)), () => {
       // atomicStore(impactFlagBuffer.element(uint(0)), uint(0));
@@ -213,7 +151,111 @@ export function setupComputeShaders(verletVertices, verletSprings) {
     });
   })().compute(vCount);
 
-  // integrate + response
+  // **computeCollision** now uses BVH stack traversal:
+  computeCollision = Fn(() => {
+    const vid = instanceIndex;
+    const P = vertexPositionBuffer.element(vid);
+    // reset per-vertex best
+    var bestD = float(0).toVar('bestD');
+    var bestP = vec3(0).toVar('bestP');
+
+    // init stack
+    var stack = array(MAX_DEPTH, () => uint(0));
+    var ptr = uint(0).toVar('ptr');
+    // push root
+    stack[ptr] = bvhRootsBuffer.element(uint(0));
+    ptr = ptr.add(uint(1));
+
+    // loop until stack empty
+    Loop({
+      start: uint(0), end: uint(MAX_DEPTH), type: 'uint',
+      condition: '<'
+    }, () => {
+      ptr = ptr.sub(uint(1));
+      const nodeIndex = stack[ptr];
+      const base = nodeIndex.mul(uint(8)); // 8 floats per node
+
+      // load bounds
+      const minX = bvhBoundsBuffer.element(base.add(0)),
+        minY = bvhBoundsBuffer.element(base.add(1)),
+        minZ = bvhBoundsBuffer.element(base.add(2));
+      const maxX = bvhBoundsBuffer.element(base.add(3)),
+        maxY = bvhBoundsBuffer.element(base.add(4)),
+        maxZ = bvhBoundsBuffer.element(base.add(5));
+      atomicStore(impactFlagBuffer.element(uint(0)), minX);
+
+      // AABB test
+      If(
+        P.x.greaterThanEqual(minX).and(P.x.lessThanEqual(maxX))
+          .and(P.y.greaterThanEqual(minY)).and(P.y.lessThanEqual(maxY))
+          .and(P.z.greaterThanEqual(minZ)).and(P.z.lessThanEqual(maxZ)),
+        () => {
+          const off = bvhBoundsBuffer.element(base.add(6)).toUint();
+          const count = bvhBoundsBuffer.element(base.add(7)).toUint();
+
+          // interior?
+          If(count.equal(uint(0)), () => {
+            const ch = bvhIndirectBuffer.element(nodeIndex);
+            // push children
+            stack[ptr] = ch.x; ptr = ptr.add(uint(1));
+            stack[ptr] = ch.y; ptr = ptr.add(uint(1));
+          }, () => {
+            // leaf: only loop its triangles
+            Loop({
+              start: uint(0), end: count, type: 'uint', condition: '<'
+            }, ({ i }) => {
+              const tBase = off.add(i.mul(uint(3)));
+              const i0 = bvhIndexBuffer.element(tBase),
+                i1 = bvhIndexBuffer.element(tBase.add(1)),
+                i2 = bvhIndexBuffer.element(tBase.add(2));
+              const A = colliderPositionBuffer.element(i0);
+              const B = colliderPositionBuffer.element(i1);
+              const C = colliderPositionBuffer.element(i2);
+
+              // your existing plane‐collision + barycentric code here…
+              const e1 = B.sub(A).toVar('e1');
+              const e2 = C.sub(A).toVar('e2');
+              const N = e1.cross(e2).normalize().toVar('N');
+              const vPA = P.sub(A).toVar('vPA');
+              const distPlane = vPA.dot(N).toVar('distPlane');
+              const MIN_DIST = float(-0.02);
+
+              If(distPlane.lessThan(float(0)).and(distPlane.greaterThan(MIN_DIST)), () => {
+                const proj = P.sub(N.mul(distPlane)).toVar('proj');
+                // barycentric
+                const v0 = e1, v1 = e2, v2 = proj.sub(A);
+                const d00 = v0.dot(v0), d01 = v0.dot(v1), d11 = v1.dot(v1);
+                const d20 = v2.dot(v0), d21 = v2.dot(v1);
+                const denom = d00.mul(d11).sub(d01.mul(d01)).toVar('den');
+                const vv = d11.mul(d20).sub(d01.mul(d21)).div(denom).toVar('vv');
+                const ww = d00.mul(d21).sub(d01.mul(d20)).div(denom).toVar('ww');
+                const uu = float(1).sub(vv).sub(ww);
+
+                If(uu.greaterThanEqual(float(0))
+                  .and(vv.greaterThanEqual(float(0)))
+                  .and(uu.add(vv).lessThanEqual(float(1))), () => {
+                    const depth = distPlane.mul(float(-1)).toVar('depth');
+                    If(depth.greaterThan(bestD), () => {
+                      bestD.assign(depth);
+                      bestP.assign(proj);
+                    });
+                  });
+              });
+            });
+          });
+        }
+      );
+    });
+
+    // write out
+    If(bestD.greaterThan(float(0)), () => {
+
+      collisionDepthBuffer.element(vid).assign(bestD);
+      collisionProjBuffer.element(vid).assign(bestP);
+    });
+  })().compute(vCount);
+
+  // remaining shaders unchanged …
   computeVertexForces = Fn(() => {
     const vid = instanceIndex;
     If(vid.greaterThanEqual(uint(vCount)), () => Return());
@@ -246,13 +288,10 @@ export function setupComputeShaders(verletVertices, verletSprings) {
     const depth = collisionDepthBuffer.element(vid);
     If(depth.greaterThan(float(0)), () => {
       const proj = collisionProjBuffer.element(vid);
-      // outward normal
-      const Ndir = pos.sub(proj).normalize()
-      // snap out
+      const Ndir = pos.sub(proj).normalize();
       const nextPos = proj.add(Ndir.mul(float(0.001)));
       const nComp = Ndir.mul(force.dot(Ndir));
       force = force.sub(nComp);
-      // atomicStore(impactFlagBuffer.element(uint(0)), uint(12));
       vertexForceBuffer.element(vid).assign(force);
       vertexPositionBuffer.element(vid).assign(nextPos);
     }).Else(() => {
@@ -261,7 +300,6 @@ export function setupComputeShaders(verletVertices, verletSprings) {
     });
   })().compute(vCount);
 
-  // seam stitching
   computeSeamMomentumKill = Fn(() => {
     const sid = instanceIndex;
     If(sid.greaterThanEqual(uint(sCount)), () => Return());

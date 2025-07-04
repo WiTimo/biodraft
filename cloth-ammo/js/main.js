@@ -432,6 +432,11 @@ async function render() {
     await renderer.computeAsync(Compute.computeSpringForces);
     await renderer.computeAsync(Compute.clearCollisionBuffers);
     await renderer.computeAsync(Compute.computeCollision);
+    {
+      const buf = await renderer.getArrayBufferAsync(Compute.impactFlagBuffer.value);
+      const view = new Uint32Array(buf);
+      console.log(view[0]);
+    }
     await renderer.computeAsync(Compute.computeVertexForces);
     await renderer.computeAsync(Compute.computeSeamMomentumKill);
   }
