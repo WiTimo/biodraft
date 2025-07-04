@@ -31,7 +31,7 @@ const separationY = 0.2;
 const params = {
   showWireframe: true,
   wind: 0.0,
-  stiffness: 0.5,
+  stiffness: 0.3,
   seamSpeed: 0.1
 };
 
@@ -39,7 +39,9 @@ function buildBvhBounds(bvh) {
   const nodes = [];
   bvh.traverse((depth, isLeaf, boundingData, offsetOrSplit, count) => {
     const box = new Float32Array(boundingData);
-    nodes.push({ box, offset: offsetOrSplit, count });
+    // only use the real 'count' on leaves, otherwise zero it out:
+    const triCount = isLeaf ? count : 0;
+    nodes.push({ box, offset: offsetOrSplit, count: triCount });
   });
   const bvhBounds = new Float32Array(nodes.length * 8);
   nodes.forEach((n, i) => {
@@ -52,18 +54,70 @@ function buildBvhBounds(bvh) {
 }
 
 export async function buildHumanBVH({ scene, geoms, physicsWorld, Compute }) {
-  const merged = BufferGeometryUtils.mergeGeometries(geoms, false);
-  merged.computeBoundsTree({ lazyGeneration: false, indirect: true });
+  // 1) merge into a single geometry
+  const merged = BufferGeometryUtils.mergeGeometries(geoms, /* useGroups= */ true);
+
+  // 2) build the BVH (no “indirect” so that serialize only gives us index/indirect)
+  merged.computeBoundsTree({ lazyGeneration: false, indirect: true, maxDepth: 60 });
   const bvh = merged.boundsTree;
 
-  const { roots, index: bvhIndex, indirectBuffer } = MeshBVH.serialize(bvh, { cloneBuffers: true });
+  // 3) serialize just to get bvhIndex & bvhIndirectBuffer
+  // 3) serialize so we also pull out the indirect (child‐pointer) buffer
+  const {
+    roots,
+    index: bvhIndex,
+    indirectBuffer: bvhIndirectBuffer
+  } = MeshBVH.serialize(bvh, { cloneBuffers: true });
+  console.log(bvhIndirectBuffer)
+  // 4) pull the *real* roots array directly off the BVH instance
+  //    (this is always a small Uint32Array of length 1 or so)
+  const rootBuf = (bvh._roots instanceof Uint32Array)
+    ? bvh._roots
+    : new Uint32Array(bvh._roots);
+  console.log('BVH root indices:', rootBuf);
 
+  // 5) prepare Ammo collision mesh exactly as before
+  const positions = merged.attributes.position.array;
+  let indices = merged.index ? merged.index.array : null;
+  if (!indices) {
+    const vc = positions.length / 3;
+    indices = new Uint32Array(vc);
+    for (let i = 0; i < vc; i++) indices[i] = i;
+  }
+  const triMesh = new Ammo.btTriangleMesh();
+  for (let i = 0; i < indices.length; i += 3) {
+    const ia = indices[i] * 3, ib = indices[i + 1] * 3, ic = indices[i + 2] * 3;
+    const a = new Ammo.btVector3(positions[ia], positions[ia + 1], positions[ia + 2]);
+    const b = new Ammo.btVector3(positions[ib], positions[ib + 1], positions[ib + 2]);
+    const c = new Ammo.btVector3(positions[ic], positions[ic + 1], positions[ic + 2]);
+    triMesh.addTriangle(a, b, c, true);
+  }
+  const shape = new Ammo.btBvhTriangleMeshShape(triMesh, true, true);
+  const motionState = new Ammo.btDefaultMotionState();
+  const rbInfo = new Ammo.btRigidBodyConstructionInfo(
+    0, motionState, shape, new Ammo.btVector3(0, 0, 0)
+  );
+  const body = new Ammo.btRigidBody(rbInfo);
+  physicsWorld.addRigidBody(body);
+
+  // 6) build the flat Float32Array of bounds (min/max + offset/count)
+  const bvhBounds = buildBvhBounds(bvh);
+
+  // 7) upload to the GPU
+  Compute.setupColliderBuffers({
+    positions,
+    indices: new Uint32Array(indices),
+    bvhRoots: rootBuf,
+    bvhBounds,
+    bvhIndex,
+    bvhIndirect: bvhIndirectBuffer
+  });
+
+  // 8) optional helper visualization
   const colliderMesh = new THREE.Mesh(
     merged,
     new THREE.MeshBasicMaterial({ visible: false })
   );
-  /* scene.add(colliderMesh); */
-
   const helper = new MeshBVHHelper(colliderMesh, 7);
   helper.children
     .filter(c => c.isLineSegments)
@@ -72,47 +126,11 @@ export async function buildHumanBVH({ scene, geoms, physicsWorld, Compute }) {
       line.material.transparent = true;
       line.material.opacity = 0.2;
     });
-  /* scene.add(helper); */
   helper.update();
-
-  const positions = merged.attributes.position.array;
-  let indices = merged.index ? merged.index.array : null;
-  if (!indices) {
-    const vc = positions.length / 3;
-    indices = new Uint32Array(vc);
-    for (let i = 0; i < vc; i++) indices[i] = i;
-  }
-
-  const triMesh = new Ammo.btTriangleMesh();
-  for (let i = 0; i < indices.length; i += 3) {
-    const ia = indices[i] * 3;
-    const ib = indices[i + 1] * 3;
-    const ic = indices[i + 2] * 3;
-    const a = new Ammo.btVector3(positions[ia], positions[ia + 1], positions[ia + 2]);
-    const b = new Ammo.btVector3(positions[ib], positions[ib + 1], positions[ib + 2]);
-    const c = new Ammo.btVector3(positions[ic], positions[ic + 1], positions[ic + 2]);
-    triMesh.addTriangle(a, b, c, true);
-  }
-  const shape = new Ammo.btBvhTriangleMeshShape(triMesh, true, true);
-  const motionState = new Ammo.btDefaultMotionState();
-  const rbInfo = new Ammo.btRigidBodyConstructionInfo(0, motionState, shape, new Ammo.btVector3(0, 0, 0));
-  const body = new Ammo.btRigidBody(rbInfo);
-  physicsWorld.addRigidBody(body);
-
-  const rootsTyped = new Uint32Array(roots[0]);
-  const bvhBounds = buildBvhBounds(bvh);
-
-  Compute.setupColliderBuffers({
-    positions,
-    indices: new Uint32Array(indices),
-    bvhRoots: new Uint32Array(roots[0]),
-    bvhBounds,
-    bvhIndex,
-    bvhIndirect: indirectBuffer
-  });
 
   return { body, helper, merged, positions, indices };
 }
+
 
 let renderer, scene, camera, controls;
 let verletVertices = [], verletSprings = [], seamDebugPairs = [];
@@ -399,6 +417,19 @@ async function loadHumanColliderAndInitCompute() {
           wireframe: true, opacity: 0.3, transparent: true
         });
         scene.add(new THREE.Mesh(merged, debugMat)); */
+
+        const colliderMesh = new THREE.Mesh(
+          merged,
+          new THREE.MeshBasicMaterial({ wireframe: true, opacity: 0.2, transparent: true })
+        );
+        scene.add(colliderMesh);
+
+        // `helper` was constructed in buildHumanBVH with depth = 7.
+        // Now actually add it to the scene:
+        scene.add(manBVHHelper);
+
+        // Optionally tweak its depth, color, etc. and then:
+        manBVHHelper.update();
 
         resolve();
       },

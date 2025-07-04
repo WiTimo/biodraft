@@ -40,7 +40,7 @@ export let
 export function setupUniforms(params) {
   stiffnessUniform = uniform(params.stiffness);
   windUniform = uniform(params.wind);
-  dampingUniform = uniform(0.98);
+  dampingUniform = uniform(0.995);
   gravitybaseOffsetUniform = uniform(0.0);
   gravityAccelUniform = uniform(0.0);
   seamTightnessUniform = uniform(0.0);
@@ -102,15 +102,23 @@ export function setupColliderBuffers({ positions, indices, bvhRoots, bvhBounds, 
   colliderIndexCountUniform = uniform(indices.length);
 
   bvhRootsBuffer = instancedArray(bvhRoots, 'uint').setPBO(true);
+  console.log("BvhRootsBuffer", bvhRootsBuffer)
   bvhBoundsBuffer = instancedArray(bvhBounds, 'float').setPBO(true);
-  console.log(bvhBoundsBuffer)
-  bvhIndexBuffer = instancedArray(new Uint32Array(bvhIndex), 'uint').setPBO(true);
-  bvhIndirectBuffer = instancedArray(new Uint32Array(bvhIndirect), 'uvec4').setPBO(true);
-
+  console.log("BvhBoundsBuffer", bvhBoundsBuffer)
+  bvhIndexBuffer = instancedArray(new Uint16Array(bvhIndex), 'uint').setPBO(true);
+  console.log("BvhIndexBuffer", bvhIndexBuffer)
+  // correct: use the original Uint32Array and two‐component vectors
+  bvhIndirectBuffer = instancedArray(
+    bvhIndirect,   // the Uint32Array that MeshBVH.serialize() gave you
+    'uvec2'        // exactly two children per interior node
+  ).setPBO(true);
+  console.log("BvhIndirectBuffer", bvhIndirectBuffer)
   const nodeCount = bvhBounds.length / 8;
   bvhNodeCountUniform = uniform(nodeCount);
+  console.log("BvhNodeCountUniform", bvhNodeCountUniform)
 
   triCount = indices.length / 3;
+  console.log("TriCount", triCount);
 }
 
 export function setupComputeShaders(verletVertices, verletSprings) {
@@ -155,105 +163,126 @@ export function setupComputeShaders(verletVertices, verletSprings) {
   computeCollision = Fn(() => {
     const vid = instanceIndex;
     const P = vertexPositionBuffer.element(vid);
-    // reset per-vertex best
+
+    // best‐so‐far for this vertex
     var bestD = float(0).toVar('bestD');
     var bestP = vec3(0).toVar('bestP');
 
-    // init stack
-    var stack = array(MAX_DEPTH, () => uint(0));
-    var ptr = uint(0).toVar('ptr');
-    // push root
-    stack[ptr] = bvhRootsBuffer.element(uint(0));
-    ptr = ptr.add(uint(1));
+    // build a true shader‐side array of zeros (length = MAX_DEPTH)
+    const zeroList = new Array(MAX_DEPTH).fill(uint(0));
+    const stack = array(zeroList);
 
-    // loop until stack empty
+    // one mutable pointer var
+    const ptr = uint(0).toVar('ptr');
+
+    // push the single root node (always at bvhRootsBuffer[0])
+    stack.element(ptr).assign(bvhRootsBuffer.element(uint(0)));
+    ptr.assign(ptr.add(uint(1)));
+
+    // traverse until stack empty or depth limit reached
     Loop({
-      start: uint(0), end: uint(MAX_DEPTH), type: 'uint',
-      condition: '<'
+      start: uint(0), end: uint(MAX_DEPTH),
+      type: 'uint', condition: '<'
     }, () => {
-      ptr = ptr.sub(uint(1));
-      const nodeIndex = stack[ptr];
-      const base = nodeIndex.mul(uint(8)); // 8 floats per node
+      If(ptr.greaterThan(uint(0)), () => {
+        // pop
+        ptr.assign(ptr.sub(uint(1)));
+        const nodeIndex = stack.element(ptr);
+        const base = nodeIndex.mul(uint(8)); // 8 floats per node
 
-      // load bounds
-      const minX = bvhBoundsBuffer.element(base.add(0)),
-        minY = bvhBoundsBuffer.element(base.add(1)),
-        minZ = bvhBoundsBuffer.element(base.add(2));
-      const maxX = bvhBoundsBuffer.element(base.add(3)),
-        maxY = bvhBoundsBuffer.element(base.add(4)),
-        maxZ = bvhBoundsBuffer.element(base.add(5));
-      atomicStore(impactFlagBuffer.element(uint(0)), minX);
+        // (optional) record which node we’re at for debugging:
 
-      // AABB test
-      If(
-        P.x.greaterThanEqual(minX).and(P.x.lessThanEqual(maxX))
-          .and(P.y.greaterThanEqual(minY)).and(P.y.lessThanEqual(maxY))
-          .and(P.z.greaterThanEqual(minZ)).and(P.z.lessThanEqual(maxZ)),
-        () => {
-          const off = bvhBoundsBuffer.element(base.add(6)).toUint();
-          const count = bvhBoundsBuffer.element(base.add(7)).toUint();
+        // load AABB
+        const minX = bvhBoundsBuffer.element(base.add(0)),
+          minY = bvhBoundsBuffer.element(base.add(1)),
+          minZ = bvhBoundsBuffer.element(base.add(2));
+        const maxX = bvhBoundsBuffer.element(base.add(3)),
+          maxY = bvhBoundsBuffer.element(base.add(4)),
+          maxZ = bvhBoundsBuffer.element(base.add(5));
 
-          // interior?
-          If(count.equal(uint(0)), () => {
-            const ch = bvhIndirectBuffer.element(nodeIndex);
-            // push children
-            stack[ptr] = ch.x; ptr = ptr.add(uint(1));
-            stack[ptr] = ch.y; ptr = ptr.add(uint(1));
-          }, () => {
-            // leaf: only loop its triangles
-            Loop({
-              start: uint(0), end: count, type: 'uint', condition: '<'
-            }, ({ i }) => {
-              const tBase = off.add(i.mul(uint(3)));
-              const i0 = bvhIndexBuffer.element(tBase),
-                i1 = bvhIndexBuffer.element(tBase.add(1)),
-                i2 = bvhIndexBuffer.element(tBase.add(2));
-              const A = colliderPositionBuffer.element(i0);
-              const B = colliderPositionBuffer.element(i1);
-              const C = colliderPositionBuffer.element(i2);
+        // AABB test
+        If(
+          P.x.greaterThanEqual(minX).and(P.x.lessThanEqual(maxX))
+            .and(P.y.greaterThanEqual(minY)).and(P.y.lessThanEqual(maxY))
+            .and(P.z.greaterThanEqual(minZ)).and(P.z.lessThanEqual(maxZ)),
+          () => {
+            const off = bvhBoundsBuffer.element(base.add(6)).toUint();
+            const count = bvhBoundsBuffer.element(base.add(7)).toUint();
 
-              // your existing plane‐collision + barycentric code here…
-              const e1 = B.sub(A).toVar('e1');
-              const e2 = C.sub(A).toVar('e2');
-              const N = e1.cross(e2).normalize().toVar('N');
-              const vPA = P.sub(A).toVar('vPA');
-              const distPlane = vPA.dot(N).toVar('distPlane');
-              const MIN_DIST = float(-0.02);
+            // interior? push children
+            If(count.equal(uint(0)), () => {
+              atomicStore(impactFlagBuffer.element(uint(0)), 5);
+              // interior: left child is next node, right child is meta0
+              const leftChild = nodeIndex.add(uint(1));
+              const rightChild = bvhBoundsBuffer.element(base.add(6)).toUint();
+              stack.element(ptr).assign(leftChild);
+              ptr.assign(ptr.add(uint(1)));
+              stack.element(ptr).assign(rightChild);
+              ptr.assign(ptr.add(uint(1)));
+            }, () => {
+              atomicStore(impactFlagBuffer.element(uint(0)), 12);
 
-              If(distPlane.lessThan(float(0)).and(distPlane.greaterThan(MIN_DIST)), () => {
-                const proj = P.sub(N.mul(distPlane)).toVar('proj');
-                // barycentric
-                const v0 = e1, v1 = e2, v2 = proj.sub(A);
-                const d00 = v0.dot(v0), d01 = v0.dot(v1), d11 = v1.dot(v1);
-                const d20 = v2.dot(v0), d21 = v2.dot(v1);
-                const denom = d00.mul(d11).sub(d01.mul(d01)).toVar('den');
-                const vv = d11.mul(d20).sub(d01.mul(d21)).div(denom).toVar('vv');
-                const ww = d00.mul(d21).sub(d01.mul(d20)).div(denom).toVar('ww');
-                const uu = float(1).sub(vv).sub(ww);
+              // leaf: test each triangle
+              Loop({
+                start: uint(0), end: count,
+                type: 'uint', condition: '<'
+              }, ({ i }) => {
 
-                If(uu.greaterThanEqual(float(0))
-                  .and(vv.greaterThanEqual(float(0)))
-                  .and(uu.add(vv).lessThanEqual(float(1))), () => {
-                    const depth = distPlane.mul(float(-1)).toVar('depth');
-                    If(depth.greaterThan(bestD), () => {
-                      bestD.assign(depth);
-                      bestP.assign(proj);
-                    });
+                const tBase = off.add(i.mul(uint(3)));
+                const i0 = bvhIndexBuffer.element(tBase),
+                  i1 = bvhIndexBuffer.element(tBase.add(1)),
+                  i2 = bvhIndexBuffer.element(tBase.add(2));
+                const A = colliderPositionBuffer.element(i0);
+                const B = colliderPositionBuffer.element(i1);
+                const C = colliderPositionBuffer.element(i2);
+
+                // plane‐collision + barycentric
+                const e1 = B.sub(A).toVar('e1');
+                const e2 = C.sub(A).toVar('e2');
+                const N = e1.cross(e2).normalize().toVar('N');
+                const vPA = P.sub(A).toVar('vPA');
+                const distPlane = vPA.dot(N).toVar('distPlane');
+                const MIN_DIST = float(-0.02);
+
+                If(
+                  distPlane.lessThan(float(0))
+                    .and(distPlane.greaterThan(MIN_DIST)),
+                  () => {
+                    const proj = P.sub(N.mul(distPlane)).toVar('proj');
+                    const v0 = e1, v1 = e2, v2 = proj.sub(A);
+                    const d00 = v0.dot(v0), d01 = v0.dot(v1), d11 = v1.dot(v1);
+                    const d20 = v2.dot(v0), d21 = v2.dot(v1);
+                    const denom = d00.mul(d11).sub(d01.mul(d01)).toVar('den');
+                    const vv = d11.mul(d20).sub(d01.mul(d21)).div(denom).toVar('vv');
+                    const ww = d00.mul(d21).sub(d01.mul(d20)).div(denom).toVar('ww');
+                    const uu = float(1).sub(vv).sub(ww);
+
+                    If(
+                      uu.greaterThanEqual(float(0))
+                        .and(vv.greaterThanEqual(float(0)))
+                        .and(uu.add(vv).lessThanEqual(float(1))),
+                      () => {
+                        const depth = distPlane.mul(float(-1)).toVar('depth');
+                        If(depth.greaterThan(bestD), () => {
+                          bestD.assign(depth);
+                          bestP.assign(proj);
+                        });
+                      });
                   });
               });
             });
           });
-        }
-      );
+      });
     });
 
-    // write out
+    // write final collision results
     If(bestD.greaterThan(float(0)), () => {
-
+      atomicStore(impactFlagBuffer.element(uint(0)), uint(1));
       collisionDepthBuffer.element(vid).assign(bestD);
       collisionProjBuffer.element(vid).assign(bestP);
     });
   })().compute(vCount);
+
 
   // remaining shaders unchanged …
   computeVertexForces = Fn(() => {
