@@ -149,31 +149,31 @@ export function Canvas() {
       if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
         // 1️⃣ if a seam segment is selected, remove that seam
-// Canvas.tsx (inside your keydown handler)
-if (currentTool === 'seam') {
-  const sel = useCanvasState.getState().selectedSeamSegment;
-  if (sel) {
-    // 1. Grab the array of all seam‐pairs
-    const seams = useCanvasState.getState().present.seams as [Segment, Segment][];
+        // Canvas.tsx (inside your keydown handler)
+        if (currentTool === 'seam') {
+          const sel = useCanvasState.getState().selectedSeamSegment;
+          if (sel) {
+            // 1. Grab the array of all seam‐pairs
+            const seams = useCanvasState.getState().present.seams as [Segment, Segment][];
 
-    // 2. Find the one pair where either side matches sel
-    const seamPair = seams.find(
-      ([segA, segB]) =>
-        (segA[0] === sel[0] && segA[1] === sel[1]) ||
-        (segB[0] === sel[0] && segB[1] === sel[1])
-    );
+            // 2. Find the one pair where either side matches sel
+            const seamPair = seams.find(
+              ([segA, segB]) =>
+                (segA[0] === sel[0] && segA[1] === sel[1]) ||
+                (segB[0] === sel[0] && segB[1] === sel[1])
+            );
 
-    // 3. If found, remove it
-    if (seamPair) {
-      useCanvasState.getState().removeSeam(seamPair[0], seamPair[1]);
-      // clear selection so UI resets
-      useCanvasState.getState().setSelectedSeamSegment(null);
-    }
-    // prevent any further Delete logic
-    e.preventDefault();
-    return;
-  }
-}
+            // 3. If found, remove it
+            if (seamPair) {
+              useCanvasState.getState().removeSeam(seamPair[0], seamPair[1]);
+              // clear selection so UI resets
+              useCanvasState.getState().setSelectedSeamSegment(null);
+            }
+            // prevent any further Delete logic
+            e.preventDefault();
+            return;
+          }
+        }
 
         if (selectedPointIds.length > 0) {
           useCanvasState.getState().deleteSelectedPoints();
@@ -196,7 +196,7 @@ if (currentTool === 'seam') {
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.code === 'Space'|| e.code === "ControlLeft") {
+      if (e.code === 'Space' || e.code === "ControlLeft") {
         setIsSpacePressed(false);
         if (isPanning) {
           setIsPanning(false);
@@ -240,14 +240,14 @@ if (currentTool === 'seam') {
     <div className="w-full h-full flex">
       {/* ── Left half: 3D view (when toggled) ─────────────────── */}
       {threeDEnabled && (
-        isResizing ? 
-        <div className="h-full grid place-items-center overflow-hidden rounded-r-2xl bg-black" style={{ width: split }}>
-          <img src='/svg/loader.svg' className='h-14 w-14 select-none'/>
-        </div>
-        :
-        <div className="h-full overflow-hidden rounded-r-2xl" style={{ width: split }}>
-          <ThreeDView />
-        </div>
+        isResizing ?
+          <div className="h-full grid place-items-center overflow-hidden rounded-r-2xl bg-black" style={{ width: split }}>
+            <img src='/svg/loader.svg' className='h-14 w-14 select-none' />
+          </div>
+          :
+          <div className="h-full overflow-hidden rounded-r-2xl" style={{ width: split }}>
+            <ThreeDView />
+          </div>
       )}
       {/* ── Draggable sash ─────────────────────────────────────── */}
       {threeDEnabled && (
@@ -589,11 +589,11 @@ if (currentTool === 'seam') {
             )}
 
             <SelectionTransformer isVisible={selectedPointIds.length > 0 && !selectionStart} />
-          
+
             <Line points={[700, -1500, 700, 2000]} stroke={"gray"} strokeWidth={2} />
             <Text offsetX={175} offsetY={400} fontSize={78} fontVariant='bold' fill={"gray"} text='Front' />
             <Text offsetX={-1400} offsetY={400} fontSize={78} fontVariant='bold' fill={"gray"} text='Back' />
-          
+
           </Layer>
         </Stage>
         {/* Toggle button (top-left) */}
