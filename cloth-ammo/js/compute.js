@@ -35,7 +35,9 @@ export let
   bvhBoundsBuffer,
   collisionDepthBuffer,
   collisionProjBuffer,
-  triCount;
+  triCount,
+  debugBoundsFloatBuffer,
+  debugPosBuffer;
 
 export function setupUniforms(params) {
   stiffnessUniform = uniform(params.stiffness);
@@ -119,6 +121,11 @@ export function setupColliderBuffers({ positions, indices, bvhRoots, bvhBounds, 
 
   triCount = indices.length / 3;
   console.log("TriCount", triCount);
+
+  debugBoundsFloatBuffer = instancedArray(new Float32Array(6), 'float')
+    .setPBO(true);
+  debugPosBuffer = instancedArray(new Float32Array(3), 'float')
+    .setPBO(true);
 }
 
 export function setupComputeShaders(verletVertices, verletSprings) {
@@ -164,6 +171,9 @@ export function setupComputeShaders(verletVertices, verletSprings) {
     const vid = instanceIndex;
     const P = vertexPositionBuffer.element(vid);
 
+    debugPosBuffer.element(uint(0)).assign(P.x);
+    debugPosBuffer.element(uint(1)).assign(P.y);
+    debugPosBuffer.element(uint(2)).assign(P.z);
     // best‐so‐far for this vertex
     var bestD = float(0).toVar('bestD');
     var bestP = vec3(0).toVar('bestP');
@@ -200,11 +210,18 @@ export function setupComputeShaders(verletVertices, verletSprings) {
           maxY = bvhBoundsBuffer.element(base.add(4)),
           maxZ = bvhBoundsBuffer.element(base.add(5));
 
+        debugBoundsFloatBuffer.element(uint(0)).assign(minX);
+        debugBoundsFloatBuffer.element(uint(1)).assign(minY);
+        debugBoundsFloatBuffer.element(uint(2)).assign(minZ);
+        debugBoundsFloatBuffer.element(uint(3)).assign(maxX);
+        debugBoundsFloatBuffer.element(uint(4)).assign(maxY);
+        debugBoundsFloatBuffer.element(uint(5)).assign(maxZ);
+
         // AABB test
         If(
           P.x.greaterThanEqual(minX).and(P.x.lessThanEqual(maxX))
-            .and(P.y.greaterThanEqual(minY)).and(P.y.lessThanEqual(maxY))
-            .and(P.z.greaterThanEqual(minZ)).and(P.z.lessThanEqual(maxZ)),
+            .and(P.z.greaterThanEqual(minY)).and(P.z.lessThanEqual(maxY))   // swapped
+            .and(P.y.greaterThanEqual(minZ)).and(P.y.lessThanEqual(maxZ)),  // swapped
           () => {
             const off = bvhBoundsBuffer.element(base.add(6)).toUint();
             const count = bvhBoundsBuffer.element(base.add(7)).toUint();

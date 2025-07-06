@@ -25,7 +25,7 @@ THREE.Mesh.prototype.raycast = acceleratedRaycast;
 
 let physicsWorld = null, ammoManBody = null;
 
-const initialClothHeight = 0.15 + 0.5;
+const initialClothHeight = 0.15 + 0.0;
 const boundarySegments = 300;
 const separationY = 0.2;
 const params = {
@@ -467,7 +467,51 @@ async function render() {
       const buf = await renderer.getArrayBufferAsync(Compute.impactFlagBuffer.value);
       const view = new Uint32Array(buf);
       console.log(view[0]);
+
+      // 1) pull back the 6 floats
+      const buf2 = await renderer.getArrayBufferAsync(
+        Compute.debugBoundsFloatBuffer.value
+      );
+      const fb = new Float32Array(buf2);
+      const [minX, minY, minZ, maxX, maxY, maxZ] = fb;
+
+      // 2) remove last frame’s helper if any
+      if (window._debugAABBHelper) {
+        scene.remove(window._debugAABBHelper);
+      }
+
+      // 3) build a Box3 and Box3Helper
+      const debugBox = new THREE.Box3(
+        new THREE.Vector3(minX, minY, minZ),
+        new THREE.Vector3(maxX, maxY, maxZ)
+      );
+      const helper = new THREE.Box3Helper(debugBox, 0xffff00);
+      scene.add(helper);
+
+      // stash it globally so we can remove next frame
+      window._debugAABBHelper = helper;
     }
+    {
+      // read back P
+      const bufP = await renderer.getArrayBufferAsync(
+        Compute.debugPosBuffer.value
+      );
+      const [px, py, pz] = new Float32Array(bufP);
+
+      // read back the last‐recorded AABB (even if it was never in‐bounds,
+      // you’ll get whatever floats were last written—initialize to something)
+      const bufB = await renderer.getArrayBufferAsync(
+        Compute.debugBoundsFloatBuffer.value
+      );
+      const [minX, minY, minZ, maxX, maxY, maxZ] = new Float32Array(bufB);
+
+      console.log(
+        `Debug P: (${px.toFixed(3)}, ${py.toFixed(3)}, ${pz.toFixed(3)})\n` +
+        `AABB:   min(${minX.toFixed(3)}, ${minY.toFixed(3)}, ${minZ.toFixed(3)}) ` +
+        `max(${maxX.toFixed(3)}, ${maxY.toFixed(3)}, ${maxZ.toFixed(3)})`
+      );
+    }
+
     await renderer.computeAsync(Compute.computeVertexForces);
     await renderer.computeAsync(Compute.computeSeamMomentumKill);
   }
