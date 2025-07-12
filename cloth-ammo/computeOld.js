@@ -1211,7 +1211,7 @@ export function setupComputeShaders(verletVertices, verletSprings) {
 
 
 
-  computeCollision = Fn(() => {
+  /*computeCollision = Fn(() => {
     // clearImpactFlag
     If(instanceIndex.equal(uint(0)), () => {
       const flagPtr = impactFlagBuffer.element(uint(0));
@@ -1335,18 +1335,14 @@ export function setupComputeShaders(verletVertices, verletSprings) {
       collisionDepthBuffer.element(instanceIndex).assign(bestDepth.negate());
       collisionNormalBuffer.element(instanceIndex).assign(bestNormal);
     });
-  })().compute(vCount);
+  })().compute(vCount);*/
 
   computeCollision = Fn(() => {
     If(instanceIndex.equal(uint(0)), () => {
-      // atomicStore(impactFlagBuffer.element(uint(0)), uint(0));
     });
 
     const vid = instanceIndex;
     const P = vertexPositionBuffer.element(vid);
-
-    const isSeamVertex = seamVertexFlagsBuffer.element(vid).equal(uint(1));
-
     collisionDepthBuffer.element(vid).assign(float(0));
     collisionProjBuffer.element(vid).assign(vec3(0));
 
@@ -1384,94 +1380,6 @@ export function setupComputeShaders(verletVertices, verletSprings) {
         If(uu.greaterThanEqual(float(0))
           .and(vv.greaterThanEqual(float(0)))
           .and(uu.add(vv).lessThanEqual(float(1))), () => {
-            // Skip seam-to-seam collisions
-            const seamA = seamVertexFlagsBuffer.element(i0).equal(uint(1));
-            const seamB = seamVertexFlagsBuffer.element(i1).equal(uint(1));
-            const seamC = seamVertexFlagsBuffer.element(i2).equal(uint(1));
-            const triangleHasSeam = seamA.or(seamB).or(seamC);
-            If(isSeamVertex.and(triangleHasSeam), () => Return());
-
-            const depth = distPlane.mul(float(-1)).toVar('depth');
-            If(depth.greaterThan(bestD), () => {
-              bestD.assign(depth);
-              bestP.assign(proj);
-            });
-          });
-      });
-    });
-
-    If(bestD.greaterThan(float(0)), () => {
-      // atomicStore(impactFlagBuffer.element(uint(0)), uint(1));
-      collisionDepthBuffer.element(vid).assign(bestD);
-      collisionProjBuffer.element(vid).assign(bestP);
-    });
-  })().compute(vCount);
-
-  // clear collision for next frame
-  clearCollisionBuffers = Fn(() => {
-    If(instanceIndex.equal(uint(0)), () => {
-      // atomicStore(impactFlagBuffer.element(uint(0)), uint(0));
-    });
-    If(instanceIndex.lessThan(uint(vCount)), () => {
-      collisionDepthBuffer.element(instanceIndex).assign(float(0));
-      collisionProjBuffer.element(instanceIndex).assign(vec3(0));
-    });
-  })().compute(vCount);
-
-  computeCollision = Fn(() => {
-    If(instanceIndex.equal(uint(0)), () => {
-      // atomicStore(impactFlagBuffer.element(uint(0)), uint(0));
-    });
-
-    const vid = instanceIndex;
-    const P = vertexPositionBuffer.element(vid);
-
-    const isSeamVertex = seamVertexFlagsBuffer.element(vid).equal(uint(1));
-
-    collisionDepthBuffer.element(vid).assign(float(0));
-    collisionProjBuffer.element(vid).assign(vec3(0));
-
-    var bestD = float(0).toVar('bestD');
-    var bestP = vec3(0).toVar('bestP');
-    const MIN_DIST = float(-0.02);
-
-    Loop({ start: uint(0), end: uint(triCount), type: 'uint', condition: '<' }, ({ i: ti }) => {
-      const b = ti.mul(uint(3));
-      const i0 = colliderIndexBuffer.element(b).toUint();
-      const i1 = colliderIndexBuffer.element(b.add(1)).toUint();
-      const i2 = colliderIndexBuffer.element(b.add(2)).toUint();
-      const A = colliderPositionBuffer.element(i0);
-      const B = colliderPositionBuffer.element(i1);
-      const C = colliderPositionBuffer.element(i2);
-
-      const e1 = B.sub(A).toVar('e1');
-      const e2 = C.sub(A).toVar('e2');
-      const N = e1.cross(e2).normalize().toVar('N');
-      const vPA = P.sub(A).toVar('vPA');
-      const distPlane = vPA.dot(N).toVar('distPlane');
-
-      If(distPlane.lessThan(float(0)).and(distPlane.greaterThan(MIN_DIST)), () => {
-        const proj = P.sub(N.mul(distPlane)).toVar('proj');
-
-        // barycentric
-        const v0 = e1, v1 = e2, v2 = proj.sub(A);
-        const d00 = v0.dot(v0), d01 = v0.dot(v1), d11 = v1.dot(v1);
-        const d20 = v2.dot(v0), d21 = v2.dot(v1);
-        const denom = d00.mul(d11).sub(d01.mul(d01)).toVar('den');
-        const vv = d11.mul(d20).sub(d01.mul(d21)).div(denom).toVar('vv');
-        const ww = d00.mul(d21).sub(d01.mul(d20)).div(denom).toVar('ww');
-        const uu = float(1).sub(vv).sub(ww);
-
-        If(uu.greaterThanEqual(float(0))
-          .and(vv.greaterThanEqual(float(0)))
-          .and(uu.add(vv).lessThanEqual(float(1))), () => {
-            // Skip seam-to-seam collisions
-            const seamA = seamVertexFlagsBuffer.element(i0).equal(uint(1));
-            const seamB = seamVertexFlagsBuffer.element(i1).equal(uint(1));
-            const seamC = seamVertexFlagsBuffer.element(i2).equal(uint(1));
-            const triangleHasSeam = seamA.or(seamB).or(seamC);
-            If(isSeamVertex.and(triangleHasSeam), () => Return());
-
             const depth = distPlane.mul(float(-1)).toVar('depth');
             If(depth.greaterThan(bestD), () => {
               bestD.assign(depth);

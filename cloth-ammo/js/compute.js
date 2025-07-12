@@ -4,8 +4,6 @@ import {
   float, triNoise3D, time, clamp, vec3, array
 } from 'three/tsl';
 
-const MAX_DEPTH = 60;
-
 export let
   stiffnessUniform, windUniform,
   dampingUniform,
@@ -24,9 +22,6 @@ export let
   computeSeamMomentumKill,
   colliderPositionBuffer,
   colliderIndexBuffer,
-  bvhRootsBuffer,
-  bvhIndexBuffer,
-  bvhIndirectBuffer,
   impactFlagBuffer,
   computeCollision,
   colliderIndexCountUniform,
@@ -35,14 +30,12 @@ export let
   bvhBoundsBuffer,
   collisionDepthBuffer,
   collisionProjBuffer,
-  triCount,
-  debugBoundsFloatBuffer,
-  debugPosBuffer;
+  triCount;
 
 export function setupUniforms(params) {
   stiffnessUniform = uniform(params.stiffness);
   windUniform = uniform(params.wind);
-  dampingUniform = uniform(0.995);
+  dampingUniform = uniform(0.98);
   gravitybaseOffsetUniform = uniform(0.0);
   gravityAccelUniform = uniform(0.0);
   seamTightnessUniform = uniform(0.0);
@@ -52,7 +45,6 @@ export function setupBuffers(verletVertices, verletSprings, seamDebugPairs) {
   const n = verletVertices.length;
   const m = verletSprings.length;
 
-  // vertex positions & params
   const posArr = new Float32Array(n * 3);
   const paramArr = new Uint32Array(n * 3);
   const springList = [];
@@ -66,7 +58,6 @@ export function setupBuffers(verletVertices, verletSprings, seamDebugPairs) {
   vertexParamsBuffer = instancedArray(paramArr, 'uvec3');
   springListBuffer = instancedArray(new Uint32Array(springList), 'uint').setPBO(true);
 
-  // springs
   const idArr = new Uint32Array(m * 2);
   const restArr = new Float32Array(m);
   verletSprings.forEach((s, i) => {
@@ -78,7 +69,6 @@ export function setupBuffers(verletVertices, verletSprings, seamDebugPairs) {
   springRestLengthBuffer = instancedArray(restArr, 'float');
   springForceBuffer = instancedArray(m * 3, 'vec3').setPBO(true);
 
-  // seam flags
   const seamFlagArr = new Uint32Array(m);
   const map = new Map();
   verletSprings.forEach((s, i) => {
@@ -91,41 +81,23 @@ export function setupBuffers(verletVertices, verletSprings, seamDebugPairs) {
   });
   springSeamFlagBuffer = instancedArray(seamFlagArr, 'uint');
 
-  // collision outputs
   impactFlagBuffer = instancedArray(new Uint32Array([0]), 'uint').setPBO(true).toAtomic();
   collisionDepthBuffer = instancedArray(new Float32Array(n), 'float').setPBO(true);
   collisionProjBuffer = instancedArray(new Float32Array(n * 3), 'vec3').setPBO(true);
 }
 
-export function setupColliderBuffers({ positions, indices, bvhRoots, bvhBounds, bvhIndex, bvhIndirect }) {
+export function setupColliderBuffers({ positions, indices, bvhBounds }) {
   colliderPositionBuffer = instancedArray(positions, 'vec3').setPBO(true);
   if (!(indices instanceof Uint32Array)) indices = new Uint32Array(indices);
   colliderIndexBuffer = instancedArray(indices, 'uint').setPBO(true);
   colliderIndexCountUniform = uniform(indices.length);
 
-  bvhRootsBuffer = instancedArray(bvhRoots, 'uint').setPBO(true);
-  console.log("BvhRootsBuffer", bvhRootsBuffer)
   bvhBoundsBuffer = instancedArray(bvhBounds, 'float').setPBO(true);
-  console.log("BvhBoundsBuffer", bvhBoundsBuffer)
-  bvhIndexBuffer = instancedArray(new Uint16Array(bvhIndex), 'uint').setPBO(true);
-  console.log("BvhIndexBuffer", bvhIndexBuffer)
-  // correct: use the original Uint32Array and two‐component vectors
-  bvhIndirectBuffer = instancedArray(
-    bvhIndirect,   // the Uint32Array that MeshBVH.serialize() gave you
-    'uvec2'        // exactly two children per interior node
-  ).setPBO(true);
-  console.log("BvhIndirectBuffer", bvhIndirectBuffer)
+
   const nodeCount = bvhBounds.length / 8;
   bvhNodeCountUniform = uniform(nodeCount);
-  console.log("BvhNodeCountUniform", bvhNodeCountUniform)
 
   triCount = indices.length / 3;
-  console.log("TriCount", triCount);
-
-  debugBoundsFloatBuffer = instancedArray(new Float32Array(6), 'float')
-    .setPBO(true);
-  debugPosBuffer = instancedArray(new Float32Array(3), 'float')
-    .setPBO(true);
 }
 
 export function setupComputeShaders(verletVertices, verletSprings) {
@@ -133,216 +105,182 @@ export function setupComputeShaders(verletVertices, verletSprings) {
   const sCount = verletSprings.length;
   const EPS = float(1e-6);
 
-  // spring forces (unchanged) …
   computeSpringForces = Fn(() => {
-    const sid = instanceIndex;
-    const sv = springVertexIdBuffer.element(sid);
-    const p0 = vertexPositionBuffer.element(sv.x);
-    const p1 = vertexPositionBuffer.element(sv.y);
-    const d = p1.sub(p0).toVar('d');
-    const dist = d.length().max(EPS).toVar('dist');
-    const baseRest = springRestLengthBuffer.element(sid);
-    const isSeam = springSeamFlagBuffer.element(sid).equal(uint(1));
-    const seamT = clamp(seamTightnessUniform, float(0), float(1));
-    const rest = select(isSeam, baseRest.mul(float(1).sub(seamT)), baseRest).max(EPS);
-    const delta = dist.sub(rest).toVar('delta');
-    const doF = delta.abs().greaterThan(EPS);
-    If(doF, () => {
-      const f = d.mul(delta).mul(stiffnessUniform).mul(float(0.5)).div(dist).toVar('f');
-      springForceBuffer.element(sid).assign(f);
+    const springIndex = instanceIndex;
+    const vertexPair = springVertexIdBuffer.element(springIndex);
+    const posA = vertexPositionBuffer.element(vertexPair.x);
+    const posB = vertexPositionBuffer.element(vertexPair.y);
+    const directionVec = posB.sub(posA).toVar('directionVec');
+    const currentLength = directionVec.length().max(EPS).toVar('currentLength');
+
+    const restLenBase = springRestLengthBuffer.element(springIndex);
+    const isSeamSpring = springSeamFlagBuffer.element(springIndex).equal(uint(1));
+    const seamTightnessClamped = clamp(seamTightnessUniform, float(0), float(1));
+    const targetRestLength = select(
+      isSeamSpring,
+      restLenBase.mul(float(1).sub(seamTightnessClamped)),
+      restLenBase
+    ).max(EPS);
+
+    const displacement = currentLength.sub(targetRestLength).toVar('displacement');
+    const shouldApplyForce = displacement.abs().greaterThan(EPS);
+
+    const depthA = collisionDepthBuffer.element(vertexPair.x);
+    const depthB = collisionDepthBuffer.element(vertexPair.y);
+    const eitherInCollision = depthA.greaterThan(float(0)).or(depthB.greaterThan(float(0)));
+    const bothInCollision = depthA.greaterThan(float(0)).and(depthB.greaterThan(float(0)));
+
+    If(shouldApplyForce, () => {
+
+      const forceVec = directionVec
+        .mul(displacement)
+        .mul(stiffnessUniform)
+        .mul(float(0.5))
+        .div(currentLength)
+        .toVar('forceVec');
+
+      const maxForce = select(
+        bothInCollision, float(0.005),
+        select(eitherInCollision, float(0.015), float(0.035))
+      );
+
+      const forceMag = forceVec.length();
+      const clampedForce = select(
+        forceMag.greaterThan(maxForce),
+        forceVec.mul(maxForce.div(forceMag)),
+        forceVec
+      );
+
+      const stiffnessReduction = select(
+        bothInCollision, float(0.2),
+        select(eitherInCollision, float(0.4), float(1.0))
+      );
+
+      const collisionDamping = select(eitherInCollision, float(0.4), float(1.0));
+      springForceBuffer.element(springIndex).assign(clampedForce.mul(collisionDamping).mul(stiffnessReduction));
     }).Else(() => {
-      springForceBuffer.element(sid).assign(vec3(0));
+      springForceBuffer.element(springIndex).assign(vec3(0));
     });
   })().compute(sCount);
 
-  // clear collision for next frame (unchanged) …
-  clearCollisionBuffers = Fn(() => {
-    If(instanceIndex.equal(uint(0)), () => {
-      // atomicStore(impactFlagBuffer.element(uint(0)), uint(0));
-    });
-    If(instanceIndex.lessThan(uint(vCount)), () => {
-      collisionDepthBuffer.element(instanceIndex).assign(float(0));
-      collisionProjBuffer.element(instanceIndex).assign(vec3(0));
-    });
-  })().compute(vCount);
-
-  // **computeCollision** now uses BVH stack traversal:
   computeCollision = Fn(() => {
     const vid = instanceIndex;
     const P = vertexPositionBuffer.element(vid);
 
-    debugPosBuffer.element(uint(0)).assign(P.x);
-    debugPosBuffer.element(uint(1)).assign(P.y);
-    debugPosBuffer.element(uint(2)).assign(P.z);
-    // best‐so‐far for this vertex
-    var bestD = float(0).toVar('bestD');
-    var bestP = vec3(0).toVar('bestP');
+    collisionDepthBuffer.element(vid).assign(float(0));
+    collisionProjBuffer.element(vid).assign(vec3(0));
 
-    // build a true shader‐side array of zeros (length = MAX_DEPTH)
-    const zeroList = new Array(MAX_DEPTH).fill(uint(0));
-    const stack = array(zeroList);
+    let bestDepth = float(0).toVar('bestDepth');
+    let bestProj = vec3(0).toVar('bestProj');
+    const MIN_DIST = float(-0.02);
+    const triCount = colliderIndexCountUniform.div(uint(3));
 
-    // one mutable pointer var
-    const ptr = uint(0).toVar('ptr');
+    Loop({ start: uint(0), end: triCount, type: 'uint', condition: '<' }, ({ i: ti }) => {
+      const base = ti.mul(uint(3));
+      const i0 = colliderIndexBuffer.element(base);
+      const i1 = colliderIndexBuffer.element(base.add(1));
+      const i2 = colliderIndexBuffer.element(base.add(2));
 
-    // push the single root node (always at bvhRootsBuffer[0])
-    stack.element(ptr).assign(bvhRootsBuffer.element(uint(0)));
-    ptr.assign(ptr.add(uint(1)));
+      const A = colliderPositionBuffer.element(i0);
+      const B = colliderPositionBuffer.element(i1);
+      const C = colliderPositionBuffer.element(i2);
 
-    // traverse until stack empty or depth limit reached
-    Loop({
-      start: uint(0), end: uint(MAX_DEPTH),
-      type: 'uint', condition: '<'
-    }, () => {
-      If(ptr.greaterThan(uint(0)), () => {
-        // pop
-        ptr.assign(ptr.sub(uint(1)));
-        const nodeIndex = stack.element(ptr);
-        const base = nodeIndex.mul(uint(8)); // 8 floats per node
+      const e1 = B.sub(A).toVar('e1');
+      const e2 = C.sub(A).toVar('e2');
+      const N = e1.cross(e2).normalize().toVar('N');
 
-        // (optional) record which node we’re at for debugging:
+      const vPA = P.sub(A).toVar('vPA');
+      const distPlane = vPA.dot(N).toVar('distPlane');
 
-        // load AABB
-        const minX = bvhBoundsBuffer.element(base.add(0)),
-          minY = bvhBoundsBuffer.element(base.add(1)),
-          minZ = bvhBoundsBuffer.element(base.add(2));
-        const maxX = bvhBoundsBuffer.element(base.add(3)),
-          maxY = bvhBoundsBuffer.element(base.add(4)),
-          maxZ = bvhBoundsBuffer.element(base.add(5));
+      If(distPlane.lessThan(float(0)).and(distPlane.greaterThan(MIN_DIST)), () => {
 
-        debugBoundsFloatBuffer.element(uint(0)).assign(minX);
-        debugBoundsFloatBuffer.element(uint(1)).assign(minY);
-        debugBoundsFloatBuffer.element(uint(2)).assign(minZ);
-        debugBoundsFloatBuffer.element(uint(3)).assign(maxX);
-        debugBoundsFloatBuffer.element(uint(4)).assign(maxY);
-        debugBoundsFloatBuffer.element(uint(5)).assign(maxZ);
+        const proj = P.sub(N.mul(distPlane)).toVar('proj');
 
-        // AABB test
-        If(
-          P.x.greaterThanEqual(minX).and(P.x.lessThanEqual(maxX))
-            .and(P.z.greaterThanEqual(minY)).and(P.z.lessThanEqual(maxY))   // swapped
-            .and(P.y.greaterThanEqual(minZ)).and(P.y.lessThanEqual(maxZ)),  // swapped
-          () => {
-            const off = bvhBoundsBuffer.element(base.add(6)).toUint();
-            const count = bvhBoundsBuffer.element(base.add(7)).toUint();
+        const v0 = e1;
+        const v1 = e2;
+        const v2 = proj.sub(A);
 
-            // interior? push children
-            If(count.equal(uint(0)), () => {
-              atomicStore(impactFlagBuffer.element(uint(0)), 5);
-              // interior: left child is next node, right child is meta0
-              const leftChild = nodeIndex.add(uint(1));
-              const rightChild = bvhBoundsBuffer.element(base.add(6)).toUint();
-              stack.element(ptr).assign(leftChild);
-              ptr.assign(ptr.add(uint(1)));
-              stack.element(ptr).assign(rightChild);
-              ptr.assign(ptr.add(uint(1)));
-            }, () => {
-              atomicStore(impactFlagBuffer.element(uint(0)), 12);
+        const d00 = v0.dot(v0);
+        const d01 = v0.dot(v1);
+        const d11 = v1.dot(v1);
+        const d20 = v2.dot(v0);
+        const d21 = v2.dot(v1);
 
-              // leaf: test each triangle
-              Loop({
-                start: uint(0), end: count,
-                type: 'uint', condition: '<'
-              }, ({ i }) => {
+        const denom = d00.mul(d11).sub(d01.mul(d01)).toVar('denom');
+        const vv = d11.mul(d20).sub(d01.mul(d21)).div(denom).toVar('vv');
+        const ww = d00.mul(d21).sub(d01.mul(d20)).div(denom).toVar('ww');
+        const uu = float(1).sub(vv).sub(ww);
 
-                const tBase = off.add(i.mul(uint(3)));
-                const i0 = bvhIndexBuffer.element(tBase),
-                  i1 = bvhIndexBuffer.element(tBase.add(1)),
-                  i2 = bvhIndexBuffer.element(tBase.add(2));
-                const A = colliderPositionBuffer.element(i0);
-                const B = colliderPositionBuffer.element(i1);
-                const C = colliderPositionBuffer.element(i2);
+        If(uu.greaterThanEqual(float(0))
+          .and(vv.greaterThanEqual(float(0)))
+          .and(ww.greaterThanEqual(float(0))
+            .and(uu.add(vv).add(ww).lessThanEqual(float(1.01)))), () => {
 
-                // plane‐collision + barycentric
-                const e1 = B.sub(A).toVar('e1');
-                const e2 = C.sub(A).toVar('e2');
-                const N = e1.cross(e2).normalize().toVar('N');
-                const vPA = P.sub(A).toVar('vPA');
-                const distPlane = vPA.dot(N).toVar('distPlane');
-                const MIN_DIST = float(-0.02);
-
-                If(
-                  distPlane.lessThan(float(0))
-                    .and(distPlane.greaterThan(MIN_DIST)),
-                  () => {
-                    const proj = P.sub(N.mul(distPlane)).toVar('proj');
-                    const v0 = e1, v1 = e2, v2 = proj.sub(A);
-                    const d00 = v0.dot(v0), d01 = v0.dot(v1), d11 = v1.dot(v1);
-                    const d20 = v2.dot(v0), d21 = v2.dot(v1);
-                    const denom = d00.mul(d11).sub(d01.mul(d01)).toVar('den');
-                    const vv = d11.mul(d20).sub(d01.mul(d21)).div(denom).toVar('vv');
-                    const ww = d00.mul(d21).sub(d01.mul(d20)).div(denom).toVar('ww');
-                    const uu = float(1).sub(vv).sub(ww);
-
-                    If(
-                      uu.greaterThanEqual(float(0))
-                        .and(vv.greaterThanEqual(float(0)))
-                        .and(uu.add(vv).lessThanEqual(float(1))),
-                      () => {
-                        const depth = distPlane.mul(float(-1)).toVar('depth');
-                        If(depth.greaterThan(bestD), () => {
-                          bestD.assign(depth);
-                          bestP.assign(proj);
-                        });
-                      });
-                  });
+              const depth = distPlane.mul(float(-1)).toVar('depth');
+              If(depth.greaterThan(bestDepth), () => {
+                bestDepth.assign(depth);
+                bestProj.assign(proj);
               });
             });
-          });
       });
     });
 
-    // write final collision results
-    If(bestD.greaterThan(float(0)), () => {
-      atomicStore(impactFlagBuffer.element(uint(0)), uint(1));
-      collisionDepthBuffer.element(vid).assign(bestD);
-      collisionProjBuffer.element(vid).assign(bestP);
+    If(bestDepth.greaterThan(float(0)), () => {
+      collisionDepthBuffer.element(vid).assign(bestDepth);
+      collisionProjBuffer.element(vid).assign(bestProj);
     });
   })().compute(vCount);
 
+  clearCollisionBuffers = Fn(() => {
+    const vid = instanceIndex;
+    If(vid.greaterThanEqual(uint(vCount)), () => Return());
 
-  // remaining shaders unchanged …
+    collisionDepthBuffer.element(vid).assign(float(0));
+    collisionProjBuffer.element(vid).assign(vec3(0));
+  })().compute(vCount);
+
   computeVertexForces = Fn(() => {
     const vid = instanceIndex;
     If(vid.greaterThanEqual(uint(vCount)), () => Return());
     If(vertexParamsBuffer.element(vid).x.greaterThan(uint(0)), () => Return());
 
     const pos = vertexPositionBuffer.element(vid).toVar('pos');
-    let force = vec3(0).toVar('force');
+    let force = vec3(0.0).toVar('force');
     const end = vertexParamsBuffer.element(vid).z.add(
       vertexParamsBuffer.element(vid).y
     );
 
-    // spring sum
     Loop({ start: vertexParamsBuffer.element(vid).z, end, type: 'uint', condition: '<' }, ({ i }) => {
-      const sid = springListBuffer.element(i).toVar('sid');
+      const sid = springListBuffer.element(i);
       const f = springForceBuffer.element(sid);
       const sv = springVertexIdBuffer.element(sid);
       const sign = select(sv.x.equal(vid), 1.0, -1.0);
       force.addAssign(f.mul(sign));
     });
 
-    // gravity & wind
+    force.mulAssign(dampingUniform);
+
     const gDyn = gravitybaseOffsetUniform.add(gravityAccelUniform.mul(time));
     force.y.subAssign(gDyn);
-    const noise = triNoise3D(pos, 1, time).sub(0.2).mul(0.0002);
-    force.x.addAssign(noise.mul(windUniform));
-    force.z.addAssign(noise.mul(windUniform));
 
-    let nextPos = pos.add(force);
+    const collisionDepth = collisionDepthBuffer.element(vid);
+    const isInCollision = collisionDepth.greaterThan(float(0));
 
-    const depth = collisionDepthBuffer.element(vid);
-    If(depth.greaterThan(float(0)), () => {
-      const proj = collisionProjBuffer.element(vid);
-      const Ndir = pos.sub(proj).normalize();
-      const nextPos = proj.add(Ndir.mul(float(0.001)));
-      const nComp = Ndir.mul(force.dot(Ndir));
-      force = force.sub(nComp);
+    If(isInCollision, () => {
+      const collisionProj = collisionProjBuffer.element(vid);
+
+      const correctionStrength = float(0.5);
+      const correctedPos = pos.add(collisionProj.sub(pos).mul(correctionStrength));
+
+      force.mulAssign(float(0.8));
+
+      vertexPositionBuffer.element(vid).assign(correctedPos);
       vertexForceBuffer.element(vid).assign(force);
-      vertexPositionBuffer.element(vid).assign(nextPos);
     }).Else(() => {
-      vertexForceBuffer.element(vid).assign(force);
+
+      const nextPos = pos.add(force);
       vertexPositionBuffer.element(vid).assign(nextPos);
+      vertexForceBuffer.element(vid).assign(force);
     });
   })().compute(vCount);
 
@@ -360,4 +298,5 @@ export function setupComputeShaders(verletVertices, verletSprings) {
       vertexForceBuffer.element(sv.y).assign(f1);
     });
   })().compute(sCount);
+
 }
