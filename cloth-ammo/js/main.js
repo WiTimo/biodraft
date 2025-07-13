@@ -34,30 +34,6 @@ const params = {
   seamSpeed: 0.1
 };
 
-function testBvhTraversal(bvh) {
-  let nodeCounter = 0;
-  const axisNames = ['X', 'Y', 'Z'];
-
-  bvh.traverse((depth, isLeaf, boundingData, offsetOrSplit, count) => {
-    console.log(`\nNode ${nodeCounter++}`);
-    console.log(`  depth: ${depth}`);
-    console.log(`  count: ${count}`);
-    console.log(`  isLeaf: ${isLeaf}`);
-    console.log(`  boundingBox: [${boundingData.join(', ')}]`);
-
-    if (isLeaf) {
-      console.assert(Number.isInteger(offsetOrSplit), 'Leaf offsetOrSplit should be an integer offset');
-      console.assert(count > 0, 'Leaf node should have a non-zero triangle count');
-      console.log(`  ➤ Leaf node: triangleOffset = ${offsetOrSplit}, triangleCount = ${count}`);
-    } else {
-      console.assert(count === 0 || count === undefined, 'Internal node should have count = 0 or undefined');
-      console.assert([0, 1, 2].includes(offsetOrSplit), 'Internal node split axis should be 0, 1, or 2');
-      console.log(`  ➤ Internal node: splitAxis = ${offsetOrSplit} (${axisNames[offsetOrSplit]})`);
-    }
-  });
-
-}
-
 function buildBvhBounds(bvh) {
   const nodes = [];
 
@@ -436,9 +412,11 @@ async function init() {
 
   Compute.setupBuffers(verletVertices, verletSprings, seamDebugPairs);
   Compute.setupUniforms(params);
+
   //await loadHumanColliderAndInitCompute();
 
   // Dummy collider setup for when human is disabled
+  // set position far away so it avoids collision with the cloth
   const dummyPositions = new Float32Array([4, 4, 4, 4, 4, 4, 4, 4, 4]);
   const dummyIndices = new Uint32Array([0, 1, 2]);
   const dummyBvhBounds = new Float32Array(8);

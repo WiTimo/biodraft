@@ -164,72 +164,72 @@ export function setupComputeShaders(verletVertices, verletSprings) {
   })().compute(sCount);
 
   computeCollision = Fn(() => {
-    const vid = instanceIndex;
-    const P = vertexPositionBuffer.element(vid);
+    const vertexId = instanceIndex;
+    const vertexPosition = vertexPositionBuffer.element(vertexId);
 
-    collisionDepthBuffer.element(vid).assign(float(0));
-    collisionProjBuffer.element(vid).assign(vec3(0));
+    collisionDepthBuffer.element(vertexId).assign(float(0));
+    collisionProjBuffer.element(vertexId).assign(vec3(0));
 
-    let bestDepth = float(0).toVar('bestDepth');
-    let bestProj = vec3(0).toVar('bestProj');
-    const MIN_DIST = float(-0.02);
-    const triCount = colliderIndexCountUniform.div(uint(3));
+    let maxPenetrationDepth = float(0).toVar('maxPenetrationDepth');
+    let projectedCollisionPoint = vec3(0).toVar('projectedCollisionPoint');
+    const MIN_PLANE_DIST = float(-0.02);
+    const triangleCount = colliderIndexCountUniform.div(uint(3));
 
-    Loop({ start: uint(0), end: triCount, type: 'uint', condition: '<' }, ({ i: ti }) => {
-      const base = ti.mul(uint(3));
-      const i0 = colliderIndexBuffer.element(base);
-      const i1 = colliderIndexBuffer.element(base.add(1));
-      const i2 = colliderIndexBuffer.element(base.add(2));
+    Loop({ start: uint(0), end: triangleCount, type: 'uint', condition: '<' }, ({ i: triangleIndex }) => {
+      const baseIndex = triangleIndex.mul(uint(3));
+      const indexA = colliderIndexBuffer.element(baseIndex);
+      const indexB = colliderIndexBuffer.element(baseIndex.add(1));
+      const indexC = colliderIndexBuffer.element(baseIndex.add(2));
 
-      const A = colliderPositionBuffer.element(i0);
-      const B = colliderPositionBuffer.element(i1);
-      const C = colliderPositionBuffer.element(i2);
+      const pointA = colliderPositionBuffer.element(indexA);
+      const pointB = colliderPositionBuffer.element(indexB);
+      const pointC = colliderPositionBuffer.element(indexC);
 
-      const e1 = B.sub(A).toVar('e1');
-      const e2 = C.sub(A).toVar('e2');
-      const N = e1.cross(e2).normalize().toVar('N');
+      const edge1 = pointB.sub(pointA).toVar('edge1');
+      const edge2 = pointC.sub(pointA).toVar('edge2');
+      const triangleNormal = edge1.cross(edge2).normalize().toVar('triangleNormal');
 
-      const vPA = P.sub(A).toVar('vPA');
-      const distPlane = vPA.dot(N).toVar('distPlane');
+      const vertexToA = vertexPosition.sub(pointA).toVar('vertexToA');
+      const distanceToPlane = vertexToA.dot(triangleNormal).toVar('distanceToPlane');
 
-      If(distPlane.lessThan(float(0)).and(distPlane.greaterThan(MIN_DIST)), () => {
+      If(distanceToPlane.lessThan(float(0)).and(distanceToPlane.greaterThan(MIN_PLANE_DIST)), () => {
+        const projectedPoint = vertexPosition.sub(triangleNormal.mul(distanceToPlane)).toVar('projectedPoint');
 
-        const proj = P.sub(N.mul(distPlane)).toVar('proj');
+        const baryEdge0 = edge1;
+        const baryEdge1 = edge2;
+        const baryPoint = projectedPoint.sub(pointA);
 
-        const v0 = e1;
-        const v1 = e2;
-        const v2 = proj.sub(A);
-
-        const d00 = v0.dot(v0);
-        const d01 = v0.dot(v1);
-        const d11 = v1.dot(v1);
-        const d20 = v2.dot(v0);
-        const d21 = v2.dot(v1);
+        const d00 = baryEdge0.dot(baryEdge0);
+        const d01 = baryEdge0.dot(baryEdge1);
+        const d11 = baryEdge1.dot(baryEdge1);
+        const d20 = baryPoint.dot(baryEdge0);
+        const d21 = baryPoint.dot(baryEdge1);
 
         const denom = d00.mul(d11).sub(d01.mul(d01)).toVar('denom');
-        const vv = d11.mul(d20).sub(d01.mul(d21)).div(denom).toVar('vv');
-        const ww = d00.mul(d21).sub(d01.mul(d20)).div(denom).toVar('ww');
-        const uu = float(1).sub(vv).sub(ww);
+        const baryV = d11.mul(d20).sub(d01.mul(d21)).div(denom).toVar('baryV');
+        const baryW = d00.mul(d21).sub(d01.mul(d20)).div(denom).toVar('baryW');
+        const baryU = float(1).sub(baryV).sub(baryW);
 
-        If(uu.greaterThanEqual(float(0))
-          .and(vv.greaterThanEqual(float(0)))
-          .and(ww.greaterThanEqual(float(0))
-            .and(uu.add(vv).add(ww).lessThanEqual(float(1.01)))), () => {
+        If(baryU.greaterThanEqual(float(0))
+          .and(baryV.greaterThanEqual(float(0)))
+          .and(baryW.greaterThanEqual(float(0))
+            .and(baryU.add(baryV).add(baryW).lessThanEqual(float(1.01)))), () => {
 
-              const depth = distPlane.mul(float(-1)).toVar('depth');
-              If(depth.greaterThan(bestDepth), () => {
-                bestDepth.assign(depth);
-                bestProj.assign(proj);
+              const penetrationDepth = distanceToPlane.mul(float(-1)).toVar('penetrationDepth');
+              If(penetrationDepth.greaterThan(maxPenetrationDepth), () => {
+                maxPenetrationDepth.assign(penetrationDepth);
+                projectedCollisionPoint.assign(projectedPoint);
               });
             });
       });
     });
 
-    If(bestDepth.greaterThan(float(0)), () => {
-      collisionDepthBuffer.element(vid).assign(bestDepth);
-      collisionProjBuffer.element(vid).assign(bestProj);
+    If(maxPenetrationDepth.greaterThan(float(0)), () => {
+      collisionDepthBuffer.element(vertexId).assign(maxPenetrationDepth);
+      collisionProjBuffer.element(vertexId).assign(projectedCollisionPoint);
     });
   })().compute(vCount);
+
 
   clearCollisionBuffers = Fn(() => {
     const vid = instanceIndex;
