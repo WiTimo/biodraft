@@ -31,7 +31,8 @@ const params = {
   showWireframe: true,
   wind: 0.0,
   stiffness: 0.15,
-  seamSpeed: 0.1
+  seamSpeed: 0.0,
+  verticalBoost: 5.0,
 };
 
 function buildBvhBounds(bvh) {
@@ -366,6 +367,7 @@ async function init() {
     gui.add(params, 'wind', 0, 2, 0.01).name('Wind');
     gui.add(params, 'stiffness', 0.1, 1, 0.01).name('Stiffness');
     gui.add(params, 'seamSpeed', 0.1, 5, 0.1).name('Seam Speed');
+    gui.add(params, 'verticalBoost', 1, 20, 0.1).name('Vertical Boost');
 
     const debugFolder = gui.addFolder('Debug Info');
     debugFolder.add({ vertices: verletVertices.length }, 'vertices').name('Vertex Count').listen();
@@ -530,6 +532,23 @@ async function render() {
     await renderer.computeAsync(Compute.computeVertexForces);
 
     await renderer.computeAsync(Compute.computeSeamMomentumKill);
+    await renderer.computeAsync(Compute.computeSeamProjection);
+    await renderer.computeAsync(Compute.computeLengthProjection);
+
+    {
+      const posAttr = clothMesh.geometry.attributes.position;
+      for (let [i0, i1] of seamDebugPairs) {
+        // read both vertex positions
+        const x0 = posAttr.getX(i0), y0 = posAttr.getY(i0), z0 = posAttr.getZ(i0);
+        const x1 = posAttr.getX(i1), y1 = posAttr.getY(i1), z1 = posAttr.getZ(i1);
+        // compute midpoint
+        const mx = 0.5 * (x0 + x1), my = 0.5 * (y0 + y1), mz = 0.5 * (z0 + z1);
+        // write both vertices to the midpoint
+        posAttr.setXYZ(i0, mx, my, mz);
+        posAttr.setXYZ(i1, mx, my, mz);
+      }
+      posAttr.needsUpdate = true;
+    }
   }
 
   {
@@ -551,6 +570,9 @@ async function render() {
   }
 
   clothMesh.material.wireframe = params.showWireframe;
+
+
+
   await renderer.renderAsync(scene, camera);
 }
 

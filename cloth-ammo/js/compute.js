@@ -30,7 +30,9 @@ export let
   bvhBoundsBuffer,
   collisionDepthBuffer,
   collisionProjBuffer,
-  triCount;
+  triCount, verticalBoostUniform;
+export let computeLengthProjection;
+export let computeSeamProjection
 
 export function setupUniforms(params) {
   stiffnessUniform = uniform(params.stiffness);
@@ -39,6 +41,7 @@ export function setupUniforms(params) {
   gravitybaseOffsetUniform = uniform(0.0);
   gravityAccelUniform = uniform(0.0);
   seamTightnessUniform = uniform(0.0);
+  verticalBoostUniform = uniform(params.verticalBoost);
 }
 
 export function setupBuffers(verletVertices, verletSprings, seamDebugPairs) {
@@ -115,10 +118,9 @@ export function setupComputeShaders(verletVertices, verletSprings) {
 
     const restLenBase = springRestLengthBuffer.element(springIndex);
     const isSeamSpring = springSeamFlagBuffer.element(springIndex).equal(uint(1));
-    const seamTightnessClamped = clamp(seamTightnessUniform, float(0), float(1));
     const targetRestLength = select(
       isSeamSpring,
-      restLenBase.mul(float(1).sub(seamTightnessClamped)),
+      float(0.0),
       restLenBase
     ).max(EPS);
 
@@ -132,12 +134,30 @@ export function setupComputeShaders(verletVertices, verletSprings) {
 
     If(shouldApplyForce, () => {
 
+      // ——— ANISOTROPIC STIFFNESS PATCH ———
+      // normalize the spring direction
+      const dirNorm = directionVec.div(currentLength).toVar('dirNorm');
+      // how “vertical” is it? (1.0 = perfectly vertical)
+      const verticalAlign = dirNorm.y.abs().toVar('verticalAlign');
+      // stiffness = base * (1 + (verticalBoost-1)*verticalAlign)
+      const anisostiff = stiffnessUniform
+        .mul(
+          float(1)
+            .add(
+              verticalBoostUniform
+                .sub(float(1))
+                .mul(verticalAlign)
+            )
+        )
+        .toVar('anisostiff');
+
       const forceVec = directionVec
         .mul(displacement)
-        .mul(stiffnessUniform)
+        .mul(anisostiff)
         .mul(float(0.5))
         .div(currentLength)
         .toVar('forceVec');
+      // ——— end patch ———
 
       const maxForce = select(
         bothInCollision, float(0.005),
@@ -298,5 +318,53 @@ export function setupComputeShaders(verletVertices, verletSprings) {
       vertexForceBuffer.element(sv.y).assign(f1);
     });
   })().compute(sCount);
+
+  computeSeamProjection = Fn(() => {
+    // for each spring:
+    const sid = instanceIndex;
+    If(sid.greaterThanEqual(uint(sCount)), () => Return());
+
+    // only for seam springs:
+    If(springSeamFlagBuffer.element(sid).equal(uint(1)), () => {
+      // grab the two vertex indices
+      const sv = springVertexIdBuffer.element(sid);
+      // read their current positions
+      const pA = vertexPositionBuffer.element(sv.x);
+      const pB = vertexPositionBuffer.element(sv.y);
+      // compute exact midpoint
+      const mid = pA.add(pB).mul(float(0.5));
+      // write both vertices to that midpoint
+      vertexPositionBuffer.element(sv.x).assign(mid);
+      vertexPositionBuffer.element(sv.y).assign(mid);
+    });
+  })().compute(sCount);
+
+  // ——— full‐cloth length constraint ———
+  computeLengthProjection = Fn(() => {
+    const sid = instanceIndex;
+    // only up to the number of springs
+    If(sid.greaterThanEqual(uint(sCount)), () => Return());
+    //——— don’t touch seam springs here ———
+    const isSeam = springSeamFlagBuffer.element(sid).equal(uint(1));
+    If(isSeam, () => Return());
+    // get the two vertex IDs
+    const sv = springVertexIdBuffer.element(sid);
+    const pA = vertexPositionBuffer.element(sv.x);
+    const pB = vertexPositionBuffer.element(sv.y);
+
+    // compute vector from A→B
+    const delta = pB.sub(pA).toVar('delta');
+    const len = delta.length().max(EPS).toVar('len');
+    const rest = springRestLengthBuffer.element(sid);
+
+    // how far off?
+    const diff = len.sub(rest).mul(0.5).div(len).toVar('diff');
+    const corrVec = delta.mul(diff);
+
+    // move A forward, B back
+    vertexPositionBuffer.element(sv.x).assign(pA.add(corrVec));
+    vertexPositionBuffer.element(sv.y).assign(pB.sub(corrVec));
+  })().compute(sCount);
+  // ——— end length constraint ———
 
 }
