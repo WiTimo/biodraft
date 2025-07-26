@@ -1,7 +1,7 @@
 import {
-  atomicStore, Fn, If, Return, instancedArray, instanceIndex,
+  Fn, If, Return, instancedArray, instanceIndex,
   uniform, select, uint, Loop,
-  float, triNoise3D, time, clamp, vec3, array
+  float, time, vec3
 } from 'three/tsl';
 
 export let
@@ -30,9 +30,10 @@ export let
   bvhBoundsBuffer,
   collisionDepthBuffer,
   collisionProjBuffer,
-  triCount, verticalBoostUniform;
-export let computeLengthProjection;
-export let computeSeamProjection
+  triCount,
+  verticalBoostUniform,
+  computeLengthProjection,
+  computeSeamProjection;
 
 export function setupUniforms(params) {
   stiffnessUniform = uniform(params.stiffness);

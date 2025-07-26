@@ -33,6 +33,7 @@ const params = {
   stiffness: 0.15,
   seamSpeed: 0.0,
   verticalBoost: 5.0,
+  constraintIterations: 1
 };
 
 function buildBvhBounds(bvh) {
@@ -368,6 +369,8 @@ async function init() {
     gui.add(params, 'stiffness', 0.1, 1, 0.01).name('Stiffness');
     gui.add(params, 'seamSpeed', 0.1, 5, 0.1).name('Seam Speed');
     gui.add(params, 'verticalBoost', 1, 20, 0.1).name('Vertical Boost');
+    gui.add(params, 'constraintIterations', 1, 10, 1)
+      .name('Projection Passes');
 
     const debugFolder = gui.addFolder('Debug Info');
     debugFolder.add({ vertices: verletVertices.length }, 'vertices').name('Vertex Count').listen();
@@ -446,7 +449,7 @@ async function init() {
   Compute.setupComputeShaders(verletVertices, verletSprings);
   createClothMesh();
   createSeamLines();
-  setupGUI();
+  //setupGUI();
   renderer.setAnimationLoop(render);
 }
 
@@ -532,8 +535,12 @@ async function render() {
     await renderer.computeAsync(Compute.computeVertexForces);
 
     await renderer.computeAsync(Compute.computeSeamMomentumKill);
-    await renderer.computeAsync(Compute.computeSeamProjection);
-    await renderer.computeAsync(Compute.computeLengthProjection);
+
+    // iterate length+seam constraints several times
+    for (let i = 0; i < params.constraintIterations; i++) {
+      await renderer.computeAsync(Compute.computeLengthProjection);
+      await renderer.computeAsync(Compute.computeSeamProjection);
+    }
 
     {
       const posAttr = clothMesh.geometry.attributes.position;
