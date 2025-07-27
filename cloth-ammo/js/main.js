@@ -5,7 +5,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 import { attribute } from 'three/tsl';
 
-import { loadConfig, patternData } from './config.js';
+import { patternData } from './config.js';
 import { pointInPolygon } from './utils.js';
 import * as Compute from './compute.js';
 
@@ -17,7 +17,7 @@ import {
   acceleratedRaycast,
   MeshBVHHelper
 } from 'three-mesh-bvh';
-
+import { setPatternData } from './config.js';
 THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
 THREE.BufferGeometry.prototype.disposeBoundsTree = disposeBoundsTree;
 THREE.Mesh.prototype.raycast = acceleratedRaycast;
@@ -159,9 +159,8 @@ const clock = new THREE.Clock();
 let timeSinceLastStep = 0, timestamp = 0, frameCount = 0;
 
 async function init() {
-  await loadConfig();
   if (!patternData || patternData.patterns.length !== 2) {
-    console.error('Need exactly two patterns');
+    console.error('No pattern data loaded. Please call window.setClothPattern(json) first.');
     return;
   }
 
@@ -453,7 +452,34 @@ async function init() {
   renderer.setAnimationLoop(render);
 }
 
-init();
+// Load the json throug the webview
+window.setClothPattern = async function (json) {
+  try {
+    setPatternData(json);
+
+    scene.clear();
+    verletVertices.length = 0;
+    verletSprings.length = 0;
+    seamDebugPairs.length = 0;
+
+    await init();
+  } catch (err) {
+    console.error('Invalid pattern JSON or error during init:', err);
+  }
+};
+console.log("test message")
+// for the 3D viewer to receive messages from the parent window
+window.addEventListener('message', (event) => {
+  console.log("du hs")
+  if (event.data?.type === 'setClothPattern') {
+    if (typeof window.setClothPattern === 'function') {
+      window.setClothPattern(event.data.payload);
+    } else {
+      console.warn('setClothPattern not defined yet');
+    }
+  }
+});
+
 
 THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
 THREE.BufferGeometry.prototype.disposeBoundsTree = disposeBoundsTree;
