@@ -456,21 +456,13 @@ async function init() {
 window.setClothPattern = async function (json) {
   try {
     setPatternData(json);
-
-    scene.clear();
-    verletVertices.length = 0;
-    verletSprings.length = 0;
-    seamDebugPairs.length = 0;
-
     await init();
   } catch (err) {
     console.error('Invalid pattern JSON or error during init:', err);
   }
 };
-console.log("test message")
 // for the 3D viewer to receive messages from the parent window
 window.addEventListener('message', (event) => {
-  console.log("du hs")
   if (event.data?.type === 'setClothPattern') {
     if (typeof window.setClothPattern === 'function') {
       window.setClothPattern(event.data.payload);
