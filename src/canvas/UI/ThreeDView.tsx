@@ -46,7 +46,10 @@ export function ThreeDView() {
       className='h-full w-full'
       onLoad={() => setIframeLoaded(true)}
     />
-    <button className='absolute left-4 top-4 h-12 w-12 rounded-lg bg-white p-2 border-gray-400 border-2 cursor-pointer' name='Reload View' onClick={() => {
+    <button 
+      className='absolute left-4 top-4 h-12 w-12 rounded-lg bg-white p-2 border-gray-400 border-2 cursor-pointer' 
+      name='Reload View' 
+      onClick={() => {
       setIframeLoaded(false);
       iframeRef.current?.setAttribute("src", iframeRef.current.src);
     }}>
