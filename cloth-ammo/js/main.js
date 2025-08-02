@@ -9,101 +9,100 @@ import * as Compute from './compute2.js';
 const USE_JSON_FILE = false;
 
 async function init() {
-    // Load configuration first
-    if (USE_JSON_FILE) await loadConfig('./patterns_with_seams.json');
-    
-    // Initialize managers
-    const threeManager = new ThreeManager();
-    const physicsManager = new PhysicsManager();
-    const clothSimulation = new ClothSimulation();
-    
-    // Setup Three.js scene using the init method
-    threeManager.init();
-    
-    // Setup physics world
-    physicsManager.setupPhysicsWorld();
-    window.physicsManager = physicsManager;
+  // Load configuration first
+  if (USE_JSON_FILE) await loadConfig('./patterns_with_seams.json');
 
-    // Load human model and setup collision with Ammo.js optimization
-    try {
-        throw new Error("Human model loading is not implemented yet");
-        const humanData = await loadHumanAndSetupCollision(
-            threeManager.getScene(),
-            physicsManager.getPhysicsWorld(),
-            Compute,
-            threeManager.getParams().colliderThickness
-        );
-        console.log('Human loaded successfully:', humanData);
+  // Initialize managers
+  const threeManager = new ThreeManager();
+  const physicsManager = new PhysicsManager();
+  const clothSimulation = new ClothSimulation();
 
-        // Set human components in Three.js manager
-        threeManager.setHumanComponents(humanData);
+  // Setup Three.js scene using the init method
+  threeManager.init();
 
-    } catch (error) {
-        console.error('Failed to load human:', error);
+  // Setup physics world
+  physicsManager.setupPhysicsWorld();
+  window.physicsManager = physicsManager;
 
-        // Only set up dummy collider if human loading fails
-        const dummyPositions = new Float32Array([4, 4, 4, 4, 4, 4, 4, 4, 4]);
-        const dummyIndices = new Uint32Array([0, 1, 2]);
-        Compute.setupColliderBuffers({
-            positions: dummyPositions,
-            indices: dummyIndices
-        });
-
-        // Visualization of dummy collider
-        const dummyGeo = new THREE.BufferGeometry();
-        dummyGeo.setAttribute('position', new THREE.BufferAttribute(dummyPositions, 3));
-        dummyGeo.setIndex(new THREE.BufferAttribute(dummyIndices, 1));
-
-        const dummyMat = new THREE.MeshBasicMaterial({
-            color: 0x00ff00,
-            wireframe: true,
-            transparent: true,
-            opacity: 0.5,
-            depthTest: false
-        });
-
-        const dummyMesh = new THREE.Mesh(dummyGeo, dummyMat);
-        threeManager.getScene().add(dummyMesh);
-    }
-
-    // Initialize cloth simulation
-    const clothData = clothSimulation.initialize();
-
-    // Setup compute buffers and uniforms
-    Compute.setupBuffers(
-        clothData.verletVertices,
-        clothData.verletSprings,
-        clothData.seamDebugPairs
+  // Load human model and setup collision with Ammo.js optimization
+  try {
+    const humanData = await loadHumanAndSetupCollision(
+      threeManager.getScene(),
+      physicsManager.getPhysicsWorld(),
+      Compute,
+      threeManager.getParams().colliderThickness
     );
-    Compute.setupUniforms(threeManager.getParams());
-    Compute.setupComputeShaders(
-        clothData.verletVertices,
-        clothData.verletSprings
-    );
+    console.log('Human loaded successfully:', humanData);
 
-    // Create cloth mesh
-    threeManager.createClothMesh(
-        clothData.verletVertices,
-        clothData.globalIdx
-    );
+    // Set human components in Three.js manager
+    threeManager.setHumanComponents(humanData);
 
-    // Setup GUI
-    threeManager.setupGUI(
-        clothData.verletSprings,
-        clothData.seamDebugPairs
-    );
+  } catch (error) {
+    console.error('Failed to load human:', error);
 
-    // Set initial visibility
-    threeManager.updateClothVisibility(threeManager.getParams().showCloth);
+    // Only set up dummy collider if human loading fails
+    const dummyPositions = new Float32Array([4, 4, 4, 4, 4, 4, 4, 4, 4]);
+    const dummyIndices = new Uint32Array([0, 1, 2]);
+    Compute.setupColliderBuffers({
+      positions: dummyPositions,
+      indices: dummyIndices
+    });
 
-    // Start render loop
-    threeManager.getRenderer().setAnimationLoop(() =>
-        threeManager.render(
-            clothData.verletVertices,
-            clothData.verletSprings,
-            clothData.seamDebugPairs
-        )
-    );
+    // Visualization of dummy collider
+    const dummyGeo = new THREE.BufferGeometry();
+    dummyGeo.setAttribute('position', new THREE.BufferAttribute(dummyPositions, 3));
+    dummyGeo.setIndex(new THREE.BufferAttribute(dummyIndices, 1));
+
+    const dummyMat = new THREE.MeshBasicMaterial({
+      color: 0x00ff00,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.5,
+      depthTest: false
+    });
+
+    const dummyMesh = new THREE.Mesh(dummyGeo, dummyMat);
+    threeManager.getScene().add(dummyMesh);
+  }
+
+  // Initialize cloth simulation
+  const clothData = clothSimulation.initialize();
+
+  // Setup compute buffers and uniforms
+  Compute.setupBuffers(
+    clothData.verletVertices,
+    clothData.verletSprings,
+    clothData.seamDebugPairs
+  );
+  Compute.setupUniforms(threeManager.getParams());
+  Compute.setupComputeShaders(
+    clothData.verletVertices,
+    clothData.verletSprings
+  );
+
+  // Create cloth mesh
+  threeManager.createClothMesh(
+    clothData.verletVertices,
+    clothData.globalIdx
+  );
+
+  // Setup GUI
+  threeManager.setupGUI(
+    clothData.verletSprings,
+    clothData.seamDebugPairs
+  );
+
+  // Set initial visibility
+  threeManager.updateClothVisibility(threeManager.getParams().showCloth);
+
+  // Start render loop
+  threeManager.getRenderer().setAnimationLoop(() =>
+    threeManager.render(
+      clothData.verletVertices,
+      clothData.verletSprings,
+      clothData.seamDebugPairs
+    )
+  );
 }
 
 // Load the json throug the webview
@@ -128,4 +127,4 @@ window.addEventListener('message', (event) => {
 });
 
 // Initialize the application
-if(USE_JSON_FILE) init().catch(console.error); 
+if (USE_JSON_FILE) init().catch(console.error); 

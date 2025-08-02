@@ -59,61 +59,73 @@ export function Canvas() {
   useEffect(() => {
     const state = useCanvasState.getState();
 
-    const manFrontExists = state.present.backgroundImages.some(
-      img => img.id === STATIC_MAN_IMAGE_ID
-    );
-    const manBackExists = state.present.backgroundImages.some(
-      img => img.id === STATIC_MAN_BACK_IMAGE_ID
-    );
+    // remove old static images if they exist
+    state.removeBackgroundImage(STATIC_MAN_BACK_IMAGE_ID);
+    state.removeBackgroundImage(STATIC_MAN_IMAGE_ID);
 
-    if (!manFrontExists || !manBackExists) {
-      const frontImg = new Image();
-      frontImg.src = '/images/man_front.png';
+    const frontImg = new Image();
+    frontImg.src = '/images/man_front.png';
 
-      const backImg = new Image();
-      backImg.src = '/images/man_back.png';
+    const backImg = new Image();
+    backImg.src = '/images/man_back.png';
 
-      frontImg.onload = () => {
-        backImg.onload = () => {
-          const canvasWidth = window.innerWidth;
-          const canvasHeight = window.innerHeight;
+    frontImg.onload = () => {
+      backImg.onload = () => {
+        const canvasWidth = 1418;
+        const canvasHeight = 798;
 
-          const scale = 0.8;
+        const scale = 0.8;
 
-          const frontWidth = frontImg.width * scale;
-          const frontHeight = frontImg.height * scale;
+        const frontWidth = frontImg.width * scale;
+        const frontHeight = frontImg.height * scale;
 
-          const backWidth = backImg.width * scale;
-          const backHeight = backImg.height * scale;
+        const backWidth = backImg.width * scale;
+        const backHeight = backImg.height * scale;
 
-          const totalWidth = frontWidth + backWidth + 40;
+        const totalWidth = frontWidth + backWidth + 40;
 
-          const startX = (canvasWidth - totalWidth) / 2;
-          const centerY = (canvasHeight - Math.max(frontHeight, backHeight)) / 2;
+        const startX = (canvasWidth - totalWidth) / 2;
+        const centerY = (canvasHeight - Math.max(frontHeight, backHeight)) / 2;
 
-          // Front image
-          state.addBackgroundImage('/images/man_front.png', STATIC_MAN_IMAGE_ID);
-          state.moveBackgroundImage(STATIC_MAN_IMAGE_ID, startX, centerY);
-          state.updateBackgroundImageTransform(STATIC_MAN_IMAGE_ID, {
-            scaleX: scale,
-            scaleY: scale,
-            rotation: 0,
-          });
-          state.toggleLockBackgroundImage(STATIC_MAN_IMAGE_ID);
+        // Front image
+        state.addBackgroundImage('/images/man_front.png', STATIC_MAN_IMAGE_ID);
+        state.moveBackgroundImage(STATIC_MAN_IMAGE_ID, startX, centerY);
+        state.updateBackgroundImageTransform(STATIC_MAN_IMAGE_ID, {
+          scaleX: scale,
+          scaleY: scale,
+          rotation: 0,
+        });
+        state.toggleLockBackgroundImage(STATIC_MAN_IMAGE_ID);
 
-          // Back image
-          const backX = startX + frontWidth + 40;
-          state.addBackgroundImage('/images/man_back.png', STATIC_MAN_BACK_IMAGE_ID);
-          state.moveBackgroundImage(STATIC_MAN_BACK_IMAGE_ID, backX, centerY);
-          state.updateBackgroundImageTransform(STATIC_MAN_BACK_IMAGE_ID, {
-            scaleX: scale,
-            scaleY: scale,
-            rotation: 0,
-          });
-          state.toggleLockBackgroundImage(STATIC_MAN_BACK_IMAGE_ID);
+        // Back image
+        const backX = startX + frontWidth + 40;
+        state.addBackgroundImage('/images/man_back.png', STATIC_MAN_BACK_IMAGE_ID);
+        state.moveBackgroundImage(STATIC_MAN_BACK_IMAGE_ID, backX, centerY);
+        state.updateBackgroundImageTransform(STATIC_MAN_BACK_IMAGE_ID, {
+          scaleX: scale,
+          scaleY: scale,
+          rotation: 0,
+        });
+        state.toggleLockBackgroundImage(STATIC_MAN_BACK_IMAGE_ID);
+
+        const frontCenter = {
+          x: startX + frontWidth / 2,
+          y: centerY + frontHeight / 2,
         };
+        const backCenter = {
+          x: backX + backWidth / 2,
+          y: centerY + backHeight / 2,
+        };
+        useCanvasState.getState().setManImageCenter(
+          STATIC_MAN_IMAGE_ID,
+          frontCenter
+        );
+        useCanvasState.getState().setManImageCenter(
+          STATIC_MAN_BACK_IMAGE_ID,
+          backCenter
+        );
       };
-    }
+    };
   }, []);
 
 

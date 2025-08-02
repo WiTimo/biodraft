@@ -87,6 +87,7 @@ interface CanvasState {
   setSelectedPointIds: (ids: string[]) => void;
   clearSelectedPointIds: () => void;
   deleteSelectedBackgroundImage: () => void;
+  removeBackgroundImage: (id: string) => void;
   saveState: () => void;
   undo: () => void;
   redo: () => void;
@@ -119,7 +120,7 @@ interface CanvasState {
   removeSeam: (seg1: Segment, seg2: Segment) => void;
   isSeam: (seg1: Segment, seg2: Segment) => boolean;
 
-  addPathSeam: (seg1: Segment, seg2:  Segment) => void;
+  addPathSeam: (seg1: Segment, seg2: Segment) => void;
 
 
   seamSelection: [string, string][];
@@ -145,6 +146,9 @@ interface CanvasState {
   isAltPressed: boolean;
   setIsAltPressed: (v: boolean) => void;
 
+  manImageCenters: Record<string, { x: number; y: number }>;
+  setManImageCenter: (id: string, center: { x: number; y: number }) => void;
+
   isSimulationMode: boolean;
   setIsSimulationMode: (v: boolean) => void;
 
@@ -164,20 +168,38 @@ export const useCanvasState = create<CanvasState>()(
       setCameraPos: (cameraPos) => set({ cameraPos }),
       setCameraTarget: (cameraTarget) => set({ cameraTarget }),
 
+      manImageCenters: {},
+      setManImageCenter: (id: string, center: { x: number; y: number }) => set(state => ({
+        manImageCenters: {
+          ...state.manImageCenters,
+          [id]: center,
+        },
+      })),
+
+      removeBackgroundImage(id) {
+        set(state => ({
+          present: {
+            ...state.present,
+            backgroundImages: state.present.backgroundImages.filter(img => img.id !== id),
+          },
+        }));
+      },
+
+
       isSimulationMode: false,
       setIsSimulationMode: (v) => set({ isSimulationMode: v }),
 
       threeDEnabled: false,
       toggle3D: () => set(state => ({ threeDEnabled: !state.threeDEnabled })),
-      
+
       splitWidth: window.innerWidth / 2,
       setSplitWidth: (width) => set({ splitWidth: width }),
 
       isShiftPressed: false,
       setIsShiftPressed: (v: boolean) => set({ isShiftPressed: v }),
 
-        isAltPressed: false,
-        setIsAltPressed: (v: boolean) => set({ isAltPressed: v }),
+      isAltPressed: false,
+      setIsAltPressed: (v: boolean) => set({ isAltPressed: v }),
 
 
       seamSelection: [] as [string, string][],
@@ -550,36 +572,36 @@ export const useCanvasState = create<CanvasState>()(
 
 
       toggleHandlesForPoint: (id) => {
-  const { present, saveState } = get();
-  saveState();
-  set({
-    present: {
-      ...present,
-      paths: present.paths.map((path) => ({
-        ...path,
-        points: path.points.map((point) => {
-          if (point.id !== id) return point;
-          const hasHandles =
-            point.handleIn.dx !== 0 ||
-            point.handleIn.dy !== 0 ||
-            point.handleOut.dx !== 0 ||
-            point.handleOut.dy !== 0;
-          return hasHandles
-            ? {
-                ...point,
-                handleIn: { dx: 0, dy: 0 },
-                handleOut: { dx: 0, dy: 0 },
-              }
-            : {
-                ...point,
-                handleIn: { dx: -200, dy: 0 },
-                handleOut: { dx: 200, dy: 0 },
-              };
-        }),
-      })),
-    },
-  });
-},
+        const { present, saveState } = get();
+        saveState();
+        set({
+          present: {
+            ...present,
+            paths: present.paths.map((path) => ({
+              ...path,
+              points: path.points.map((point) => {
+                if (point.id !== id) return point;
+                const hasHandles =
+                  point.handleIn.dx !== 0 ||
+                  point.handleIn.dy !== 0 ||
+                  point.handleOut.dx !== 0 ||
+                  point.handleOut.dy !== 0;
+                return hasHandles
+                  ? {
+                    ...point,
+                    handleIn: { dx: 0, dy: 0 },
+                    handleOut: { dx: 0, dy: 0 },
+                  }
+                  : {
+                    ...point,
+                    handleIn: { dx: -200, dy: 0 },
+                    handleOut: { dx: 200, dy: 0 },
+                  };
+              }),
+            })),
+          },
+        });
+      },
 
       startHandleMove: () => {
         const { isDraggingHandle, saveState } = get();
