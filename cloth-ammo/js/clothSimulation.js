@@ -37,23 +37,16 @@ export class ClothSimulation {
         const xOffsetParam = 1.25;
         const yOffsetParam = -0.5;
 
-        console.group('[ClothSimulation] computeHalves debug');
-        console.log('thresholdX:', thresholdX, 'pixelScale:', pixelScale);
-
         // 1) flatten all pattern points
         const allPoints = patternData.patterns.flatMap(pat => pat.points);
-        console.log('allPoints count:', allPoints.length);
 
         // 2) split into front/back by raw x
         const frontOriginal = allPoints.filter(p => p.x <= thresholdX);
         const backOriginal = allPoints.filter(p => p.x > thresholdX);
-        console.log('frontOriginal count:', frontOriginal.length);
-        console.log('backOriginal count:', backOriginal.length);
 
         // 3) process each half
         const halves = [frontOriginal, backOriginal].map((originalPoints, halfIdx) => {
             const side = halfIdx === 0 ? 'front' : 'back';
-            console.group(`[computeHalves] ${side} half`);
 
             // compute pixel-space bbox
             let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
@@ -62,11 +55,6 @@ export class ClothSimulation {
                 maxX = Math.max(maxX, p.x);
                 minY = Math.min(minY, p.y);
                 maxY = Math.max(maxY, p.y);
-            });
-            console.log(`pixel-space bbox (${side}):`, {
-                minX, maxX, minY, maxY,
-                widthPx: maxX - minX,
-                heightPx: maxY - minY
             });
 
             // offset back-half so its x-origin starts at 0
@@ -77,11 +65,6 @@ export class ClothSimulation {
                 x: (p.x + xOffset) * pixelScale + (halfIdx === 0 ? xOffsetParam : -xOffsetParam),
                 y: p.y * pixelScale + yOffsetParam
             });
-
-            // log sample scaled points
-            console.log(`sample scaled points (${side}):`,
-                originalPoints.slice(0, 3).map(p => norm(p))
-            );
 
             // build the 2D shape
             const shape = new THREE.Shape();
@@ -111,7 +94,6 @@ export class ClothSimulation {
 
             // extract boundary and compute unit-space bbox
             const boundary = shape.getSpacedPoints(this.boundarySegments);
-            console.log(`boundary.length (${side}):`, boundary.length);
 
             let bbMinX = Infinity, bbMaxX = -Infinity, bbMinY = Infinity, bbMaxY = -Infinity;
             boundary.forEach(v => {
@@ -119,11 +101,6 @@ export class ClothSimulation {
                 bbMaxX = Math.max(bbMaxX, v.x);
                 bbMinY = Math.min(bbMinY, v.y);
                 bbMaxY = Math.max(bbMaxY, v.y);
-            });
-            console.log(`unit-space bbox (${side}):`, {
-                bbMinX, bbMaxX, bbMinY, bbMaxY,
-                width: bbMaxX - bbMinX,
-                height: bbMaxY - bbMinY
             });
 
             // fill interior and triangulate (same as before)
@@ -133,7 +110,6 @@ export class ClothSimulation {
                     if (pointInPolygon(x, y, boundary)) interior.push({ x, y });
                 }
             }
-            console.log(`interior.length (${side}):`, interior.length);
 
             const pts2D = boundary.concat(interior);
             const dela = Delaunator.from(pts2D.map(p => [p.x, p.y]));
@@ -144,13 +120,9 @@ export class ClothSimulation {
                 const mx = (pa.x + pb.x + pc.x) / 3, my = (pa.y + pb.y + pc.y) / 3;
                 if (pointInPolygon(mx, my, boundary)) idx.push(a, b, c);
             }
-            console.log(`pts2D.length (${side}):`, pts2D.length, `triangles (${side}):`, idx.length / 3);
-
-            console.groupEnd();
             return { norm, boundary, pts2D, idx, original: originalPoints };
         });
 
-        console.groupEnd();
         return halves;
     }
 

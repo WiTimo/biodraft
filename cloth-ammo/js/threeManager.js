@@ -12,35 +12,35 @@ export class ThreeManager {
         this.controls = null;
         this.clock = new THREE.Clock();
         this.gui = null;
-        
+
         // Cloth-related properties
         this.clothMesh = null;
         this.clothMaterial = null;
-        
+
         // Human-related properties
         this.humanModel = null;
         this.humanColliderMesh = null;
         this.humanDebugMesh = null;
         this.originalHumanData = null; // Store original data for collider recreation
-        
+
         // Animation properties
         this.timeSinceLastStep = 0;
         this.timestamp = 0;
         this.frameCount = 0;
         this.seamingCompleted = false;
-        
+
         // Parameters
         this.params = {
             showWireframe: true,
             stiffness: 0.18,
-            seamSpeed: 0.4,
+            seamSpeed: 9,
             showHuman: true,
             showCloth: true,
             disableHuman: false,
-            colliderThickness: 0.003, // Thickness of the collider layer in units
+            colliderThickness: 0.01, // Thickness of the collider layer in units
             showAllColliders: false // Show all collision visualizations
         };
-        
+
         // Debug info
         this.debugInfo = {
             totalSprings: 0,
@@ -95,17 +95,17 @@ export class ThreeManager {
         geom.setAttribute('vertexId', new THREE.BufferAttribute(vid, 1));
         geom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(nVerts * 3), 3));
         geom.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(nVerts * 3), 3));
-        
+
         this.clothMaterial = new THREE.MeshPhysicalNodeMaterial({
             color: 0x204080,
             side: THREE.DoubleSide,
             roughness: 0.3,
             metalness: 0.1
         });
-        
+
         console.log('About to access vertexPositionBuffer:', Compute.vertexPositionBuffer);
         this.clothMaterial.positionNode = Compute.vertexPositionBuffer.element(attribute('vertexId'));
-        
+
         this.clothMesh = new THREE.Mesh(geom, this.clothMaterial);
         this.clothMesh.frustumCulled = false;
         this.scene.add(this.clothMesh);
@@ -182,7 +182,7 @@ export class ThreeManager {
         try {
             // Import the human module to access the setup function
             const humanModule = await import('./human.js');
-            
+
             // Remove old collision components
             if (this.humanColliderMesh) {
                 this.scene.remove(this.humanColliderMesh);
@@ -231,12 +231,12 @@ export class ThreeManager {
         if (this.humanColliderMesh) {
             this.humanColliderMesh.visible = visible;
         }
-        
+
         // Update debug mesh visibility (original geometry wireframe)
         if (this.humanDebugMesh) {
             this.humanDebugMesh.visible = visible;
         }
-        
+
         console.log(`Collider visibility updated to: ${visible}`);
     }
 
@@ -254,7 +254,7 @@ export class ThreeManager {
                 this.humanDebugMesh.visible = false;
                 this.scene.remove(this.humanDebugMesh);
             }
-            
+
             const dummyPositions = new Float32Array([4, 4, 4, 4, 4, 4, 4, 4, 4]);
             const dummyIndices = new Uint32Array([0, 1, 2]);
             Compute.setupColliderBuffers({
@@ -274,7 +274,7 @@ export class ThreeManager {
                 this.scene.add(this.humanDebugMesh);
                 this.humanDebugMesh.visible = this.params.showHuman && this.params.showAllColliders;
             }
-            
+
             // Re-setup human collision if available
             if (window.humanCollisionData) {
                 Compute.setupColliderBuffers({
@@ -295,16 +295,16 @@ export class ThreeManager {
         this.humanColliderMesh = humanData.colliderMesh;
         this.humanDebugMesh = humanData.debugMesh;
         this.originalHumanData = humanData; // Store original data
-        
+
         // Store collision data globally for re-enabling
         window.humanCollisionData = {
             positions: humanData.positions,
             indices: humanData.indices
         };
-        
+
         // Set initial visibility based on params
         this.updateHumanVisibility(this.params.showHuman);
-        
+
         // Apply disable state if needed
         if (this.params.disableHuman) {
             this.updateHumanDisable(true);
@@ -326,11 +326,11 @@ export class ThreeManager {
         this.frameCount++;
         if (this.frameCount % 60 === 0) {
             const seamProgress = Math.min(this.timestamp * this.params.seamSpeed, 1.0);
-            
+
             // Update GUI debug info
             this.debugInfo.seamProgress = `${(seamProgress * 100).toFixed(1)}%`;
             this.debugInfo.simulationTime = `${this.timestamp.toFixed(1)}s`;
-            
+
             // Simple debug output
             console.log(`Simulation: ${this.timestamp.toFixed(1)}s | Springs: ${verletSprings.length} | Seam Springs: ${seamDebugPairs.length} | Seam Progress: ${(seamProgress * 100).toFixed(1)}%`);
         }
@@ -340,7 +340,7 @@ export class ThreeManager {
         const dt = Math.min(this.clock.getDelta(), 1 / 60);
         this.timeSinceLastStep += dt;
         const tStep = 1 / 240;
-        
+
         while (this.timeSinceLastStep >= tStep) {
             this.timeSinceLastStep -= tStep;
             this.timestamp += tStep;
@@ -353,7 +353,7 @@ export class ThreeManager {
             if (Compute.seamTightnessUniform.value >= 1.0 && !this.seamingCompleted) {
                 this.seamingCompleted = true;
                 console.log('🎉 Seaming completed!');
-                
+
                 // Activate gravity for the cloth
                 Compute.gravityUniform.value = 0.0000981; //0.00981;
                 console.log('🌍 Gravity activated for cloth!');
@@ -367,7 +367,7 @@ export class ThreeManager {
 
         // Update cloth mesh positions
         this.updateClothPositions(verletVertices);
-        
+
         // Update debug info
         this.updateDebugInfo(verletSprings, seamDebugPairs);
 
