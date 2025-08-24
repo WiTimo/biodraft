@@ -14,10 +14,24 @@ interface Point {
   handleOut: Handle;
 }
 
+export interface PathTexture {
+  /** Data URL (png/jpg) for the texture */
+  src: string;
+  /** pattern transforms (optional) */
+  scaleX?: number;
+  scaleY?: number;
+  offsetX?: number;
+  offsetY?: number;
+  rotation?: number; // degrees
+  repeat?: 'repeat' | 'repeat-x' | 'repeat-y' | 'no-repeat';
+}
+
 interface Path {
   id: string;
   points: Point[];
   closed: boolean;
+  /** optional texture fill for closed shapes */
+  texture?: PathTexture | null;
 }
 
 interface BackgroundImage {
@@ -35,13 +49,11 @@ interface BackgroundImage {
 type Segment = [string, string]; // pointId, pointId
 type SegmentSeam = [Segment, Segment]; // segment A -> segment B
 
-
 interface CanvasPresent {
   paths: Path[];
   backgroundImages: BackgroundImage[];
   seams: [string, string][];
 }
-
 
 // TOOLS
 export type Tool = 'pen' | 'background' | 'select' | 'seam';
@@ -122,13 +134,20 @@ interface CanvasState {
 
   addPathSeam: (seg1: Segment, seg2: Segment) => void;
 
-
   seamSelection: [string, string][];
   setSeamSelection: (selection: [string, string][]) => void;
   selectedSeamSegment: [string, string] | null;
   setSelectedSeamSegment: (segment: [string, string] | null) => void;
 
   swapSeam: (segment: Segment) => void;
+
+  /** ▶️ TEXTURE ACTIONS */
+  setTextureForPath: (pathId: string, texture: PathTexture | null) => void;
+  clearTextureForPath: (pathId: string) => void;
+  /** apply to all paths that contain any currently selected point(s) */
+  setTextureForSelectedPaths: (texture: PathTexture | null) => void;
+  /** optional, for later tweak UI */
+  updateTextureForPath: (pathId: string, partial: Partial<PathTexture>) => void;
 
   threeDEnabled: boolean;
   toggle3D: () => void;
@@ -151,8 +170,8 @@ interface CanvasState {
 
   isSimulationMode: boolean;
   setIsSimulationMode: (v: boolean) => void;
-
 }
+
 export const useCanvasState = create<CanvasState>()(
   persist(
     (set, get) => ({
@@ -185,7 +204,6 @@ export const useCanvasState = create<CanvasState>()(
         }));
       },
 
-
       isSimulationMode: false,
       setIsSimulationMode: (v) => set({ isSimulationMode: v }),
 
@@ -200,7 +218,6 @@ export const useCanvasState = create<CanvasState>()(
 
       isAltPressed: false,
       setIsAltPressed: (v: boolean) => set({ isAltPressed: v }),
-
 
       seamSelection: [] as [string, string][],
       setSeamSelection: (selection: [string, string][]) => set({ seamSelection: selection }),
@@ -258,11 +275,9 @@ export const useCanvasState = create<CanvasState>()(
               const normA = normalize(segA);
               const normB = normalize(segB);
 
-              // if we clicked on segA, flip segB
               if (normA[0] === target[0] && normA[1] === target[1]) {
                 return [segA, [segB[1], segB[0]]] as SegmentSeam;
               }
-              // if we clicked on segB, flip segA
               if (normB[0] === target[0] && normB[1] === target[1]) {
                 return [[segA[1], segA[0]], segB] as SegmentSeam;
               }
@@ -278,7 +293,6 @@ export const useCanvasState = create<CanvasState>()(
           };
         });
       },
-
 
       isSeam: (seg1, seg2) => {
         const key = ([a, b]: [string, string]) => [a, b].sort().join('_');
@@ -300,8 +314,6 @@ export const useCanvasState = create<CanvasState>()(
         }));
       },
 
-
-
       clipboard: null,
       setClipboard: (points) => set({ clipboard: points }),
       copySelectedPoints: () => {
@@ -310,7 +322,6 @@ export const useCanvasState = create<CanvasState>()(
           path.points.some(p => selectedPointIds.includes(p.id))
         );
 
-        // Filter only the selected points from each path, but preserve `closed` if fully selected
         const copiedPaths = matchingPaths.map(path => {
           const selectedPoints = path.points.filter(p => selectedPointIds.includes(p.id));
           const isFullySelected = selectedPoints.length === path.points.length;
@@ -318,12 +329,12 @@ export const useCanvasState = create<CanvasState>()(
             id: crypto.randomUUID(),
             closed: isFullySelected ? path.closed : false,
             points: JSON.parse(JSON.stringify(selectedPoints)),
+            texture: isFullySelected ? (path.texture ?? null) : null, // copy texture only if whole path selected
           };
         });
 
         setClipboard(copiedPaths);
       },
-
 
       pasteClipboardPoints: () => {
         const { clipboard, present, saveState } = get();
@@ -341,6 +352,7 @@ export const useCanvasState = create<CanvasState>()(
             id: crypto.randomUUID(),
             closed: path.closed,
             points: newPoints,
+            texture: path.texture ?? null,
           };
         });
 
@@ -356,7 +368,6 @@ export const useCanvasState = create<CanvasState>()(
           selectedPointId: allNewPointIds.length === 1 ? allNewPointIds[0] : null,
         });
       },
-
 
       present: {
         paths: [],
@@ -452,7 +463,6 @@ export const useCanvasState = create<CanvasState>()(
         });
       },
 
-
       undo: () => {
         set((state) => {
           if (state.past.length === 0) return state;
@@ -504,7 +514,7 @@ export const useCanvasState = create<CanvasState>()(
               backgroundImages,
               seams: present.seams
             },
-            justPlacedPointId: point.id, // 🆕 Mark just placed
+            justPlacedPointId: point.id,
           });
         } else {
           const newPathId = crypto.randomUUID();
@@ -512,13 +522,13 @@ export const useCanvasState = create<CanvasState>()(
             present: {
               paths: [
                 ...paths,
-                { id: newPathId, points: [point], closed: false },
+                { id: newPathId, points: [point], closed: false, texture: null },
               ],
               backgroundImages,
               seams: present.seams,
             },
             currentPathId: newPathId,
-            justPlacedPointId: point.id, // 🆕 Mark just placed
+            justPlacedPointId: point.id,
           });
         }
 
@@ -570,7 +580,6 @@ export const useCanvasState = create<CanvasState>()(
         });
       },
 
-
       toggleHandlesForPoint: (id) => {
         const { present, saveState } = get();
         saveState();
@@ -588,15 +597,15 @@ export const useCanvasState = create<CanvasState>()(
                   point.handleOut.dy !== 0;
                 return hasHandles
                   ? {
-                    ...point,
-                    handleIn: { dx: 0, dy: 0 },
-                    handleOut: { dx: 0, dy: 0 },
-                  }
+                      ...point,
+                      handleIn: { dx: 0, dy: 0 },
+                      handleOut: { dx: 0, dy: 0 },
+                    }
                   : {
-                    ...point,
-                    handleIn: { dx: -200, dy: 0 },
-                    handleOut: { dx: 200, dy: 0 },
-                  };
+                      ...point,
+                      handleIn: { dx: -200, dy: 0 },
+                      handleOut: { dx: 200, dy: 0 },
+                    };
               }),
             })),
           },
@@ -613,9 +622,6 @@ export const useCanvasState = create<CanvasState>()(
       endHandleMove: () => {
         set({ isDraggingHandle: false });
       },
-
-
-
 
       setTool: (tool) => {
         set({ currentTool: tool });
@@ -736,6 +742,60 @@ export const useCanvasState = create<CanvasState>()(
         set({ justPlacedPointId: null });
       },
 
+      /** ▶️ TEXTURE impl */
+      setTextureForPath: (pathId, texture) => {
+        const { present, saveState } = get();
+        saveState();
+        set({
+          present: {
+            ...present,
+            paths: present.paths.map(p => p.id === pathId ? { ...p, texture: texture } : p),
+          }
+        });
+      },
+      clearTextureForPath: (pathId) => {
+        const { present, saveState } = get();
+        saveState();
+        set({
+          present: {
+            ...present,
+            paths: present.paths.map(p => p.id === pathId ? { ...p, texture: null } : p),
+          }
+        });
+      },
+      setTextureForSelectedPaths: (texture) => {
+        const { selectedPointIds, present, saveState } = get();
+        // find all paths that contain any selected point
+        const selectedPathIds = new Set<string>();
+        for (const path of present.paths) {
+          if (path.points.some(pt => selectedPointIds.includes(pt.id))) {
+            selectedPathIds.add(path.id);
+          }
+        }
+        if (selectedPathIds.size === 0) return;
+        saveState();
+        set({
+          present: {
+            ...present,
+            paths: present.paths.map(p => selectedPathIds.has(p.id) ? { ...p, texture: texture } : p),
+          }
+        });
+      },
+      updateTextureForPath: (pathId, partial) => {
+        const { present, saveState } = get();
+        saveState();
+        set({
+          present: {
+            ...present,
+            paths: present.paths.map(p => {
+              if (p.id !== pathId) return p;
+              const base = p.texture ?? { src: '' };
+              return { ...p, texture: { ...base, ...partial } };
+            }),
+          }
+        });
+      },
+
       resetCanvas: () => {
         set({
           present: { paths: [], backgroundImages: [], seams: [] },
@@ -766,7 +826,6 @@ export const useCanvasState = create<CanvasState>()(
     }
   )
 );
-
 
 function updatePointInPath(paths: Path[], pointId: string, update: (pt: Point) => Point): Path[] {
   return paths.map(path => {
