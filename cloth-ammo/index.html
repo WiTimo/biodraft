@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta charset="utf-8" />
+	<title>Three.js WebGPU Cloth – Debug Sewn T-Shirt (Fixed Compute Order)</title>
+	<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0" />
+		<style>
+			:root {
+				--bg: #f1f3f7;
+				--panel: #ffffff;
+				--panel-border: rgba(0,0,0,0.12);
+				--text: #1a1d27;
+				--muted: #5e6472;
+				--accent: #2b6cb0;
+				--accent-dark: #1e4c7a;
+			}
+			body { margin: 0; overflow: hidden; background: var(--bg); color: var(--text); font-family: "Segoe UI", Helvetica, Arial, sans-serif; font-size: 14px; }
+			#info { position: absolute; top: 10px; left: 10px; color: var(--text); z-index: 1; }
+			.viewer-controls { position: absolute; top: 18px; right: 18px; z-index: 25; display: inline-flex; align-items: stretch; padding: 0; border: 1px solid var(--panel-border); background: var(--panel); border-radius: 6px; box-shadow: 0 6px 20px rgba(15, 23, 43, 0.12); overflow: hidden; }
+			.control-button { display: inline-flex; align-items: center; gap: 6px; padding: 10px 14px; border: none; background: transparent; color: var(--muted); cursor: pointer; font-weight: 600; letter-spacing: 0.2px; transition: background-color 0.15s ease, color 0.15s ease; border-left: 1px solid var(--panel-border); }
+			.control-button:first-child { border-left: none; border-top-left-radius: 6px; border-bottom-left-radius: 6px; }
+			.control-button:last-child { border-top-right-radius: 6px; border-bottom-right-radius: 6px; }
+			.control-button .icon { display: inline-flex; width: 16px; height: 16px; justify-content: center; align-items: center; }
+			.control-button svg { width: 16px; height: 16px; fill: currentColor; }
+			.control-button:hover { background: rgba(43, 108, 176, 0.12); color: var(--text); }
+			.control-button.is-active { background: rgba(43, 108, 176, 0.18); color: var(--accent-dark); }
+			.control-button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+			.control-button.icon-only { padding: 10px 12px; }
+			.control-button.icon-only .icon { margin: 0; }
+			/* Modal trigger integrated to control bar */
+			.control-button.model-btn { font-weight: 600; }
+			/* Modal */
+			.modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.22); display: none; align-items: center; justify-content: center; z-index: 30; }
+			.modal { width: min(520px, 94vw); background: var(--panel); color: var(--text); border-radius: 8px; box-shadow: 0 18px 46px rgba(0,0,0,.18); border: 1px solid var(--panel-border); }
+			.modal header { padding: 14px 20px; background: #f6f7fa; border-bottom: 1px solid var(--panel-border); font-weight: 600; display: flex; align-items: center; justify-content: space-between; }
+			.modal header .close { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 20px; }
+			.modal .content { padding: 18px 20px; display: grid; gap: 16px; }
+			.row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+			label { font-size: 12px; color: var(--muted); margin-bottom: 6px; display: block; text-transform: uppercase; letter-spacing: 0.4px; }
+			input[type="number"], select { width: 100%; box-sizing: border-box; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--panel-border); background: #fff; color: var(--text); outline: none; font-size: 14px; transition: border-color 0.15s ease; }
+			input[type="number"]:focus, select:focus { border-color: var(--accent); }
+			.btn-row { display: flex; gap: 10px; justify-content: flex-end; padding: 0 20px 18px; padding-top: 10px;  background: #f8f9fb; border-top: 1px solid var(--panel-border); }
+			.btn { padding: 8px 16px; border-radius: 6px; border: 1px solid transparent; cursor: pointer; background: var(--accent); color: #fff; font-weight: 600; transition: background-color 0.15s ease, transform 0.15s ease; }
+			.btn:hover { background: var(--accent-dark); }
+			.btn.secondary { background: #ffffff; color: var(--text); border-color: var(--panel-border); }
+			.error { color: #b91c1c; font-size: 12px; display: none; }
+			.settings-content { padding-bottom: 6px; }
+			.settings-section { display: grid; gap: 10px; }
+			.settings-section + .settings-section { margin-top: 8px; }
+			.section-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--muted); }
+			.setting-toggle { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border: 1px solid var(--panel-border); border-radius: 6px; background: #f8f9fb; font-size: 13px; font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--text); }
+			.setting-toggle small { display: block; margin-top: 2px; font-size: 12px; font-weight: 400; color: var(--muted); }
+			.setting-toggle input[type="checkbox"] { width: 16px; height: 16px; margin-left: 12px; }
+			.setting-toggle.is-disabled { opacity: 0.5; }
+			.setting-input { display: grid; gap: 6px; font-size: 12px; text-transform: none; letter-spacing: 0; }
+			.setting-input label { font-size: 12px; color: var(--muted); margin: 0; text-transform: uppercase; letter-spacing: 0.4px; }
+			.setting-input input { width: 100%; box-sizing: border-box; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--panel-border); background: #fff; color: var(--text); outline: none; font-size: 14px; transition: border-color 0.15s ease; }
+			.setting-input input:focus { border-color: var(--accent); }
+			@media (max-width: 520px) {
+				.row { grid-template-columns: 1fr; }
+			}
+		</style>
+
+	<script type="importmap">
+    {
+		"imports": {
+			"three":         "https://unpkg.com/three@0.177.0/build/three.webgpu.js",
+			"three/webgpu":  "https://unpkg.com/three@0.177.0/build/three.webgpu.js",
+			"three/tsl":     "https://unpkg.com/three@0.177.0/build/three.tsl.js",
+			"three/addons/": "https://unpkg.com/three@0.177.0/examples/jsm/",
+				"delaunator":    "https://esm.sh/delaunator@5.0.1"
+		  }
+    }
+  </script>
+</head>
+
+<body>
+	<div class="viewer-controls" role="toolbar" aria-label="Viewer controls">
+		<button class="control-button model-btn" id="openSettings" type="button" title="Body settings">
+			<span class="icon" aria-hidden="true">
+				<svg viewBox="0 0 24 24" focusable="false"><path d="M12 5a7 7 0 0 1 6.93 6.06l1.47 1.48-1.41 1.41-1.06-1.06A7 7 0 1 1 12 5Zm0 2a5 5 0 1 0 3.89 8.09l1.05 1.05 1.41-1.41-1.05-1.05A5 5 0 0 0 12 7Zm-1 1h2v3h3v2h-3v3h-2v-3H8v-2h3Z"/></svg>
+			</span>
+			<span class="label">Model</span>
+		</button>
+		<button class="control-button" data-control="wireframe" type="button">
+			<span class="icon" aria-hidden="true">
+				<svg viewBox="0 0 24 24" focusable="false"><path d="M4 5.5a1.5 1.5 0 0 1 1.5-1.5h13a1.5 1.5 0 0 1 1.5 1.5v13a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5v-13Zm1.5-.5a.5.5 0 0 0-.5.5v13a.5.5 0 0 0 .5.5h13a.5.5 0 0 0 .5-.5v-13a.5.5 0 0 0-.5-.5h-13Zm1 2.5h11v1H6.5v-1Zm0 4h11v1H6.5v-1Zm0 4h11v1H6.5v-1Z"/></svg>
+			</span>
+			<span class="label">Wireframe</span>
+		</button>
+		<button class="control-button" data-control="stress" type="button">
+			<span class="icon" aria-hidden="true">
+				<svg viewBox="0 0 24 24" focusable="false"><path d="M12 3a9 9 0 1 0 6.364 15.364L21 21l1-1-2.636-2.636A9 9 0 0 0 12 3Zm0 2a7 7 0 1 1-4.95 11.95A7 7 0 0 1 12 5Zm-.5 2v7.5l5-3.75-5-3.75Z"/></svg>
+			</span>
+			<span class="label">Stress Map</span>
+		</button>
+		<button class="control-button icon-only" id="openAppSettings" type="button" title="Simulation settings" aria-label="Simulation settings">
+			<span class="icon" aria-hidden="true">
+				<svg viewBox="0 0 24 24" focusable="false"><path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a6.9 6.9 0 0 0-1.63-.94l-.36-2.54A.5.5 0 0 0 14.32 2h-3.64a.5.5 0 0 0-.49.4l-.36 2.54c-.59.23-1.14.54-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L3.3 8.46a.5.5 0 0 0 .12.64l2.03 1.58c-.04.3-.06.62-.06.94s.02.64.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32a.5.5 0 0 0 .6.22l2.39-.96c.49.4 1.04.71 1.63.94l.36 2.54c.04.23.24.4.49.4h3.64c.25 0 .45-.17.49-.4l.36-2.54c.59-.23 1.14-.54 1.63-.94l2.39.96a.5.5 0 0 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58ZM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7Z"/></svg>
+			</span>
+		</button>
+	</div>
+	<div class="modal-backdrop" id="settingsModal">
+		<div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+			<header>
+				<div id="modalTitle">Body Generator</div>
+				<button class="close" id="closeSettings" aria-label="Close">×</button>
+			</header>
+			<div class="content">
+				<div class="row">
+					<div>
+						<label for="gender">Gender</label>
+						<select id="gender"><option value="male">male</option><option value="female">female</option></select>
+					</div>
+					<div>
+						<label for="composition">Composition</label>
+						<select id="composition"><option>Neutral</option><option>Muscle</option><option>Fat</option></select>
+					</div>
+				</div>
+				<div class="row">
+					<div><label for="height">Height (cm)</label><input id="height" type="number" min="120" max="230" step="1" placeholder="170" /></div>
+					<div><label for="weight">Weight (kg)</label><input id="weight" type="number" min="30" max="200" step="0.1" placeholder="60" /></div>
+				</div>
+				<div class="error" id="errorBox"></div>
+			</div>
+			<div class="btn-row">
+				<button class="btn secondary" id="cancelSettings">Cancel</button>
+				<button class="btn" id="saveSettings">Save & Generate</button>
+			</div>
+		</div>
+	</div>
+	<div class="modal-backdrop" id="appSettingsModal">
+		<div class="modal" role="dialog" aria-modal="true" aria-labelledby="appSettingsTitle">
+			<header>
+				<div id="appSettingsTitle">Simulation Settings</div>
+				<button class="close" id="closeAppSettings" aria-label="Close">×</button>
+			</header>
+			<div class="content settings-content">
+				<div class="settings-section">
+					<div class="section-title">Visibility</div>
+					<label class="setting-toggle" for="settingShowCloth">
+						<span>Show cloth</span>
+						<input type="checkbox" id="settingShowCloth" />
+					</label>
+					<label class="setting-toggle" for="settingShowHuman">
+						<span>Show human</span>
+						<input type="checkbox" id="settingShowHuman" />
+					</label>
+					<label class="setting-toggle" for="settingShowColliders">
+						<span>Show colliders</span>
+						<input type="checkbox" id="settingShowColliders" />
+					</label>
+				</div>
+				<div class="settings-section">
+					<div class="section-title">Simulation</div>
+					<label class="setting-toggle" for="settingAnimations">
+						<span>Enable animations</span>
+						<input type="checkbox" id="settingAnimations" />
+					</label>
+					<label class="setting-toggle" for="settingWireframe">
+						<span>Show wireframe</span>
+						<input type="checkbox" id="settingWireframe" />
+					</label>
+					<label class="setting-toggle" for="settingHeatmap">
+						<span>Stress map</span>
+						<input type="checkbox" id="settingHeatmap" />
+					</label>
+					<label class="setting-toggle" for="settingDisableHuman">
+						<span>Disable human</span>
+						<input type="checkbox" id="settingDisableHuman" />
+					</label>
+				</div>
+				<div class="settings-section">
+					<div class="section-title">Advanced</div>
+					<div class="setting-input">
+						<label for="settingHeatmapSensitivity">Heatmap sensitivity</label>
+						<input type="number" id="settingHeatmapSensitivity" min="0.2" max="3" step="0.1" />
+					</div>
+					<div class="setting-input">
+						<label for="settingColliderThickness">Collider thickness (m)</label>
+						<input type="number" id="settingColliderThickness" min="0.002" max="0.05" step="0.001" />
+					</div>
+				</div>
+			</div>
+			<div class="btn-row">
+				<button class="btn secondary" id="closeAppSettingsFooter">Close</button>
+			</div>
+		</div>
+	</div>
+
+		<script type="module" src="./settings.js"></script>
+		<script type="module" src="./js/modelStore.js"></script>
+		<script type="module" src="./js/settingsUI.js"></script>
+		<script type="module" src="./js/appSettingsUI.js"></script>
+		<script src="https://cdn.jsdelivr.net/npm/ammojs3@0.0.11/builds/ammo.wasm.js"></script>
+	<script type="module">
+		Ammo().then((AmmoLib) => {
+			window.Ammo = AmmoLib;
+			import('./js/main.js');
+		})
+	</script>
+</body>
+
+</html>

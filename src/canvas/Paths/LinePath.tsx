@@ -1,15 +1,21 @@
 import { Shape } from 'react-konva';
+import useImage from 'use-image';
+import type { PathTexture } from '../state/CanvasState';
 
 export function LinePath({
   points,
   closed = false,
+  texture,
   onClick,
 }: {
   points: any[];
   closed?: boolean;
+  texture?: PathTexture | null;
   onClick?: () => void;
 }) {
   if (points.length < 2) return null;
+
+  const [img] = useImage(texture?.src || '', 'anonymous');
 
   return (
     <Shape
@@ -41,10 +47,26 @@ export function LinePath({
           );
           ctx.closePath();
         }
-        ctx.strokeShape(shape);
+
+        // IMPORTANT: if we have any fill (pattern via props), call fillStrokeShape
+        // otherwise just stroke.
+        if (closed && img) {
+          // Konva will handle the pattern fill using the node props below.
+          ctx.fillStrokeShape(shape);
+        } else {
+          ctx.strokeShape(shape);
+        }
       }}
       stroke="black"
       strokeWidth={2}
+      // Pattern fill props (Konva handles these after sceneFunc via fillStrokeShape)
+      fillPatternImage={img || undefined}
+      fillPatternRepeat={texture?.repeat ?? 'repeat'}
+      fillPatternScaleX={texture?.scaleX ?? 1}
+      fillPatternScaleY={texture?.scaleY ?? 1}
+      fillPatternOffsetX={texture?.offsetX ?? 0}
+      fillPatternOffsetY={texture?.offsetY ?? 0}
+      fillPatternRotation={texture?.rotation ?? 0}
       onClick={onClick}
       listening={!!onClick}
     />

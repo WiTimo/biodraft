@@ -13,6 +13,17 @@ export function exportToJson() {
       handleOut: { dx: p.handleOut.dx, dy: p.handleOut.dy },
     })),
     closed: path.closed,
+    texture: path.texture
+      ? {
+          src: path.texture.src,
+          scaleX: path.texture.scaleX ?? 1,
+          scaleY: path.texture.scaleY ?? 1,
+          offsetX: path.texture.offsetX ?? 0,
+          offsetY: path.texture.offsetY ?? 0,
+          rotation: path.texture.rotation ?? 0,
+          repeat: path.texture.repeat ?? 'repeat',
+        }
+      : null,
   }));
 
   const blob = new Blob(
@@ -23,7 +34,7 @@ export function exportToJson() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'patterns_with_seams.json';
+  a.download = 'patterns_with_seams_and_textures.json';
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -46,6 +57,17 @@ export function importFromJson(file: File) {
         handleIn: { dx: p.handleIn.dx, dy: p.handleIn.dy },
         handleOut: { dx: p.handleOut.dx, dy: p.handleOut.dy },
       })),
+      texture: pattern.texture
+        ? {
+            src: pattern.texture.src,
+            scaleX: pattern.texture.scaleX ?? 1,
+            scaleY: pattern.texture.scaleY ?? 1,
+            offsetX: pattern.texture.offsetX ?? 0,
+            offsetY: pattern.texture.offsetY ?? 0,
+            rotation: pattern.texture.rotation ?? 0,
+            repeat: pattern.texture.repeat ?? 'repeat',
+          }
+        : null,
     }));
 
     const parsedSeams = (parsed.seams || []) as [[string, string], [string, string]][];
