@@ -1,9 +1,8 @@
 import { Line } from 'react-konva';
-import { useMemo } from 'react';
 
 import { LinePath } from '../Paths/LinePath';
 import { useCanvasState } from '../state/CanvasState';
-import type { Handle, Point, Segment, SegmentSeam } from '../state/types';
+import type { Handle, Point } from '../state/types';
 import type { Line as KonvaLine } from 'konva/lib/shapes/Line';
 
 export function PathsLayer() {
@@ -58,47 +57,6 @@ export function PathsLayer() {
       setSelectedSeamSegment(null);
     }
   };
-
-  const seamConnectionLines = useMemo(() => {
-    const findPoint = (id: string) => {
-      for (const path of paths) {
-        const match = path.points.find((point) => point.id === id);
-        if (match) return match;
-      }
-      return null;
-    };
-
-    const midpoint = (segment: Segment) => {
-      const [startId, endId] = segment;
-      const start = findPoint(startId);
-      const end = findPoint(endId);
-      if (!start || !end) return null;
-      return {
-        x: (start.x + end.x) / 2,
-        y: (start.y + end.y) / 2,
-      };
-    };
-
-    return seams
-      .map((seam: SegmentSeam, index) => {
-        const [segmentA, segmentB] = seam;
-        const midA = midpoint(segmentA);
-        const midB = midpoint(segmentB);
-        if (!midA || !midB) return null;
-
-        return (
-          <Line
-            key={`seam-connection-${index}`}
-            points={[midA.x, midA.y, midB.x, midB.y]}
-            stroke="orange"
-            strokeWidth={2 / zoom}
-            dash={[6, 3]}
-            listening={false}
-          />
-        );
-      })
-      .filter(Boolean);
-  }, [paths, seams, zoom]);
 
   function getQuadraticBezierPoints(
     p0: Point,
@@ -196,7 +154,7 @@ export function PathsLayer() {
         return segments;
       })}
 
-      {currentTool === 'seam' && seamConnectionLines}
+
     </>
   );
 }
