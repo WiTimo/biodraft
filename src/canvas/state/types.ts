@@ -1,0 +1,191 @@
+import type { StateCreator } from 'zustand';
+
+export interface Handle {
+  dx: number;
+  dy: number;
+}
+
+export interface Point {
+  id: string;
+  x: number;
+  y: number;
+  handleIn: Handle;
+  handleOut: Handle;
+}
+
+export interface PathTexture {
+  src: string;
+  scaleX?: number;
+  scaleY?: number;
+  offsetX?: number;
+  offsetY?: number;
+  rotation?: number;
+  repeat?: 'repeat' | 'repeat-x' | 'repeat-y' | 'no-repeat';
+}
+
+export interface Path {
+  id: string;
+  points: Point[];
+  closed: boolean;
+  texture?: PathTexture | null;
+}
+
+export interface BackgroundImage {
+  id: string;
+  src: string;
+  x: number;
+  y: number;
+  scaleX: number;
+  scaleY: number;
+  rotation: number;
+  opacity: number;
+  locked: boolean;
+}
+
+export type Segment = [string, string];
+export type SegmentSeam = [Segment, Segment];
+
+export interface CanvasPresent {
+  paths: Path[];
+  backgroundImages: BackgroundImage[];
+  seams: SegmentSeam[];
+}
+
+export type Tool = 'pen' | 'background' | 'select' | 'seam';
+
+export interface HistorySlice {
+  present: CanvasPresent;
+  past: CanvasPresent[];
+  future: CanvasPresent[];
+  saveState: () => void;
+  undo: () => void;
+  redo: () => void;
+  resetCanvas: () => void;
+}
+
+export interface ToolSlice {
+  currentPathId: string | null;
+  currentTool: Tool;
+  setTool: (tool: Tool) => void;
+}
+
+export interface ViewportSlice {
+  zoom: number;
+  setZoom: (zoom: number) => void;
+  offset: { x: number; y: number };
+  setOffset: (offset: { x: number; y: number }) => void;
+  threeDEnabled: boolean;
+  toggle3D: () => void;
+  splitWidth: number;
+  setSplitWidth: (width: number) => void;
+  cameraPos: { x: number; y: number; z: number };
+  setCameraPos: (pos: { x: number; y: number; z: number }) => void;
+  cameraTarget: { x: number; y: number; z: number };
+  setCameraTarget: (target: { x: number; y: number; z: number }) => void;
+  isShiftPressed: boolean;
+  setIsShiftPressed: (value: boolean) => void;
+  isAltPressed: boolean;
+  setIsAltPressed: (value: boolean) => void;
+  isSimulationMode: boolean;
+  setIsSimulationMode: (value: boolean) => void;
+  manImageCenters: Record<string, { x: number; y: number }>;
+  setManImageCenter: (id: string, center: { x: number; y: number }) => void;
+}
+
+export interface BackgroundSlice {
+  selectedBackgroundId: string | null;
+  addBackgroundImage: (src: string, id?: string) => void;
+  moveBackgroundImage: (id: string, x: number, y: number) => void;
+  scaleBackgroundImage: (id: string, scale: number) => void;
+  rotateBackgroundImage: (id: string, rotation: number) => void;
+  toggleLockBackgroundImage: (id: string) => void;
+  selectBackgroundImage: (id: string) => void;
+  deselectBackgroundImages: () => void;
+  updateBackgroundImageTransform: (id: string, transform: { scaleX: number; scaleY: number; rotation: number }) => void;
+  updateBackgroundImageFullTransform: (id: string, transform: { x: number; y: number; scaleX: number; scaleY: number; rotation: number }) => void;
+  deleteSelectedBackgroundImage: () => void;
+  removeBackgroundImage: (id: string) => void;
+}
+
+export interface PointSlice {
+  addPoint: (x: number, y: number, sharp?: boolean) => string;
+  finishCurrentPath: () => void;
+  movePoint: (id: string, x: number, y: number) => void;
+  moveHandle: (
+    pointId: string,
+    type: 'handleIn' | 'handleOut',
+    dx: number,
+    dy: number,
+    save?: boolean,
+    altPressed?: boolean
+  ) => void;
+  toggleHandlesForPoint: (id: string) => void;
+  startHandleMove: (pointId: string) => void;
+  endHandleMove: () => void;
+  justPlacedPointId: string | null;
+  clearJustPlacedPointId: () => void;
+  isDraggingHandle: boolean;
+}
+
+export interface SelectionSlice {
+  selectionRect: { x: number; y: number; width: number; height: number } | null;
+  selectionStart: { x: number; y: number } | null;
+  setSelectionRect: (rect: { x: number; y: number; width: number; height: number } | null) => void;
+  setSelectionStart: (start: { x: number; y: number } | null) => void;
+  selectedPointId: string | null;
+  selectPoint: (id: string) => void;
+  deselectPoint: () => void;
+  selectedPointIds: string[];
+  setSelectedPointIds: (ids: string[]) => void;
+  clearSelectedPointIds: () => void;
+  deleteSelectedPoint: () => void;
+  deleteSelectedPoints: () => void;
+  mousePosition: { x: number; y: number } | null;
+  setMousePosition: (pos: { x: number; y: number } | null) => void;
+  snapGuides: { x: number | null; y: number | null };
+  setSnapGuides: (guides: { x: number | null; y: number | null }) => void;
+}
+
+export interface ClipboardSlice {
+  clipboard: Path[] | null;
+  setClipboard: (paths: Path[]) => void;
+  copySelectedPoints: () => void;
+  pasteClipboardPoints: () => void;
+}
+
+export interface SeamSlice {
+  seams: SegmentSeam[];
+  addSeam: (seg1: Segment, seg2: Segment) => void;
+  removeSeam: (seg1: Segment, seg2: Segment) => void;
+  isSeam: (seg1: Segment, seg2: Segment) => boolean;
+  addPathSeam: (seg1: Segment, seg2: Segment) => void;
+  seamSelection: Segment[];
+  setSeamSelection: (selection: Segment[]) => void;
+  selectedSeamSegment: Segment | null;
+  setSelectedSeamSegment: (segment: Segment | null) => void;
+  swapSeam: (segment: Segment) => void;
+}
+
+export interface TextureSlice {
+  setTextureForPath: (pathId: string, texture: PathTexture | null) => void;
+  clearTextureForPath: (pathId: string) => void;
+  setTextureForSelectedPaths: (texture: PathTexture | null) => void;
+  updateTextureForPath: (pathId: string, partial: Partial<PathTexture>) => void;
+}
+
+export type CanvasState = HistorySlice &
+  ToolSlice &
+  ViewportSlice &
+  BackgroundSlice &
+  PointSlice &
+  SelectionSlice &
+  ClipboardSlice &
+  SeamSlice &
+  TextureSlice;
+
+export type CanvasStateCreator<T> = StateCreator<
+  CanvasState,
+  [['zustand/persist', unknown]],
+  [],
+  T
+>;

@@ -1,7 +1,10 @@
 import { Line } from 'react-konva';
-import { useCanvasState } from '../state/CanvasState';
-import { LinePath } from '../Paths/LinePath';
 import { useMemo } from 'react';
+
+import { LinePath } from '../Paths/LinePath';
+import { useCanvasState } from '../state/CanvasState';
+import type { Handle, Point, Segment, SegmentSeam } from '../state/types';
+import type { Line as KonvaLine } from 'konva/lib/shapes/Line';
 
 export function PathsLayer() {
   const paths = useCanvasState(s => s.present.paths);
@@ -56,31 +59,54 @@ export function PathsLayer() {
     }
   };
 
-  const seamLines = useMemo(() => {
-    return seams.map(([id1, id2], i) => {
-      let p1 = null, p2 = null;
-
+  const seamConnectionLines = useMemo(() => {
+    const findPoint = (id: string) => {
       for (const path of paths) {
-        if (!p1) p1 = path.points.find(p => p.id === id1);
-        if (!p2) p2 = path.points.find(p => p.id === id2);
+        const match = path.points.find((point) => point.id === id);
+        if (match) return match;
       }
+      return null;
+    };
 
-      if (!p1 || !p2) return null;
+    const midpoint = (segment: Segment) => {
+      const [startId, endId] = segment;
+      const start = findPoint(startId);
+      const end = findPoint(endId);
+      if (!start || !end) return null;
+      return {
+        x: (start.x + end.x) / 2,
+        y: (start.y + end.y) / 2,
+      };
+    };
 
-      return (
-        <Line
-          key={`seam-${i}`}
-          points={[p1.x, p1.y, p2.x, p2.y]}
-          stroke="orange"
-          strokeWidth={2 / zoom}
-          dash={[6, 3]}
-          listening={false}
-        />
-      );
-    }).filter(Boolean);
-  }, [seams, paths, zoom]);
+    return seams
+      .map((seam: SegmentSeam, index) => {
+        const [segmentA, segmentB] = seam;
+        const midA = midpoint(segmentA);
+        const midB = midpoint(segmentB);
+        if (!midA || !midB) return null;
 
-  function getQuadraticBezierPoints(p0, h0, h1, p1, steps = 80) {
+        return (
+          <Line
+            key={`seam-connection-${index}`}
+            points={[midA.x, midA.y, midB.x, midB.y]}
+            stroke="orange"
+            strokeWidth={2 / zoom}
+            dash={[6, 3]}
+            listening={false}
+          />
+        );
+      })
+      .filter(Boolean);
+  }, [paths, seams, zoom]);
+
+  function getQuadraticBezierPoints(
+    p0: Point,
+    h0: Handle,
+    h1: Handle,
+    p1: Point,
+    steps = 80,
+  ) {
     const points: number[] = [];
     for (let t = 0; t <= 1; t += 1 / steps) {
       const x = Math.pow(1 - t, 3) * p0.x +
@@ -110,7 +136,7 @@ export function PathsLayer() {
 
       {paths.flatMap((path) => {
         const segments: any = [];
-        const addBezierSegment = (a, b, isClosing = false) => {
+        const addBezierSegment = (a: Point, b: Point, isClosing = false) => {
           const isSelected =
             selectedSegment &&
             ((selectedSegment[0] === a.id && selectedSegment[1] === b.id) ||
@@ -133,14 +159,20 @@ export function PathsLayer() {
               onMouseEnter={(e) => {
                 if (currentTool === 'seam') {
                   setSelectedSeamSegment([a.id, b.id]);
-                  if (!isSelected) e.target.stroke('rgba(0,0,255,0.2)');
+                  if (!isSelected) {
+                    const line = e.target as KonvaLine;
+                    line.stroke('rgba(0,0,255,0.2)');
+                  }
                   e.target.getLayer()?.batchDraw();
                 }
               }}
               onMouseLeave={(e) => {
                 if (currentTool === 'seam') {
                   setSelectedSeamSegment(null);
-                  if (!isSelected) e.target.stroke(baseColor);
+                  if (!isSelected) {
+                    const line = e.target as KonvaLine;
+                    line.stroke(baseColor);
+                  }
                   e.target.getLayer()?.batchDraw();
                 }
               }}
@@ -164,7 +196,7 @@ export function PathsLayer() {
         return segments;
       })}
 
-      {currentTool === "seam" && seamLines}
+      {currentTool === 'seam' && seamConnectionLines}
     </>
   );
 }
