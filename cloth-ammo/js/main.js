@@ -3,29 +3,10 @@ import { ThreeManager } from './threeManager.js';
 import { PhysicsManager } from './physicsManager.js';
 import { ClothSimulation } from './clothSimulation.js';
 import { loadHumanAndSetupCollision, createBoneProbe } from './human.js';
-import { getPatternData, loadConfig, setPatternData } from './config.js';
+import { loadConfig } from './config.js';
 import * as Compute from './compute.js';
 import { SETTINGS } from '../settings.js';
 import { initLogging } from './logger.js';
-
-let pendingPatternPayload = null;
-let clothSimulation = null;
-let clothData = null;
-let latestPatternData = null;
-
-function queuePatternPayload(payload) {
-    if (!payload) return;
-    pendingPatternPayload = payload;
-    if (typeof window.__applyIncomingPatternUpdate === 'function') {
-        window.__applyIncomingPatternUpdate();
-    }
-}
-
-window.addEventListener('message', (event) => {
-    const { data } = event || {};
-    if (!data || data.type !== 'setClothPattern') return;
-    queuePatternPayload(data.payload);
-});
 
 function calibrateClothVerticalToHead(threeManager, clothData) {
     if (!threeManager.humanModel) return;
@@ -50,11 +31,12 @@ function calibrateClothVerticalToHead(threeManager, clothData) {
 async function init() {
     initLogging();
     await loadConfig(SETTINGS.JSON_PATH);
-    latestPatternData = getPatternData();
     
     // Initialize managers
     const threeManager = new ThreeManager();
     const physicsManager = new PhysicsManager();
+    let clothSimulation = new ClothSimulation(threeManager.getParams());
+    let clothData = null;
     
     // Setup Three.js scene using the init method
     threeManager.init();
@@ -152,47 +134,33 @@ async function init() {
         threeManager.getScene().add(dummyMesh);
     }
 
-    const buildClothSimulation = (patternOverride = null) => {
-        const patternSource = patternOverride ?? latestPatternData ?? getPatternData();
-        if (!patternSource || !Array.isArray(patternSource.patterns) || patternSource.patterns.length === 0) {
-            console.warn('Cannot build cloth: no pattern data available.');
-            return false;
-        }
-        console.info('Rebuilding cloth simulation', {
-            overrideProvided: !!patternOverride,
-            patternCount: patternSource.patterns.length,
-            seamCount: patternSource.seams?.length ?? 0
-        });
-        try {
-            clothSimulation = new ClothSimulation(threeManager.getParams(), patternSource);
-            clothData = clothSimulation.initialize();
-        } catch (err) {
-            console.error('Failed to (re)build cloth simulation with provided pattern data.', err);
-            return false;
-        }
-        calibrateClothVerticalToHead(threeManager, clothData);
+    // Initialize cloth simulation
+    clothData = clothSimulation.initialize();
+    // Adjust cloth vertical position relative to head, persisted
+    calibrateClothVerticalToHead(threeManager, clothData);
 
-        Compute.setupBuffers(
-            clothData.verletVertices,
-            clothData.verletSprings,
-            clothData.seamDebugPairs
-        );
-        Compute.setupUniforms(threeManager.getParams());
-        Compute.setupComputeShaders(
-            clothData.verletVertices,
-            clothData.verletSprings
-        );
-        if (Compute.clothWeightUniform) Compute.clothWeightUniform.value = threeManager.getParams().clothWeight ?? 1.0;
-        threeManager.setCurrentTopology(clothData.verletVertices, clothData.verletSprings);
-        threeManager.createClothMesh(
-            clothData.verletVertices,
-            clothData.globalIdx,
-            clothData.uvs
-        );
-        return true;
-    };
+    // Setup compute buffers and uniforms
+    Compute.setupBuffers(
+        clothData.verletVertices,
+        clothData.verletSprings,
+        clothData.seamDebugPairs
+    );
+    Compute.setupUniforms(threeManager.getParams());
+    Compute.setupComputeShaders(
+        clothData.verletVertices,
+        clothData.verletSprings
+    );
+    // Initialize dynamic uniforms that depend on params
+    if (Compute.clothWeightUniform) Compute.clothWeightUniform.value = threeManager.getParams().clothWeight ?? 1.0;
 
-    buildClothSimulation();
+    threeManager.setCurrentTopology(clothData.verletVertices, clothData.verletSprings);
+
+    // Create cloth mesh with UVs
+    threeManager.createClothMesh(
+        clothData.verletVertices,
+        clothData.globalIdx,
+        clothData.uvs
+    );
 
     // Setup GUI
     threeManager.setupGUI();
@@ -213,7 +181,7 @@ async function init() {
     );
 
     // Provide a global rebuild hook used by GUI controls
-    window.requestClothRebuild = (patternOverride = null) => {
+    window.requestClothRebuild = () => {
         // Preserve current params (already mutated by GUI) and recreate cloth
         // Remove existing mesh
         if (threeManager.clothMesh) {
@@ -225,30 +193,29 @@ async function init() {
         threeManager.seamingCompleted = false;
         threeManager.seamCompleteTime = undefined;
 
-        if (!buildClothSimulation(patternOverride)) {
-            // If override failed, fall back to baseline pattern
-            buildClothSimulation(getPatternData());
-        }
-    };
+        clothSimulation = new ClothSimulation(threeManager.getParams());
+        clothData = clothSimulation.initialize();
+        calibrateClothVerticalToHead(threeManager, clothData);
 
-    window.__applyIncomingPatternUpdate = () => {
-        if (!pendingPatternPayload) return;
-        const payload = pendingPatternPayload;
-        const updated = setPatternData(payload);
-        if (!updated) {
-            console.warn('Received cloth pattern payload was invalid.');
-            return;
-        }
-        console.info('Applying incoming cloth pattern', {
-            patterns: updated.patterns?.length ?? 0,
-            seams: updated.seams?.length ?? 0
-        });
-        latestPatternData = updated;
-        pendingPatternPayload = null;
-        window.requestClothRebuild(latestPatternData);
+        // Recreate compute buffers
+        Compute.setupBuffers(
+            clothData.verletVertices,
+            clothData.verletSprings,
+            clothData.seamDebugPairs
+        );
+        Compute.setupUniforms(threeManager.getParams());
+        Compute.setupComputeShaders(
+            clothData.verletVertices,
+            clothData.verletSprings
+        );
+        if (Compute.clothWeightUniform) Compute.clothWeightUniform.value = threeManager.getParams().clothWeight ?? 1.0;
+        threeManager.setCurrentTopology(clothData.verletVertices, clothData.verletSprings);
+        threeManager.createClothMesh(
+            clothData.verletVertices,
+            clothData.globalIdx,
+            clothData.uvs
+        );
     };
-
-    window.__applyIncomingPatternUpdate();
 
     // Expose reload hook for settings UI
     window.reloadHumanFromStore = async () => {

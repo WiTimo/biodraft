@@ -1,10 +1,10 @@
 import * as THREE from 'three';
 import Delaunator from 'delaunator';
 import { pointInPolygon } from './utils.js';
-import { patternData as defaultPatternData } from './config.js';
+import { patternData } from './config.js';
 
 export class ClothSimulation {
-    constructor(params = {}, patternOverride = null) {
+    constructor(params = {}) {
         this.verletVertices = [];
         this.verletSprings = [];
         this.seamDebugPairs = [];
@@ -12,8 +12,6 @@ export class ClothSimulation {
         this.globalIdx = null;
         // NEW: per-vertex UVs matching vertex order
         this.uvs = [];
-
-        this.patternData = patternOverride ?? defaultPatternData;
         
         // Constants
         this.boundarySegments = 400;
@@ -38,12 +36,8 @@ export class ClothSimulation {
     }
 
     computeHalves() {
-        if (!this.patternData || !Array.isArray(this.patternData.patterns) || this.patternData.patterns.length === 0) {
-            throw new Error('No pattern data available for cloth simulation.');
-        }
-
-        const ids0 = new Set(this.patternData.patterns[0].points.map(p => p.id));
-        return this.patternData.patterns.map(pat => {
+        const ids0 = new Set(patternData.patterns[0].points.map(p => p.id));
+        return patternData.patterns.map(pat => {
             let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
             pat.points.forEach(p => {
                 minX = Math.min(minX, p.x);
@@ -272,49 +266,47 @@ export class ClothSimulation {
         
         // Create seam springs to connect the two cloth halves
         const frontHalfPointIds = new Set(clothHalves[0].original.map(point => point.id));
-        const seams = Array.isArray(this.patternData.seams) ? this.patternData.seams : [];
-        if (clothHalves[1] && clothHalves[1].boundary && seams.length > 0) {
-            for (const seamConnection of seams) {
-                const [frontSeamPair, backSeamPair] = seamConnection;
-                
-                // Determine which pair belongs to which half
-                const frontHalfSeam = frontHalfPointIds.has(frontSeamPair[0]) ? frontSeamPair : backSeamPair;
-                const backHalfSeam = frontHalfPointIds.has(frontSeamPair[0]) ? backSeamPair : frontSeamPair;
-                
-                // Get boundary paths for both seam edges
-                let frontBoundaryPath = getShortestBoundaryPath(
-                    findClosestBoundaryVertex(frontHalfSeam[0], clothHalves[0]),
-                    findClosestBoundaryVertex(frontHalfSeam[1], clothHalves[0]),
-                    clothHalves[0].boundary.length
+        
+        for (const seamConnection of patternData.seams) {
+            const [frontSeamPair, backSeamPair] = seamConnection;
+            
+            // Determine which pair belongs to which half
+            const frontHalfSeam = frontHalfPointIds.has(frontSeamPair[0]) ? frontSeamPair : backSeamPair;
+            const backHalfSeam = frontHalfPointIds.has(frontSeamPair[0]) ? backSeamPair : frontSeamPair;
+            
+            // Get boundary paths for both seam edges
+            let frontBoundaryPath = getShortestBoundaryPath(
+                findClosestBoundaryVertex(frontHalfSeam[0], clothHalves[0]),
+                findClosestBoundaryVertex(frontHalfSeam[1], clothHalves[0]),
+                clothHalves[0].boundary.length
+            );
+            
+            let backBoundaryPath = getShortestBoundaryPath(
+                findClosestBoundaryVertex(backHalfSeam[0], clothHalves[1]),
+                findClosestBoundaryVertex(backHalfSeam[1], clothHalves[1]),
+                clothHalves[1].boundary.length
+            );
+            
+            // Resample paths to have equal length for proper seam connection
+            const maxPathLength = Math.max(frontBoundaryPath.length, backBoundaryPath.length);
+            
+            const resamplePath = (path, targetLength) => 
+                Array.from({ length: targetLength }, (_, index) => 
+                    path[Math.floor(index * path.length / targetLength)]
                 );
-                
-                let backBoundaryPath = getShortestBoundaryPath(
-                    findClosestBoundaryVertex(backHalfSeam[0], clothHalves[1]),
-                    findClosestBoundaryVertex(backHalfSeam[1], clothHalves[1]),
-                    clothHalves[1].boundary.length
-                );
-                
-                // Resample paths to have equal length for proper seam connection
-                const maxPathLength = Math.max(frontBoundaryPath.length, backBoundaryPath.length);
-                
-                const resamplePath = (path, targetLength) => 
-                    Array.from({ length: targetLength }, (_, index) => 
-                        path[Math.floor(index * path.length / targetLength)]
-                    );
-                
-                if (frontBoundaryPath.length !== maxPathLength) {
-                    frontBoundaryPath = resamplePath(frontBoundaryPath, maxPathLength);
-                }
-                if (backBoundaryPath.length !== maxPathLength) {
-                    backBoundaryPath = resamplePath(backBoundaryPath, maxPathLength);
-                }
-                
-                // Create seam springs between corresponding boundary vertices
-                const seamVertexPairs = this.selectSeamVertices(frontBoundaryPath, backBoundaryPath, frontHalfPoints.length);
-                for (const [frontVertexIndex, backVertexIndex] of seamVertexPairs) {
-                    addSpringBetweenVertices(frontVertexIndex, backVertexIndex);
-                    this.seamDebugPairs.push([frontVertexIndex, backVertexIndex]);
-                }
+            
+            if (frontBoundaryPath.length !== maxPathLength) {
+                frontBoundaryPath = resamplePath(frontBoundaryPath, maxPathLength);
+            }
+            if (backBoundaryPath.length !== maxPathLength) {
+                backBoundaryPath = resamplePath(backBoundaryPath, maxPathLength);
+            }
+            
+            // Create seam springs between corresponding boundary vertices
+            const seamVertexPairs = this.selectSeamVertices(frontBoundaryPath, backBoundaryPath, frontHalfPoints.length);
+            for (const [frontVertexIndex, backVertexIndex] of seamVertexPairs) {
+                addSpringBetweenVertices(frontVertexIndex, backVertexIndex);
+                this.seamDebugPairs.push([frontVertexIndex, backVertexIndex]);
             }
         }
 
