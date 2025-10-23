@@ -28,6 +28,8 @@ export function ThreeDView() {
         y: p.y,
         handleIn: { dx: p.handleIn.dx, dy: p.handleIn.dy },
         handleOut: { dx: p.handleOut.dx, dy: p.handleOut.dy },
+        // include optional seam allowance per-point (mm) so the simulation can expand boundaries
+        seamRespectMm: typeof p.seamRespectMm === 'number' ? p.seamRespectMm : undefined,
       })),
       closed: path.closed,
     }));
