@@ -11,6 +11,8 @@ export interface Point {
   y: number;
   handleIn: Handle;
   handleOut: Handle;
+  // optional seam allowance (in millimeters) for the edge from this point to the next point
+  seamRespectMm?: number;
 }
 
 export interface PathTexture {

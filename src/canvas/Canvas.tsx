@@ -6,6 +6,7 @@ import { ImageTransformPanel } from './UI/ImageTransformPanel';
 import { ThreeDView } from './UI/ThreeDView';
 import { Toolbar } from './UI/Toolbar';
 import { CanvasStage } from './Stage/CanvasStage';
+import SelectionToolbarOverlay from './Layers/SelectionToolbarOverlay';
 import { useStaticManImages } from './hooks/useStaticManImages';
 import { useCanvasKeyboardShortcuts } from './hooks/useCanvasKeyboardShortcuts';
 import { useSplitResize } from './hooks/useSplitResize';
@@ -65,6 +66,8 @@ export function Canvas() {
           isPanning={isPanning}
           setIsPanning={setIsPanning}
         />
+        {/* DOM overlay toolbar for selection transforms */}
+        <SelectionToolbarOverlay />
 
         <button
           onClick={toggle3D}

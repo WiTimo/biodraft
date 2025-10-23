@@ -144,4 +144,18 @@ export const createPointSlice: CanvasStateCreator<PointSlice> = (set, get, _api)
   },
 
   clearJustPlacedPointId: () => set({ justPlacedPointId: null }),
+  // set per-point seam allowance (in millimeters) for the edge from this point to the next
+  setPointSeamRespect: (pointId: string, mm?: number) => {
+    const { present, saveState } = get();
+    saveState();
+    set({
+      present: {
+        ...present,
+        paths: present.paths.map((path) => ({
+          ...path,
+          points: path.points.map((pt) => (pt.id === pointId ? { ...pt, seamRespectMm: mm } : pt)),
+        })),
+      },
+    });
+  },
 });

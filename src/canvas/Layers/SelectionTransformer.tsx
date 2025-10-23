@@ -1,5 +1,6 @@
-import { Line, Rect, Circle, Text } from 'react-konva';
-import { useMemo, useRef } from 'react';
+import { Group, Line, Rect, Circle, Text } from 'react-konva';
+import { useMemo, useRef, useCallback } from 'react';
+import type { ReactNode } from 'react';
 import { useCanvasState } from '../state/CanvasState';
 
 const cornerCursors = ['nwse-resize', 'nesw-resize', 'nwse-resize', 'nesw-resize'];
@@ -27,18 +28,32 @@ function getCenterAndBounds(points: any) {
   return { minX, minY, maxX, maxY, center, width: maxX - minX, height: maxY - minY };
 }
 
+type HandleSnapshot = { dx: number; dy: number };
+type PointSnapshot = {
+  id: string;
+  x: number;
+  y: number;
+  handleIn: HandleSnapshot;
+  handleOut: HandleSnapshot;
+};
+
 export function SelectionTransformer({ isVisible }: { isVisible: boolean }) {
   const selectedIds = useCanvasState((s) => s.selectedPointIds);
   const paths = useCanvasState((s) => s.present.paths);
   const movePoint = useCanvasState((s) => s.movePoint);
   const moveHandle = useCanvasState((s) => s.moveHandle);
   const saveState = useCanvasState((s) => s.saveState);
+  
 
   const dragStartRef = useRef<{ x: number; y: number } | null>(null);
   const lockedAxisRef = useRef<"x" | "y" | null>(null);
 
-  const dragState = useRef(null);
-  const rotateState = useRef(null);
+  const dragState = useRef<Record<string, unknown> | null>(null);
+  const rotateState = useRef<{
+    center: { x: number; y: number };
+    originalPointerAngle: number;
+    originalPoints: PointSnapshot[];
+  } | null>(null);
 
   const selectedPoints = useMemo(
     () => paths.flatMap((p) => p.points).filter((pt) => selectedIds.includes(pt.id)),
@@ -68,7 +83,35 @@ export function SelectionTransformer({ isVisible }: { isVisible: boolean }) {
     }
   });
 
-  const { minX, minY, maxX, maxY, center, width, height } = getCenterAndBounds(allBoundingPoints);
+  const { minX: rawMinX, minY: rawMinY, maxX: rawMaxX, maxY: rawMaxY } = getCenterAndBounds(allBoundingPoints);
+
+  // Ensure the selection bounding box has a minimum screen size so it's always draggable
+  const minScreenPx = 12; // minimum size in screen pixels
+  const minWorldW = minScreenPx / (useCanvasState.getState().zoom || 1);
+  const minWorldH = minScreenPx / (useCanvasState.getState().zoom || 1);
+
+  // Expand bounds if width/height are smaller than the minimum
+  let minX = rawMinX;
+  let maxX = rawMaxX;
+  let minY = rawMinY;
+  let maxY = rawMaxY;
+
+  const curW = rawMaxX - rawMinX;
+  const curH = rawMaxY - rawMinY;
+  if (curW < minWorldW) {
+    const extra = (minWorldW - curW) / 2;
+    minX = rawMinX - extra;
+    maxX = rawMaxX + extra;
+  }
+  if (curH < minWorldH) {
+    const extra = (minWorldH - curH) / 2;
+    minY = rawMinY - extra;
+    maxY = rawMaxY + extra;
+  }
+
+  const center = { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
+  const width = maxX - minX;
+  const height = maxY - minY;
 
 
   const cornerPoints = [
@@ -131,10 +174,202 @@ export function SelectionTransformer({ isVisible }: { isVisible: boolean }) {
     });
   };
 
-  if(!isVisible) return null;
+  const selectionSnapshot = useCallback((): PointSnapshot[] => {
+    return selectedPoints.map((p) => ({
+      id: p.id,
+      x: p.x,
+      y: p.y,
+      handleIn: { ...p.handleIn },
+      handleOut: { ...p.handleOut },
+    }));
+  }, [selectedPoints]);
+
+  const applyToSelection = useCallback(
+    (modifier: (orig: PointSnapshot) => PointSnapshot) => {
+      if (!selectedPoints.length) return;
+      const originals = selectionSnapshot();
+      if (!originals.length) return;
+      saveState();
+      originals.forEach((orig: PointSnapshot) => {
+        const next = modifier(orig);
+        movePoint(orig.id, next.x, next.y);
+        moveHandle(orig.id, 'handleIn', next.handleIn.dx, next.handleIn.dy, false, true);
+        moveHandle(orig.id, 'handleOut', next.handleOut.dx, next.handleOut.dy, false, true);
+      });
+    },
+    [moveHandle, movePoint, saveState, selectionSnapshot, selectedPoints.length]
+  );
+
+  const rotateSelection = useCallback(
+    (angleRadians: number) => {
+      const cos = Math.cos(angleRadians);
+      const sin = Math.sin(angleRadians);
+      applyToSelection((orig) => {
+        const localX = orig.x - center.x;
+        const localY = orig.y - center.y;
+        const rotatedX = localX * cos - localY * sin;
+        const rotatedY = localX * sin + localY * cos;
+        const handleInX = orig.handleIn.dx * cos - orig.handleIn.dy * sin;
+        const handleInY = orig.handleIn.dx * sin + orig.handleIn.dy * cos;
+        const handleOutX = orig.handleOut.dx * cos - orig.handleOut.dy * sin;
+        const handleOutY = orig.handleOut.dx * sin + orig.handleOut.dy * cos;
+        return {
+          ...orig,
+          x: center.x + rotatedX,
+          y: center.y + rotatedY,
+          handleIn: { dx: handleInX, dy: handleInY },
+          handleOut: { dx: handleOutX, dy: handleOutY },
+        };
+      });
+    },
+    [applyToSelection, center.x, center.y]
+  );
+
+  const flipSelection = useCallback(
+    (axis: 'horizontal' | 'vertical') => {
+      applyToSelection((orig) => {
+        const mirroredX = axis === 'horizontal' ? center.x - (orig.x - center.x) : orig.x;
+        const mirroredY = axis === 'vertical' ? center.y - (orig.y - center.y) : orig.y;
+        const handleInDx = axis === 'horizontal' ? -orig.handleIn.dx : orig.handleIn.dx;
+        const handleOutDx = axis === 'horizontal' ? -orig.handleOut.dx : orig.handleOut.dx;
+        const handleInDy = axis === 'vertical' ? -orig.handleIn.dy : orig.handleIn.dy;
+        const handleOutDy = axis === 'vertical' ? -orig.handleOut.dy : orig.handleOut.dy;
+        return {
+          ...orig,
+          x: mirroredX,
+          y: mirroredY,
+          handleIn: { dx: handleInDx, dy: handleInDy },
+          handleOut: { dx: handleOutDx, dy: handleOutDy },
+        };
+      });
+    },
+    [applyToSelection, center.x, center.y]
+  );
+
+  if (!isVisible || selectedPoints.length === 0) return null;
+
+  const toolbarPadding = 6;
+  const buttonSize = 28;
+  const buttonSpacing = 6;
+  // toolbarHeight (screen px) unused - we compute world-space toolbar height below
+  type ToolbarIconProps = { x: number; y: number; size: number };
+  type ToolbarButton = {
+    key: string;
+    label: string;
+    onClick: () => void;
+    icon: (props: ToolbarIconProps) => ReactNode;
+  };
+
+  const toolbarButtons: ToolbarButton[] = [
+    {
+      key: 'rotate-left',
+      label: 'Rotate Left',
+      onClick: () => rotateSelection(-Math.PI / 2),
+  icon: ({ x, y, size }: ToolbarIconProps) => (
+        <>
+          <Line points={[x + size * 0.8, y, x + size * 0.2, y - size * 0.6, x - size * 0.6, y - size * 0.1]} stroke="#f3f4f6" strokeWidth={1.5} lineCap="round" lineJoin="round" />
+          <Line points={[x - size * 0.6, y - size * 0.1, x - size * 0.4, y - size * 0.45]} stroke="#f3f4f6" strokeWidth={1.5} lineCap="round" />
+          <Line points={[x - size * 0.6, y - size * 0.1, x - size * 0.15, y - size * 0.1]} stroke="#f3f4f6" strokeWidth={1.5} lineCap="round" />
+        </>
+      ),
+    },
+    {
+      key: 'rotate-right',
+      label: 'Rotate Right',
+      onClick: () => rotateSelection(Math.PI / 2),
+  icon: ({ x, y, size }: ToolbarIconProps) => (
+        <>
+          <Line points={[x - size * 0.8, y, x - size * 0.2, y - size * 0.6, x + size * 0.6, y - size * 0.1]} stroke="#f3f4f6" strokeWidth={1.5} lineCap="round" lineJoin="round" />
+          <Line points={[x + size * 0.6, y - size * 0.1, x + size * 0.4, y - size * 0.45]} stroke="#f3f4f6" strokeWidth={1.5} lineCap="round" />
+          <Line points={[x + size * 0.6, y - size * 0.1, x + size * 0.15, y - size * 0.1]} stroke="#f3f4f6" strokeWidth={1.5} lineCap="round" />
+        </>
+      ),
+    },
+    {
+      key: 'flip-horizontal',
+      label: 'Flip Horizontal',
+      onClick: () => flipSelection('horizontal'),
+  icon: ({ x, y, size }: ToolbarIconProps) => (
+        <>
+          <Line points={[x - size * 0.6, y - size * 0.8, x - size * 0.6, y + size * 0.8]} stroke="#f3f4f6" strokeWidth={1.5} />
+          <Line points={[x + size * 0.6, y - size * 0.8, x + size * 0.6, y + size * 0.8]} stroke="#f3f4f6" strokeWidth={1.5} />
+          <Line points={[x - size * 0.35, y, x + size * 0.35, y]} stroke="#f3f4f6" strokeWidth={1.5} />
+          <Line points={[x - size * 0.35, y, x - size * 0.15, y - size * 0.2]} stroke="#f3f4f6" strokeWidth={1.5} />
+          <Line points={[x - size * 0.35, y, x - size * 0.15, y + size * 0.2]} stroke="#f3f4f6" strokeWidth={1.5} />
+          <Line points={[x + size * 0.35, y, x + size * 0.15, y - size * 0.2]} stroke="#f3f4f6" strokeWidth={1.5} />
+          <Line points={[x + size * 0.35, y, x + size * 0.15, y + size * 0.2]} stroke="#f3f4f6" strokeWidth={1.5} />
+        </>
+      ),
+    },
+    {
+      key: 'flip-vertical',
+      label: 'Flip Vertical',
+      onClick: () => flipSelection('vertical'),
+  icon: ({ x, y, size }: ToolbarIconProps) => (
+        <>
+          <Line points={[x - size * 0.8, y - size * 0.6, x + size * 0.8, y - size * 0.6]} stroke="#f3f4f6" strokeWidth={1.5} />
+          <Line points={[x - size * 0.8, y + size * 0.6, x + size * 0.8, y + size * 0.6]} stroke="#f3f4f6" strokeWidth={1.5} />
+          <Line points={[x, y - size * 0.35, x, y + size * 0.35]} stroke="#f3f4f6" strokeWidth={1.5} />
+          <Line points={[x, y - size * 0.35, x - size * 0.2, y - size * 0.15]} stroke="#f3f4f6" strokeWidth={1.5} />
+          <Line points={[x, y - size * 0.35, x + size * 0.2, y - size * 0.15]} stroke="#f3f4f6" strokeWidth={1.5} />
+          <Line points={[x, y + size * 0.35, x - size * 0.2, y + size * 0.15]} stroke="#f3f4f6" strokeWidth={1.5} />
+          <Line points={[x, y + size * 0.35, x + size * 0.2, y + size * 0.15]} stroke="#f3f4f6" strokeWidth={1.5} />
+        </>
+      ),
+    },
+  ];
+
+  // Keep toolbar a consistent screen size regardless of canvas zoom by converting
+  // sizes to world units (divide by zoom). Positions remain world-space so toolbar
+  // follows the selection but visual sizes stay constant.
+  const buttonSizeWorld = buttonSize / zoom;
+  const buttonSpacingWorld = buttonSpacing / zoom;
+  const toolbarPaddingWorld = toolbarPadding / zoom;
+  const toolbarHeightWorld = buttonSizeWorld + toolbarPaddingWorld * 2;
+  const toolbarWidth = toolbarButtons.length * buttonSizeWorld + (toolbarButtons.length - 1) * buttonSpacingWorld + toolbarPaddingWorld * 2;
+  const toolbarX = center.x - toolbarWidth / 2;
+  const toolbarY = minY - toolbarHeightWorld - 16 / zoom;
 
   return (
     <>
+      <Group x={toolbarX} y={toolbarY} opacity={0.98} listening>
+        {toolbarButtons.map((btn, idx) => {
+          const btnX = toolbarPaddingWorld + idx * (buttonSizeWorld + buttonSpacingWorld);
+          const btnY = toolbarPaddingWorld;
+          return (
+            <Group
+                key={btn.key}
+                x={btnX}
+                y={btnY}
+                listening
+                onMouseDown={(e: any) => { e.cancelBubble = true; e.evt?.stopPropagation?.(); btn.onClick(); }}
+                onTouchStart={(e: any) => { e.cancelBubble = true; e.evt?.stopPropagation?.(); btn.onClick(); }}
+                onMouseEnter={(e) => e.target.getStage()?.container().style.setProperty('cursor', 'pointer')}
+                onMouseLeave={(e) => e.target.getStage()?.container().style.setProperty('cursor', 'default')}
+              >
+              <Rect
+                width={Math.max(buttonSizeWorld, 12 / zoom)}
+                height={Math.max(buttonSizeWorld, 12 / zoom)}
+                cornerRadius={4}
+                fill="rgba(255,255,255,0.06)"
+                stroke="rgba(255,255,255,0.12)"
+                strokeWidth={1}
+                listening
+              />
+              {btn.icon({ x: Math.max(buttonSizeWorld, 12 / zoom) / 2, y: Math.max(buttonSizeWorld, 12 / zoom) / 2, size: Math.max(buttonSizeWorld, 12 / zoom) * 0.35 })}
+              <Text
+                text={btn.label}
+                fontSize={10 / zoom}
+                fill="#f9fafb"
+                y={buttonSizeWorld + 2 / zoom}
+                width={buttonSizeWorld}
+                align="center"
+              />
+            </Group>
+          );
+        })}
+      </Group>
+
       <Rect
         x={minX}
         y={minY}
@@ -190,7 +425,8 @@ export function SelectionTransformer({ isVisible }: { isVisible: boolean }) {
             lockedAxisRef.current = null;
           }
 
-          dragState.current.originalPoints.forEach((orig: any) => {
+          const moveSnapshot = dragState.current as { originalPoints: { id: string; x: number; y: number }[] };
+          moveSnapshot.originalPoints.forEach((orig) => {
             movePoint(orig.id, orig.x + dx, orig.y + dy);
           });
 

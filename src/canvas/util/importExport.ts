@@ -10,7 +10,9 @@ export function exportToJson() {
       x: p.x,
       y: p.y,
       handleIn: { dx: p.handleIn.dx, dy: p.handleIn.dy },
-      handleOut: { dx: p.handleOut.dx, dy: p.handleOut.dy },
+        handleOut: { dx: p.handleOut.dx, dy: p.handleOut.dy },
+        // include optional seam allowance in mm for edge from this point to next
+        ...(typeof p.seamRespectMm === 'number' ? { seamRespectMm: p.seamRespectMm } : {}),
     })),
     closed: path.closed,
     texture: path.texture
@@ -56,6 +58,7 @@ export function importFromJson(file: File) {
         y: p.y,
         handleIn: { dx: p.handleIn.dx, dy: p.handleIn.dy },
         handleOut: { dx: p.handleOut.dx, dy: p.handleOut.dy },
+        seamRespectMm: typeof p.seamRespectMm === 'number' ? p.seamRespectMm : undefined,
       })),
       texture: pattern.texture
         ? {
