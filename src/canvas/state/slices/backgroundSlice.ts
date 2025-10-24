@@ -78,7 +78,18 @@ export const createBackgroundSlice: CanvasStateCreator<BackgroundSlice> = (set, 
     });
   },
 
-  selectBackgroundImage: (id) => set({ selectedBackgroundId: id }),
+  selectBackgroundImage: (id) => {
+    // Bring the selected image to the front (rendered last) so it's accessible
+    const { present } = get();
+    const existing = present.backgroundImages.find((img) => img.id === id);
+    if (!existing) {
+      set({ selectedBackgroundId: id });
+      return;
+    }
+    const others = present.backgroundImages.filter((img) => img.id !== id);
+    const reordered = [...others, existing];
+    set({ present: { ...present, backgroundImages: reordered }, selectedBackgroundId: id });
+  },
   deselectBackgroundImages: () => set({ selectedBackgroundId: null }),
 
   updateBackgroundImageTransform: (id, { scaleX, scaleY, rotation }) => {

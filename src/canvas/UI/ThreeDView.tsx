@@ -30,6 +30,16 @@ export function ThreeDView() {
         handleOut: { dx: p.handleOut.dx, dy: p.handleOut.dy },
       })),
       closed: path.closed,
+      // include texture info so the simulation iframe can load and apply pattern textures
+      texture: path.texture ? {
+        src: path.texture.src,
+        scaleX: path.texture.scaleX ?? 1,
+        scaleY: path.texture.scaleY ?? 1,
+        offsetX: path.texture.offsetX ?? 0,
+        offsetY: path.texture.offsetY ?? 0,
+        rotation: path.texture.rotation ?? 0,
+        repeat: path.texture.repeat ?? 'repeat'
+      } : undefined,
     }));
 
     return { patterns, seams: present.seams };

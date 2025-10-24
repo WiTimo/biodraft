@@ -115,29 +115,6 @@ export function SelectionToolbarOverlay() {
       onMouseDown={(e) => e.stopPropagation()}
       onTouchStart={(e) => e.stopPropagation()}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <label style={{ fontSize: 12, color: '#475569', display: 'inline-block' }}>Seam (mm)</label>
-        <input
-          type="number"
-          step="0.5"
-          style={{ width: 72, padding: '4px 6px', borderRadius: 6, border: '1px solid rgba(2,6,23,0.06)' }}
-          value={(() => {
-            if (!selectedPoints.length) return '';
-            const vals = selectedPoints.map((p) => (typeof p.seamRespectMm === 'number' ? p.seamRespectMm : null));
-            const first = vals[0];
-            if (vals.every((v) => v === first && v !== null)) return String(first);
-            return '';
-          })()}
-          onChange={(e) => {
-            const v = e.currentTarget.value;
-            const num = v === '' ? undefined : Number(v);
-            selectedPoints.forEach((p) => setPointSeamRespect(p.id, num));
-          }}
-          onMouseDown={(e) => e.stopPropagation()}
-          onTouchStart={(e) => e.stopPropagation()}
-        />
-      </div>
-
       <button onClick={() => rotate(-Math.PI / 2)} style={{ padding: '6px 8px', cursor: 'pointer' }} title="Rotate Left">
         <img src="/svg/rotate-left.svg" style={{ width: 18, height: 18 }} />
       </button>
