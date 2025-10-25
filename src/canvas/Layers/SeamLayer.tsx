@@ -1,6 +1,7 @@
 import { Line } from 'react-konva';
 import { useCanvasState } from '../state/CanvasState';
 import { useMemo } from 'react';
+import type { Point } from '../state/types';
 
 function getLine(p1: any, p2: any) {
   return [p1.x, p1.y, p2.x, p2.y];
@@ -8,7 +9,7 @@ function getLine(p1: any, p2: any) {
 
 function findPoint(paths: any[], id: string) {
   for (const path of paths) {
-    const found = path.points.find(p => p.id === id);
+    const found = path.points.find((p: Point) => p.id === id);
     if (found) return found;
   }
   return null;

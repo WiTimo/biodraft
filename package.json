@@ -7,7 +7,10 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "proto:build": "tsc -b && vite build",
+  "proto:serve": "node ./scripts/serve-prototype.cjs",
+    "proto": "npm run proto:build && npm run proto:serve"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.5",

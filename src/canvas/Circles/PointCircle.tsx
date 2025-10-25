@@ -15,7 +15,7 @@ const maxRadius = 10;
 
 
 export const PointCircle = React.memo(function PointCircle({ x, y, id }: PointCircleProps) {
-  const { movePoint, toggleHandlesForPoint, selectPoint, selectedPointId, selectedPointIds, currentTool } = useCanvasState();
+  const { movePoint, selectPoint, selectedPointId, selectedPointIds, currentTool } = useCanvasState();
 
   const isSelected = id === selectedPointId || selectedPointIds.includes(id);
 

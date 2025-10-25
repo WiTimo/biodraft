@@ -7,8 +7,6 @@ import React from 'react';
 export function PointsLayer() {
   const paths = useCanvasState((s) => s.present.paths);
   const selectedPointId = useCanvasState((s) => s.selectedPointId);
-  const isAltPressed = useCanvasState((s) => s.isAltPressed);
-  const toggleHandlesForPoint = useCanvasState((s) => s.toggleHandlesForPoint);
 
   const allPoints = useMemo(() => {
     return paths.flatMap((path) => path.points);
@@ -29,12 +27,6 @@ function hasVisibleHandles(p: any) {
             id={p.id}
             x={p.x}
             y={p.y}
-            onClick={(e) => {
-              if (isAltPressed) {
-                e.cancelBubble = true;
-                toggleHandlesForPoint(p.id);
-              }
-            }}
           />
           {p.id === selectedPointId && hasVisibleHandles(p) && (
             <>

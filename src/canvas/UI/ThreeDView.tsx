@@ -120,7 +120,7 @@ export function ThreeDView() {
     <>
       <iframe
         ref={iframeRef}
-        src='http://localhost:5500/cloth-ammo/index.html'
+        src='/cloth-ammo/index.html'
         className='h-full w-full'
         onLoad={() => setIframeLoaded(true)}
       />
