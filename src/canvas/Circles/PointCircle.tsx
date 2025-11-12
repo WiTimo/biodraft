@@ -15,9 +15,26 @@ const maxRadius = 10;
 
 
 export const PointCircle = React.memo(function PointCircle({ x, y, id }: PointCircleProps) {
-  const { movePoint, toggleHandlesForPoint, selectPoint, selectedPointId, selectedPointIds, currentTool } = useCanvasState();
+  const { movePoint, selectPoint, selectedPointId, selectedPointIds, currentTool } = useCanvasState();
+  const paths = useCanvasState((s) => s.present.paths);
 
   const isSelected = id === selectedPointId || selectedPointIds.includes(id);
+
+  const hasOverlappingPoint = React.useMemo(() => {
+    // Check if this point appears in multiple paths (shared point)
+    let count = 0;
+    for (const path of paths) {
+      for (const point of path.points) {
+        if (point.id === id) {
+          count++;
+          if (count > 1) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }, [paths, id]);
 
   const shapeRef = useRef<any>(null);
   const zoom = useCanvasState((s) => s.zoom);
@@ -25,13 +42,14 @@ export const PointCircle = React.memo(function PointCircle({ x, y, id }: PointCi
 
   return (
     <Circle
+      id={id}
       radius={Math.min(maxRadius, Math.max(minRadius, baseRadius / zoom))}
       ref={shapeRef}
       x={x}
       y={y}
-      fill={isSelected ? '#00C853' : '#FF5722'}
-      stroke="black"
-      strokeWidth={1}
+      fill={hasOverlappingPoint ? '#9C27B0' : isSelected ? '#00C853' : '#FF5722'}
+      stroke={hasOverlappingPoint ? '#7B1FA2' : 'black'}
+      strokeWidth={hasOverlappingPoint ? 2 : 1}
       draggable={currentTool === 'pen' || currentTool === 'select'}
       name="point"
       perfectDrawEnabled={false}

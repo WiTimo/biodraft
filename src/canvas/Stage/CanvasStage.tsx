@@ -128,18 +128,61 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning 
       }
 
       if (currentTool === 'pen') {
+        const isClickingOnPoint = targetName === 'point';
+        
+        // Check for double-click first, before processing anything
         if (event.evt.detail === 2) {
+          // Special case: if double-clicking on the first point of current path, close it
+          if (isClickingOnPoint && state.currentPathId) {
+            const currentPath = paths.find(p => p.id === state.currentPathId);
+            if (currentPath && currentPath.points.length > 0) {
+              const firstPoint = currentPath.points[0];
+              const clickedPointId = target.id();
+              
+              if (clickedPointId === firstPoint.id) {
+                finishCurrentPath();
+                return;
+              }
+            }
+          }
+          // For any other double-click, just finish the path without adding a point
           finishCurrentPath();
           return;
         }
 
-        if (!isStageClick && targetName !== 'background-image' && targetName !== 'background') {
+        if (isClickingOnPoint && state.currentPathId) {
+          const currentPath = paths.find(p => p.id === state.currentPathId);
+          if (currentPath && currentPath.points.length > 0) {
+            const firstPoint = currentPath.points[0];
+            const clickedPointId = target.id();
+            
+            // Single click on first point also closes the path
+            if (clickedPointId === firstPoint.id) {
+              finishCurrentPath();
+              return;
+            }
+          }
+        }
+
+        // Allow clicking on points from other patterns to create overlapping points
+        const canPlacePoint = isStageClick || targetName === 'background-image' || targetName === 'background' || isClickingOnPoint;
+        
+        if (!canPlacePoint) {
           return;
         }
 
-        const guides = state.snapGuides;
-        const finalX = guides.x ?? worldPosition.x;
-        const finalY = guides.y ?? worldPosition.y;
+        // If clicking on a point, use its exact coordinates
+        let finalX, finalY;
+        if (isClickingOnPoint) {
+          // Get the exact position of the clicked point
+          finalX = target.x();
+          finalY = target.y();
+        } else {
+          // Use snap guides if available
+          const guides = state.snapGuides;
+          finalX = guides.x ?? worldPosition.x;
+          finalY = guides.y ?? worldPosition.y;
+        }
 
         const pointId = addPoint(finalX, finalY, true);
         state.selectPoint(pointId);
@@ -174,15 +217,36 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning 
 
       if (currentTool === 'pen') {
         const worldPosition = toWorld(pointer);
-        const SNAP_RADIUS = 10 / zoom;
+        const SNAP_RADIUS = 15 / zoom; // Increased from 10 for easier snapping
         const allPoints = paths.flatMap((path) => path.points);
 
         let snapX: number | null = null;
         let snapY: number | null = null;
+        let closestPoint: any = null;
+        let minDistance = Infinity;
 
+        // Find closest point within snap radius
         for (const point of allPoints) {
-          if (Math.abs(worldPosition.x - point.x) < SNAP_RADIUS) snapX = point.x;
-          if (Math.abs(worldPosition.y - point.y) < SNAP_RADIUS) snapY = point.y;
+          const dx = worldPosition.x - point.x;
+          const dy = worldPosition.y - point.y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          
+          if (distance < SNAP_RADIUS && distance < minDistance) {
+            minDistance = distance;
+            closestPoint = point;
+          }
+        }
+
+        // Snap to closest point if found (snap both X and Y together)
+        if (closestPoint) {
+          snapX = closestPoint.x;
+          snapY = closestPoint.y;
+        } else {
+          // Otherwise, snap to individual axes like before
+          for (const point of allPoints) {
+            if (Math.abs(worldPosition.x - point.x) < SNAP_RADIUS) snapX = point.x;
+            if (Math.abs(worldPosition.y - point.y) < SNAP_RADIUS) snapY = point.y;
+          }
         }
 
         setSnapGuides({ x: snapX, y: snapY });
