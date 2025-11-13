@@ -7,11 +7,31 @@ import React from 'react';
 export function PointsLayer() {
   const paths = useCanvasState((s) => s.present.paths);
   const selectedPointId = useCanvasState((s) => s.selectedPointId);
-  const isAltPressed = useCanvasState((s) => s.isAltPressed);
-  const toggleHandlesForPoint = useCanvasState((s) => s.toggleHandlesForPoint);
 
-  const allPoints = useMemo(() => {
-    return paths.flatMap((path) => path.points);
+  const { allPoints, overlappingPointIds } = useMemo(() => {
+    const pointMap = new Map();
+    const pointCount = new Map<string, number>();
+    
+    paths.forEach((path) => {
+      path.points.forEach((point) => {
+        if (!pointMap.has(point.id)) {
+          pointMap.set(point.id, point);
+        }
+        pointCount.set(point.id, (pointCount.get(point.id) || 0) + 1);
+      });
+    });
+    
+    const overlappingIds = new Set<string>();
+    pointCount.forEach((count, pointId) => {
+      if (count > 1) {
+        overlappingIds.add(pointId);
+      }
+    });
+    
+    return {
+      allPoints: Array.from(pointMap.values()),
+      overlappingPointIds: overlappingIds,
+    };
   }, [paths]);
 
 function hasVisibleHandles(p: any) {
@@ -29,12 +49,7 @@ function hasVisibleHandles(p: any) {
             id={p.id}
             x={p.x}
             y={p.y}
-            onClick={(e) => {
-              if (isAltPressed) {
-                e.cancelBubble = true;
-                toggleHandlesForPoint(p.id);
-              }
-            }}
+            isOverlapping={overlappingPointIds.has(p.id)}
           />
           {p.id === selectedPointId && hasVisibleHandles(p) && (
             <>

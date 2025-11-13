@@ -49,4 +49,21 @@ export const createHistorySlice: CanvasStateCreator<HistorySlice> = (set, _get, 
     }) as Partial<CanvasState>);
     window.location.reload();
   },
+  cleanupEmptyPaths: () => {
+    set((state) => {
+      const validPaths = state.present.paths.filter(path => path.points.length > 0);
+      
+      if (validPaths.length !== state.present.paths.length) {
+        console.log(`Cleaned up ${state.present.paths.length - validPaths.length} empty path(s)`);
+        return {
+          present: {
+            ...state.present,
+            paths: validPaths,
+          },
+        };
+      }
+      
+      return state;
+    });
+  },
 });

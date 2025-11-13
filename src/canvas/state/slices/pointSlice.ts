@@ -7,8 +7,75 @@ export const createPointSlice: CanvasStateCreator<PointSlice> = (set, get, _api)
 
   addPoint: (x, y, sharp = false) => {
     const { present, saveState, currentPathId } = get();
+    
+    const tolerance = 1; // 1 pixel tolerance for overlapping points
+    
+    // Check if we're adding a point at the exact same location as an existing point in ANY path
+    let existingPoint: typeof present.paths[0]['points'][0] | null = null;
+    
+    for (const path of present.paths) {
+      for (const point of path.points) {
+        const dx = point.x - x;
+        const dy = point.y - y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        if (distance < tolerance) {
+          existingPoint = point;
+          break;
+        }
+      }
+      if (existingPoint) break;
+    }
+    
+    // If we found an overlapping point, reuse it (creating a shared point)
+    if (existingPoint) {
+      if (currentPathId) {
+        const currentPath = present.paths.find(p => p.id === currentPathId);
+        
+        // Don't add the same point twice to the same path
+        if (currentPath?.points.some(p => p.id === existingPoint.id)) {
+          return existingPoint.id;
+        }
+        
+        saveState();
+        
+        // Add the existing point to the current path (creating a shared point reference)
+        set({
+          present: {
+            ...present,
+            paths: present.paths.map((path) =>
+              path.id === currentPathId
+                ? { ...path, points: [...path.points, existingPoint] }
+                : path,
+            ),
+          },
+          justPlacedPointId: existingPoint.id,
+        });
+        
+        return existingPoint.id;
+      } else {
+        // Starting a new path with an existing point (shared point)
+        saveState();
+        
+        const newPathId = crypto.randomUUID();
+        set({
+          present: {
+            ...present,
+            paths: [
+              ...present.paths,
+              { id: newPathId, points: [existingPoint], closed: false, texture: null },
+            ],
+          },
+          currentPathId: newPathId,
+          justPlacedPointId: existingPoint.id,
+        });
+        
+        return existingPoint.id;
+      }
+    }
+    
     saveState();
 
+    // Create a new point
     const point = {
       id: crypto.randomUUID(),
       x,
@@ -51,12 +118,55 @@ export const createPointSlice: CanvasStateCreator<PointSlice> = (set, get, _api)
     const { present, currentPathId, saveState } = get();
     if (!currentPathId) return;
 
+    const currentPath = present.paths.find(p => p.id === currentPathId);
+    if (!currentPath) return;
+
+    // If path has fewer than 2 points, remove it instead of finishing it
+    if (currentPath.points.length < 2) {
+      set({
+        present: {
+          ...present,
+          paths: present.paths.filter(p => p.id !== currentPathId),
+        },
+        currentPathId: null,
+      });
+      return;
+    }
+
     saveState();
+    
+    let finalPoints = [...currentPath.points];
+    
+    // Check if last point is overlapping with any other point IN THE SAME PATH
+    // This prevents duplicate points from being created within the same path
+    // Note: Overlapping with points from OTHER paths is intentional (for connecting patterns)
+    if (finalPoints.length >= 2) {
+      const lastPoint = finalPoints[finalPoints.length - 1];
+      const tolerance = 1;
+      
+      // Only check against other points in the SAME path
+      for (let i = 0; i < finalPoints.length - 1; i++) {
+        const point = finalPoints[i];
+        const dx = point.x - lastPoint.x;
+        const dy = point.y - lastPoint.y;
+        if (Math.sqrt(dx * dx + dy * dy) < tolerance) {
+          // Found duplicate point in same path, remove the last one
+          finalPoints = finalPoints.slice(0, -1);
+          break;
+        }
+      }
+    }
+    
+    // Ensure we still have at least 2 points after overlap removal
+    if (finalPoints.length < 2) {
+      return;
+    }
+    
     set({
       present: {
         ...present,
         paths: present.paths.map((path) =>
-          path.id === currentPathId ? { ...path, closed: true } : path,
+          path.id === currentPathId ? { ...path, points: finalPoints, closed: true } : path,
         ),
       },
       currentPathId: null,
