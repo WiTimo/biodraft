@@ -1,5 +1,5 @@
 import type { CanvasStateCreator, PointSlice } from '../types';
-import { updatePointInPath } from '../utils';
+import { updatePointInPath, filterSeamsReferencingPoints } from '../utils';
 
 export const createPointSlice: CanvasStateCreator<PointSlice> = (set, get, _api) => ({
   justPlacedPointId: null,
@@ -123,10 +123,16 @@ export const createPointSlice: CanvasStateCreator<PointSlice> = (set, get, _api)
 
     // If path has fewer than 2 points, remove it instead of finishing it
     if (currentPath.points.length < 2) {
+      const updatedPaths = present.paths.filter(p => p.id !== currentPathId);
+      // Collect all point IDs from the removed path
+      const deletedPointIds = new Set(currentPath.points.map(p => p.id));
+      const updatedSeams = filterSeamsReferencingPoints(present.seams, deletedPointIds);
+      
       set({
         present: {
           ...present,
-          paths: present.paths.filter(p => p.id !== currentPathId),
+          paths: updatedPaths,
+          seams: updatedSeams,
         },
         currentPathId: null,
       });

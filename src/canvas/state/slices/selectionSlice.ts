@@ -1,4 +1,5 @@
 import type { CanvasStateCreator, SelectionSlice } from '../types';
+import { filterSeamsReferencingPoints } from '../utils';
 
 export const createSelectionSlice: CanvasStateCreator<SelectionSlice> = (set, get, _api) => ({
   selectionRect: null,
@@ -29,10 +30,15 @@ export const createSelectionSlice: CanvasStateCreator<SelectionSlice> = (set, ge
       // Clean up any paths that now have no points
       .filter((path) => path.points.length > 0);
     
+    // Clean up seams that reference the deleted point
+    const deletedPointIds = new Set([selectedPointId]);
+    const updatedSeams = filterSeamsReferencingPoints(present.seams, deletedPointIds);
+    
     set({
       present: {
         ...present,
         paths: updatedPaths,
+        seams: updatedSeams,
       },
       selectedPointId: null,
     });
@@ -53,10 +59,15 @@ export const createSelectionSlice: CanvasStateCreator<SelectionSlice> = (set, ge
       // Clean up any paths that now have no points
       .filter((path) => path.points.length > 0);
     
+    // Clean up seams that reference any deleted points
+    const deletedPointIds = new Set(selectedPointIds);
+    const updatedSeams = filterSeamsReferencingPoints(present.seams, deletedPointIds);
+    
     set({
       present: {
         ...present,
         paths: updatedPaths,
+        seams: updatedSeams,
       },
       selectedPointIds: [],
       selectedPointId: null,

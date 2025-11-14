@@ -1,5 +1,5 @@
 import type { CanvasState, CanvasStateCreator, HistorySlice } from '../types';
-import { clonePresent, INITIAL_PRESENT } from '../utils';
+import { clonePresent, INITIAL_PRESENT, filterSeamsReferencingPoints } from '../utils';
 
 export const createHistorySlice: CanvasStateCreator<HistorySlice> = (set, _get, _api) => ({
   present: INITIAL_PRESENT,
@@ -54,11 +54,19 @@ export const createHistorySlice: CanvasStateCreator<HistorySlice> = (set, _get, 
       const validPaths = state.present.paths.filter(path => path.points.length > 0);
       
       if (validPaths.length !== state.present.paths.length) {
+        // Collect point IDs from removed paths
+        const removedPaths = state.present.paths.filter(path => path.points.length === 0);
+        const deletedPointIds = new Set(removedPaths.flatMap(path => path.points.map(p => p.id)));
+        const updatedSeams = filterSeamsReferencingPoints(state.present.seams, deletedPointIds);
         console.log(`Cleaned up ${state.present.paths.length - validPaths.length} empty path(s)`);
+        if (updatedSeams.length !== state.present.seams.length) {
+          console.log(`Cleaned up ${state.present.seams.length - updatedSeams.length} orphaned seam(s)`);
+        }
         return {
           present: {
             ...state.present,
             paths: validPaths,
+            seams: updatedSeams,
           },
         };
       }
