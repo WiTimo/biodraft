@@ -39,3 +39,17 @@ export function seamsEqual([segA1, segA2]: SegmentSeam, [segB1, segB2]: SegmentS
   const swappedDirection = segmentsEqual(segA1, segB2) && segmentsEqual(segA2, segB1);
   return sameDirection || swappedDirection;
 }
+
+/**
+ * Filter out seams that reference any of the deleted point IDs
+ * More efficient than rebuilding the entire point set
+ */
+export function filterSeamsReferencingPoints(seams: SegmentSeam[], deletedPointIds: Set<string>): SegmentSeam[] {
+  return seams.filter(([[p1, p2], [p3, p4]]) => {
+    // Keep seam only if NONE of its points were deleted
+    return !(deletedPointIds.has(p1) || 
+             deletedPointIds.has(p2) || 
+             deletedPointIds.has(p3) || 
+             deletedPointIds.has(p4));
+  });
+}

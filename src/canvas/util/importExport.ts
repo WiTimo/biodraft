@@ -126,6 +126,22 @@ export function exportToJson() {
     console.log(`Note: Skipping ${paths.length - validPaths.length} empty path(s) during export`);
   }
 
+  // Build set of valid point IDs from remaining paths
+  const validPointIds = new Set<string>();
+  validPaths.forEach(path => {
+    path.points.forEach(point => validPointIds.add(point.id));
+  });
+
+  // Filter out orphaned seams (seams that reference non-existent points)
+  const validSeams = seams.filter(([[p1, p2], [p3, p4]]) => {
+    return validPointIds.has(p1) && validPointIds.has(p2) && 
+           validPointIds.has(p3) && validPointIds.has(p4);
+  });
+  
+  if (validSeams.length !== seams.length) {
+    console.log(`Note: Cleaned up ${seams.length - validSeams.length} orphaned seam(s) during export`);
+  }
+
   const { sharedPoints } = groupPathsIntoPatterns(validPaths);
 
   // Create a map of shared points for quick lookup
@@ -177,7 +193,7 @@ export function exportToJson() {
   });
 
   const blob = new Blob(
-    [JSON.stringify({ patterns: exportData, seams, sharedPoints: sharedPoints.length }, null, 2)],
+    [JSON.stringify({ patterns: exportData, seams: validSeams, sharedPoints: sharedPoints.length }, null, 2)],
     { type: 'application/json' }
   );
 
