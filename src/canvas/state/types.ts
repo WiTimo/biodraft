@@ -63,6 +63,7 @@ export interface HistorySlice {
   undo: () => void;
   redo: () => void;
   resetCanvas: () => void;
+  cleanupEmptyPaths: () => void;
 }
 
 export interface ToolSlice {

@@ -1,4 +1,5 @@
 import { useCanvasState } from '../state/CanvasState';
+import { normalizeSegment, segmentsEqual } from '../state/utils';
 import { importFromJson, exportToJson } from '../util/importExport';
 import ZoomControls from './ZoomControls';
 
@@ -28,6 +29,8 @@ export function Toolbar() {
         }
       };
       reader.readAsDataURL(file);
+      // reset input so selecting the same file again triggers change event
+      try { e.currentTarget.value = ''; } catch (e) { /* ignore */ }
     }
   };
 
@@ -84,6 +87,45 @@ export function Toolbar() {
         <button title='S' onClick={() => setTool('seam')} className="h-10 w-10 rounded-md p-1 cursor-pointer border-white border-4" style={{ borderColor: currentTool === "seam" ? "#4781e688" : "white" }}>
           <img src='/svg/seam.svg' />
         </button>
+        {/* Delete seam button - only show when seam tool is active */}
+        {currentTool === 'seam' && (
+          <button
+            title='Delete seam'
+            onClick={() => {
+              const state = useCanvasState.getState();
+              const seamSelection = state.seamSelection;
+              const selectedSeg = state.selectedSeamSegment;
+              const seams = state.present.seams;
+              // if two segments are selected (candidate seam), remove that seam
+              if (seamSelection && seamSelection.length === 2) {
+                state.removeSeam(seamSelection[0], seamSelection[1]);
+                state.setSeamSelection([]);
+                state.setSelectedSeamSegment(null);
+                return;
+              }
+
+              // otherwise, if the cursor-hovered segment is part of a seam, remove that seam
+              if (selectedSeg) {
+                const target = normalizeSegment(selectedSeg as any);
+                for (const s of seams) {
+                  const [a, b] = s;
+                  const na = normalizeSegment(a as any);
+                  const nb = normalizeSegment(b as any);
+                  if (segmentsEqual(na as any, target as any) || segmentsEqual(nb as any, target as any)) {
+                    state.removeSeam(s[0], s[1]);
+                    state.setSeamSelection([]);
+                    state.setSelectedSeamSegment(null);
+                    return;
+                  }
+                }
+              }
+            }}
+            className="h-10 w-10 rounded-md p-1 cursor-pointer border-white border-4"
+            style={{ borderColor: 'white' }}
+          >
+            <img src='/svg/delete.svg' />
+          </button>
+        )}
         <button title='G' onClick={() => setTool('background')} className="h-10 w-10 rounded-md p-1 cursor-pointer border-white border-4" style={{ borderColor: currentTool === "background" ? "#4781e688" : "white" }}>
           <img src='/svg/background.svg' />
         </button>

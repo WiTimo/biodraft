@@ -7,6 +7,7 @@ interface PointCircleProps {
   x: number;
   y: number;
   id: string;
+  isOverlapping: boolean;
 }
 
 const baseRadius = 6;
@@ -14,8 +15,8 @@ const minRadius = 2;
 const maxRadius = 10;
 
 
-export const PointCircle = React.memo(function PointCircle({ x, y, id }: PointCircleProps) {
-  const { movePoint, toggleHandlesForPoint, selectPoint, selectedPointId, selectedPointIds, currentTool } = useCanvasState();
+export const PointCircle = React.memo(function PointCircle({ x, y, id, isOverlapping }: PointCircleProps) {
+  const { movePoint, selectPoint, selectedPointId, selectedPointIds, currentTool } = useCanvasState();
 
   const isSelected = id === selectedPointId || selectedPointIds.includes(id);
 
@@ -25,13 +26,14 @@ export const PointCircle = React.memo(function PointCircle({ x, y, id }: PointCi
 
   return (
     <Circle
+      id={id}
       radius={Math.min(maxRadius, Math.max(minRadius, baseRadius / zoom))}
       ref={shapeRef}
       x={x}
       y={y}
-      fill={isSelected ? '#00C853' : '#FF5722'}
-      stroke="black"
-      strokeWidth={1}
+      fill={isOverlapping ? '#9C27B0' : isSelected ? '#00C853' : '#FF5722'}
+      stroke={isOverlapping ? '#7B1FA2' : 'black'}
+      strokeWidth={isOverlapping ? 2 : 1}
       draggable={currentTool === 'pen' || currentTool === 'select'}
       name="point"
       perfectDrawEnabled={false}

@@ -16,7 +16,9 @@ export function PathsLayer() {
   const selectedSegment = useCanvasState(s => s.selectedSeamSegment);
   const setSelectedSeamSegment = useCanvasState(s => s.setSelectedSeamSegment);
 
-  const handleSegmentClick = (aId: string, bId: string) => {
+  const handleSegmentClick = (aId: string, bId: string, e?: any) => {
+    // ignore non-left clicks
+    if (e && e.evt && typeof e.evt.button === 'number' && e.evt.button !== 0) return;
     if (currentTool !== 'seam') return;
 
     const normalize = ([id1, id2]: [string, string]) => [id1, id2].sort() as [string, string];
@@ -27,8 +29,8 @@ export function PathsLayer() {
     }
 
     const isUsedInSeam = seams.some(([s1, s2]) => {
-      const seg1 = normalize(s1);
-      const seg2 = normalize(s2);
+      const seg1 = normalize(s1 as [string, string]);
+      const seg2 = normalize(s2 as [string, string]);
       return (
         seg1[0] === selectedSegment[0] && seg1[1] === selectedSegment[1] ||
         seg2[0] === selectedSegment[0] && seg2[1] === selectedSegment[1]
@@ -113,7 +115,36 @@ export function PathsLayer() {
               stroke={baseColor}
               strokeWidth={12 / zoom}
               name="seam-segment"
-              onClick={() => currentTool === 'seam' && handleSegmentClick(a.id, b.id)}
+              onClick={(e) => currentTool === 'seam' && handleSegmentClick(a.id, b.id, e)}
+              onContextMenu={(e) => {
+                // right-click: prevent browser menu and remove seam if present
+                if (currentTool !== 'seam') return;
+                e.evt.preventDefault();
+                const normalize = ([id1, id2]: [string, string]) => [id1, id2].sort() as [string, string];
+                const target = normalize([a.id, b.id]);
+                const state = useCanvasState.getState();
+                const isUsedInSeam = seams.some(([s1, s2]) => {
+                  const seg1 = normalize(s1 as [string, string]);
+                  const seg2 = normalize(s2 as [string, string]);
+                  return (
+                    seg1[0] === target[0] && seg1[1] === target[1] ||
+                    seg2[0] === target[0] && seg2[1] === target[1]
+                  );
+                });
+                if (isUsedInSeam) {
+                  for (const s of seams) {
+                    const [s1, s2] = s;
+                    const n1 = normalize(s1 as [string, string]);
+                    const n2 = normalize(s2 as [string, string]);
+                    if ((n1[0] === target[0] && n1[1] === target[1]) || (n2[0] === target[0] && n2[1] === target[1])) {
+                      state.removeSeam(s[0], s[1]);
+                      state.setSeamSelection([]);
+                      setSelectedSeamSegment(null);
+                      break;
+                    }
+                  }
+                }
+              }}
               onMouseEnter={(e) => {
                 if (currentTool === 'seam') {
                   setSelectedSeamSegment([a.id, b.id]);

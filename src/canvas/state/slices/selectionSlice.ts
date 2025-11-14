@@ -19,13 +19,20 @@ export const createSelectionSlice: CanvasStateCreator<SelectionSlice> = (set, ge
     if (!selectedPointId) return;
 
     saveState();
+    
+    // Remove the point from all paths (handles shared points)
+    const updatedPaths = present.paths
+      .map((path) => ({
+        ...path,
+        points: path.points.filter((point) => point.id !== selectedPointId),
+      }))
+      // Clean up any paths that now have no points
+      .filter((path) => path.points.length > 0);
+    
     set({
       present: {
         ...present,
-        paths: present.paths.map((path) => ({
-          ...path,
-          points: path.points.filter((point) => point.id !== selectedPointId),
-        })),
+        paths: updatedPaths,
       },
       selectedPointId: null,
     });
@@ -36,13 +43,20 @@ export const createSelectionSlice: CanvasStateCreator<SelectionSlice> = (set, ge
     if (selectedPointIds.length === 0) return;
 
     saveState();
+    
+    // Remove the points from all paths (handles shared points)
+    const updatedPaths = present.paths
+      .map((path) => ({
+        ...path,
+        points: path.points.filter((point) => !selectedPointIds.includes(point.id)),
+      }))
+      // Clean up any paths that now have no points
+      .filter((path) => path.points.length > 0);
+    
     set({
       present: {
         ...present,
-        paths: present.paths.map((path) => ({
-          ...path,
-          points: path.points.filter((point) => !selectedPointIds.includes(point.id)),
-        })),
+        paths: updatedPaths,
       },
       selectedPointIds: [],
       selectedPointId: null,
