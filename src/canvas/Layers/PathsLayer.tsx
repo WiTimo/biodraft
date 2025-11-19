@@ -31,6 +31,8 @@ export function PathsLayer() {
   const [dragSegment, setDragSegment] = useState<[string, string] | null>(null);
   const dragSegmentPointsRef = useRef<{ p0: Point; p1: Point; h0: Handle; h1: Handle } | null>(null);
   const stageRef = useRef<any>(null);
+  const [mouseDownPos, setMouseDownPos] = useState<{ x: number; y: number } | null>(null);
+  const [hasMoved, setHasMoved] = useState(false);
 
   // Helper to calculate t value (0-1) along a bezier curve from mouse position
   const calculateTFromMouse = useCallback((mouseX: number, mouseY: number, p0: Point, h0: Handle, h1: Handle, p1: Point) => {
@@ -66,6 +68,15 @@ export function PathsLayer() {
       const worldX = (stageX - offset.x) / zoom;
       const worldY = (stageY - offset.y) / zoom;
       
+      // Check if mouse has moved significantly (more than 3 pixels)
+      if (mouseDownPos) {
+        const dx = Math.abs(e.clientX - mouseDownPos.x);
+        const dy = Math.abs(e.clientY - mouseDownPos.y);
+        if (dx > 3 || dy > 3) {
+          setHasMoved(true);
+        }
+      }
+      
       const { p0, p1, h0, h1 } = dragSegmentPointsRef.current;
       const t = calculateTFromMouse(worldX, worldY, p0, h0, h1, p1);
       setDragCurrentT(t);
@@ -74,25 +85,55 @@ export function PathsLayer() {
     const handleMouseUp = () => {
       if (!dragSegment) return;
       
-      const tStart = Math.min(dragStartT, dragCurrentT);
-      const tEnd = Math.max(dragStartT, dragCurrentT);
-      
-      // Only create portion if there's meaningful selection (> 5% of segment)
-      if (Math.abs(tEnd - tStart) > 0.05) {
-        const portion = {
-          segment: dragSegment,
-          tStart,
-          tEnd,
-        };
-        
+      // If mouse hasn't moved, treat it as a click for full-path seaming
+      if (!hasMoved) {
+        // Full path seaming (old behavior)
         if (!pendingSeamPortion1) {
-          setPendingSeamPortion1(portion);
+          // First selection - select entire segment (0 to 1)
+          setPendingSeamPortion1({
+            segment: dragSegment,
+            tStart: 0,
+            tEnd: 1,
+          });
         } else if (!pendingSeamPortion2) {
-          setPendingSeamPortion2(portion);
+          // Second selection - create seam with entire segment
+          setPendingSeamPortion2({
+            segment: dragSegment,
+            tStart: 0,
+            tEnd: 1,
+          });
           setTimeout(() => commitPendingSeamPortions(), 0);
         } else {
+          // Already have two portions, clear and start fresh
           clearPendingSeamPortions();
-          setPendingSeamPortion1(portion);
+          setPendingSeamPortion1({
+            segment: dragSegment,
+            tStart: 0,
+            tEnd: 1,
+          });
+        }
+      } else {
+        // Mouse has moved - partial seaming
+        const tStart = Math.min(dragStartT, dragCurrentT);
+        const tEnd = Math.max(dragStartT, dragCurrentT);
+        
+        // Only create portion if there's meaningful selection (> 5% of segment)
+        if (Math.abs(tEnd - tStart) > 0.05) {
+          const portion = {
+            segment: dragSegment,
+            tStart,
+            tEnd,
+          };
+          
+          if (!pendingSeamPortion1) {
+            setPendingSeamPortion1(portion);
+          } else if (!pendingSeamPortion2) {
+            setPendingSeamPortion2(portion);
+            setTimeout(() => commitPendingSeamPortions(), 0);
+          } else {
+            clearPendingSeamPortions();
+            setPendingSeamPortion1(portion);
+          }
         }
       }
       
@@ -100,6 +141,8 @@ export function PathsLayer() {
       setDragSegment(null);
       dragSegmentPointsRef.current = null;
       stageRef.current = null;
+      setMouseDownPos(null);
+      setHasMoved(false);
     };
 
     window.addEventListener('mousemove', handleMouseMove);
@@ -110,7 +153,8 @@ export function PathsLayer() {
       window.removeEventListener('mouseup', handleMouseUp);
     };
   }, [isDraggingSeam, dragSegment, dragStartT, dragCurrentT, pendingSeamPortion1, pendingSeamPortion2,
-      setPendingSeamPortion1, setPendingSeamPortion2, clearPendingSeamPortions, commitPendingSeamPortions, calculateTFromMouse, zoom, offset]);
+      setPendingSeamPortion1, setPendingSeamPortion2, clearPendingSeamPortions, commitPendingSeamPortions, 
+      calculateTFromMouse, zoom, offset, mouseDownPos, hasMoved]);
 
   return (
     <>
@@ -174,6 +218,10 @@ export function PathsLayer() {
                 
                 const pointerPos = stage.getPointerPosition();
                 if (!pointerPos) return;
+                
+                // Store screen coordinates for click detection
+                setMouseDownPos({ x: e.evt.clientX, y: e.evt.clientY });
+                setHasMoved(false);
                 
                 // Convert stage coordinates to world coordinates
                 const worldX = (pointerPos.x - offset.x) / zoom;
@@ -269,7 +317,7 @@ export function PathsLayer() {
       })}
 
       {/* Preview line during drag */}
-      {isDraggingSeam && dragSegment && dragSegmentPointsRef.current && (() => {
+      {isDraggingSeam && dragSegment && dragSegmentPointsRef.current && hasMoved && (() => {
         const { p0, p1, h0, h1 } = dragSegmentPointsRef.current;
         
         const tMin = Math.min(dragStartT, dragCurrentT);
