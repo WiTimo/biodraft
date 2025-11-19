@@ -35,9 +35,55 @@ export function segmentsEqual(s1: Segment, s2: Segment): boolean {
 }
 
 export function seamsEqual([segA1, segA2]: SegmentSeam, [segB1, segB2]: SegmentSeam): boolean {
-  const sameDirection = segmentsEqual(segA1, segB1) && segmentsEqual(segA2, segB2);
-  const swappedDirection = segmentsEqual(segA1, segB2) && segmentsEqual(segA2, segB1);
+  const getSegment = (seg: any) => seg.segment || seg;
+  const seg1 = getSegment(segA1);
+  const seg2 = getSegment(segA2);
+  const seg3 = getSegment(segB1);
+  const seg4 = getSegment(segB2);
+  
+  const sameDirection = segmentsEqual(seg1, seg3) && segmentsEqual(seg2, seg4);
+  const swappedDirection = segmentsEqual(seg1, seg4) && segmentsEqual(seg2, seg3);
   return sameDirection || swappedDirection;
+}
+
+/**
+ * Cubic Bezier curve evaluation at parameter t (0-1)
+ */
+export function evaluateBezier(
+  p0: Point,
+  h0: { dx: number; dy: number },
+  h1: { dx: number; dy: number },
+  p1: Point,
+  t: number
+): { x: number; y: number } {
+  const x = Math.pow(1 - t, 3) * p0.x +
+    3 * Math.pow(1 - t, 2) * t * (p0.x + h0.dx) +
+    3 * (1 - t) * Math.pow(t, 2) * (p1.x + h1.dx) +
+    Math.pow(t, 3) * p1.x;
+  const y = Math.pow(1 - t, 3) * p0.y +
+    3 * Math.pow(1 - t, 2) * t * (p0.y + h0.dy) +
+    3 * (1 - t) * Math.pow(t, 2) * (p1.y + h1.dy) +
+    Math.pow(t, 3) * p1.y;
+  return { x, y };
+}
+
+/**
+ * Generate points along a cubic Bezier curve
+ */
+export function generateBezierPoints(
+  p0: Point,
+  h0: { dx: number; dy: number },
+  h1: { dx: number; dy: number },
+  p1: Point,
+  steps = 80
+): number[] {
+  const points: number[] = [];
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const { x, y } = evaluateBezier(p0, h0, h1, p1, t);
+    points.push(x, y);
+  }
+  return points;
 }
 
 /**
@@ -45,7 +91,17 @@ export function seamsEqual([segA1, segA2]: SegmentSeam, [segB1, segB2]: SegmentS
  * More efficient than rebuilding the entire point set
  */
 export function filterSeamsReferencingPoints(seams: SegmentSeam[], deletedPointIds: Set<string>): SegmentSeam[] {
-  return seams.filter(([[p1, p2], [p3, p4]]) => {
+  return seams.filter((seam) => {
+    const portion1 = seam[0] as any;
+    const portion2 = seam[1] as any;
+    
+    // Handle both SegmentPortion and Segment types
+    const seg1 = portion1.segment || portion1;
+    const seg2 = portion2.segment || portion2;
+    
+    const [p1, p2] = seg1;
+    const [p3, p4] = seg2;
+    
     // Keep seam only if NONE of its points were deleted
     return !(deletedPointIds.has(p1) || 
              deletedPointIds.has(p2) || 
