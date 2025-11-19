@@ -45,7 +45,14 @@ export interface BackgroundImage {
 }
 
 export type Segment = [string, string];
-export type SegmentSeam = [Segment, Segment];
+export type SegmentSeam = [Segment, Segment] | [SegmentPortion, SegmentPortion];
+
+// For drag-based seaming: segment with start/end positions (t values from 0-1)
+export interface SegmentPortion {
+  segment: Segment;
+  tStart: number; // 0-1 parametric position along the curve
+  tEnd: number;   // 0-1 parametric position along the curve
+}
 
 export interface CanvasPresent {
   paths: Path[];
@@ -167,6 +174,14 @@ export interface SeamSlice {
   selectedSeamSegment: Segment | null;
   setSelectedSeamSegment: (segment: Segment | null) => void;
   swapSeam: (segment: Segment) => void;
+  swapSeamPortion: (seamIndex: number) => void;
+  // Drag-based seaming
+  pendingSeamPortion1: SegmentPortion | null;
+  pendingSeamPortion2: SegmentPortion | null;
+  setPendingSeamPortion1: (portion: SegmentPortion | null) => void;
+  setPendingSeamPortion2: (portion: SegmentPortion | null) => void;
+  clearPendingSeamPortions: () => void;
+  commitPendingSeamPortions: () => void;
 }
 
 export interface TextureSlice {
