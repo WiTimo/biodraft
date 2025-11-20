@@ -33,4 +33,19 @@ export const createViewportSlice: CanvasStateCreator<ViewportSlice> = (set, _get
       [id]: center,
     },
   })),
+
+  frontCollapsed: false,
+  backCollapsed: false,
+  toggleFrontCollapse: () => set((state) => {
+    const newFrontCollapsed = !state.frontCollapsed;
+    // If enabling front collapsed, ensure back isn't also collapsed
+    const backCollapsed = newFrontCollapsed ? false : state.backCollapsed;
+    return { frontCollapsed: newFrontCollapsed, backCollapsed };
+  }),
+  toggleBackCollapse: () => set((state) => {
+    const newBackCollapsed = !state.backCollapsed;
+    // If enabling back collapsed, ensure front isn't also collapsed
+    const frontCollapsed = newBackCollapsed ? false : state.frontCollapsed;
+    return { backCollapsed: newBackCollapsed, frontCollapsed };
+  }),
 });

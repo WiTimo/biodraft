@@ -8,13 +8,33 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { evaluateBezier, generateBezierPoints } from '../state/utils';
 
 export function PathsLayer() {
-  const paths = useCanvasState(s => s.present.paths);
+  const allPaths = useCanvasState(s => s.present.paths);
+  const frontCollapsed = useCanvasState(s => s.frontCollapsed);
+  const backCollapsed = useCanvasState(s => s.backCollapsed);
   const seams = useCanvasState(s => s.present.seams || []);
   const currentTool = useCanvasState(s => s.currentTool);
   const zoom = useCanvasState(s => s.zoom);
   const offset = useCanvasState(s => s.offset);
   const selectedSegment = useCanvasState(s => s.selectedSeamSegment);
   const setSelectedSeamSegment = useCanvasState(s => s.setSelectedSeamSegment);
+
+  // Filter paths based on collapsed state (Front is x < 700, Back is x >= 700)
+  const paths = allPaths.filter(path => {
+    if (!path.points.length) return true;
+    // Check if the majority of points are in the visible section
+    const pointsInFront = path.points.filter(p => p.x < 700).length;
+    const pointsInBack = path.points.filter(p => p.x >= 700).length;
+    
+    if (frontCollapsed) {
+      // Show if majority of points are in back
+      return pointsInBack >= pointsInFront;
+    }
+    if (backCollapsed) {
+      // Show if majority of points are in front
+      return pointsInFront > pointsInBack;
+    }
+    return true;
+  });
   
   // Drag-based seaming state
   const pendingSeamPortion1 = useCanvasState(s => s.pendingSeamPortion1);

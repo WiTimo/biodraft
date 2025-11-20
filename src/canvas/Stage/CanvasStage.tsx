@@ -39,6 +39,8 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning 
   const clearSelectedPointIds = useCanvasState((state) => state.clearSelectedPointIds);
   const setSeamSelection = useCanvasState((state) => state.setSeamSelection);
   const setSelectedSeamSegment = useCanvasState((state) => state.setSelectedSeamSegment);
+  const frontCollapsed = useCanvasState((state) => state.frontCollapsed);
+  const backCollapsed = useCanvasState((state) => state.backCollapsed);
 
   const [isDraggingNewPoint, setIsDraggingNewPoint] = useState(false);
   const [newPointId, setNewPointId] = useState<string | null>(null);
@@ -402,6 +404,18 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning 
   const isTransformVisible = selectedPointIds.length > 0 && !selectionStart;
   const showPenPreview = currentTool === 'pen' && !isDraggingNewPoint && !useCanvasState.getState().isDraggingHandle;
 
+  // Filter background images based on collapsed state
+  // Front is x < 700, Back is x >= 700
+  const visibleBackgroundImages = useMemo(() => {
+    if (frontCollapsed) {
+      return backgroundImages.filter(img => img.x >= 700);
+    }
+    if (backCollapsed) {
+      return backgroundImages.filter(img => img.x < 700);
+    }
+    return backgroundImages;
+  }, [backgroundImages, frontCollapsed, backCollapsed]);
+
   return (
     <Stage
       ref={stageRef}
@@ -418,7 +432,7 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning 
       onWheel={handleWheel}
     >
       <Layer>
-        {backgroundImages.map((image) => (
+        {visibleBackgroundImages.map((image) => (
           <BackgroundImage key={image.id} {...image} />
         ))}
 
@@ -449,9 +463,19 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning 
 
         <SelectionTransformer isVisible={isTransformVisible} />
 
-        <Line points={[700, -1500, 700, 2000]} stroke="gray" strokeWidth={2} />
-        <Text offsetX={175} offsetY={400} fontSize={78} fontVariant="bold" fill="gray" text="Front" />
-        <Text offsetX={-1400} offsetY={400} fontSize={78} fontVariant="bold" fill="gray" text="Back" />
+        {!frontCollapsed && !backCollapsed && (
+          <>
+            <Line points={[700, -1500, 700, 2000]} stroke="gray" strokeWidth={2} />
+            <Text offsetX={175} offsetY={400} fontSize={78} fontVariant="bold" fill="gray" text="Front" />
+            <Text offsetX={-1400} offsetY={400} fontSize={78} fontVariant="bold" fill="gray" text="Back" />
+          </>
+        )}
+        {frontCollapsed && (
+          <Text offsetX={-1400} offsetY={400} fontSize={78} fontVariant="bold" fill="gray" text="Back" />
+        )}
+        {backCollapsed && (
+          <Text offsetX={175} offsetY={400} fontSize={78} fontVariant="bold" fill="gray" text="Front" />
+        )}
       </Layer>
     </Stage>
   );

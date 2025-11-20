@@ -100,6 +100,10 @@ export interface ViewportSlice {
   setIsSimulationMode: (value: boolean) => void;
   manImageCenters: Record<string, { x: number; y: number }>;
   setManImageCenter: (id: string, center: { x: number; y: number }) => void;
+  frontCollapsed: boolean;
+  backCollapsed: boolean;
+  toggleFrontCollapse: () => void;
+  toggleBackCollapse: () => void;
 }
 
 export interface BackgroundSlice {

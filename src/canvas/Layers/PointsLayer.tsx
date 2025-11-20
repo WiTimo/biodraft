@@ -5,8 +5,28 @@ import { PointCircle } from '../Circles/PointCircle';
 import React from 'react';
 
 export function PointsLayer() {
-  const paths = useCanvasState((s) => s.present.paths);
+  const allPaths = useCanvasState((s) => s.present.paths);
+  const frontCollapsed = useCanvasState((s) => s.frontCollapsed);
+  const backCollapsed = useCanvasState((s) => s.backCollapsed);
   const selectedPointId = useCanvasState((s) => s.selectedPointId);
+
+  // Filter paths based on collapsed state (Front is x < 700, Back is x >= 700)
+  const paths = allPaths.filter(path => {
+    if (!path.points.length) return true;
+    // Check if the majority of points are in the visible section
+    const pointsInFront = path.points.filter(p => p.x < 700).length;
+    const pointsInBack = path.points.filter(p => p.x >= 700).length;
+    
+    if (frontCollapsed) {
+      // Show if majority of points are in back
+      return pointsInBack >= pointsInFront;
+    }
+    if (backCollapsed) {
+      // Show if majority of points are in front
+      return pointsInFront > pointsInBack;
+    }
+    return true;
+  });
 
   const { allPoints, overlappingPointIds } = useMemo(() => {
     const pointMap = new Map();
