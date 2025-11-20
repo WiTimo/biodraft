@@ -4,7 +4,7 @@ import { importFromJson, exportToJson } from '../util/importExport';
 import ZoomControls from './ZoomControls';
 
 export function Toolbar() {
-  const { currentTool, setTool, setZoom, setOffset, zoom } = useCanvasState();
+  const { currentTool, setTool, setZoom, setOffset, zoom, offset, threeDEnabled, splitWidth } = useCanvasState();
 
   const handleImportImage = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -62,14 +62,37 @@ export function Toolbar() {
   };
 
   const handleZoomChange = (value: number) => {
+    // Calculate the center of the viewport in world coordinates
+    const canvasWidth = threeDEnabled ? (window.innerWidth - splitWidth) : window.innerWidth;
+    const canvasHeight = window.innerHeight;
+    const centerX = canvasWidth / 2;
+    const centerY = canvasHeight / 2;
+    
+    // Current world position at center
+    const worldCenterX = (centerX - offset.x) / zoom;
+    const worldCenterY = (centerY - offset.y) / zoom;
+    
+    // Calculate new offset to keep the same world point at center
+    const newOffset = {
+      x: centerX - worldCenterX * value,
+      y: centerY - worldCenterY * value,
+    };
+    
     setZoom(value);
+    setOffset(newOffset);
   };
 
   const resetZoom = () => {
+    // Reset zoom and center on x=0 (the dividing line)
+    const canvasWidth = threeDEnabled ? (window.innerWidth - splitWidth) : window.innerWidth;
+    const canvasHeight = window.innerHeight;
+    const centerX = canvasWidth / 2;
+    const centerY = canvasHeight / 2;
+    
     setZoom(1);
     setOffset({
-      x: 0,
-      y: 0,
+      x: centerX,
+      y: centerY - 400, // 400 is the approximate center y of the canvas content
     });
   };
 
