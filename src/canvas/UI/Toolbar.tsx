@@ -116,7 +116,7 @@ export function Toolbar() {
         <div className="fixed bottom-20 left-1/2 -translate-x-1/2 bg-white rounded-lg p-2 shadow-lg flex items-center gap-2 z-[2001]">
           {openFolders.has('drawing') && (
             <>
-              <button title='E - Pen' onClick={() => setTool('pen')} className="h-12 w-12 rounded-md p-2 cursor-pointer border-2" style={{ borderColor: currentTool === "pen" ? "#4781e6" : "transparent" }}>
+              <button title='E - Pen' onClick={() => { setTool('pen'); setOpenFolders(new Set()); }} className="h-12 w-12 rounded-md p-2 cursor-pointer border-2" style={{ borderColor: currentTool === "pen" ? "#4781e6" : "transparent" }}>
                 <img src='/svg/pen.svg' />
               </button>
             </>
@@ -124,7 +124,7 @@ export function Toolbar() {
           
           {openFolders.has('seaming') && (
             <>
-              <button title='S - Seam' onClick={() => setTool('seam')} className="h-12 w-12 rounded-md p-2 cursor-pointer border-2" style={{ borderColor: currentTool === "seam" ? "#4781e6" : "transparent" }}>
+              <button title='S - Seam' onClick={() => { setTool('seam'); setOpenFolders(new Set()); }} className="h-12 w-12 rounded-md p-2 cursor-pointer border-2" style={{ borderColor: currentTool === "seam" ? "#4781e6" : "transparent" }}>
                 <img src='/svg/seam.svg' />
               </button>
               {currentTool === 'seam' && (
@@ -186,7 +186,7 @@ export function Toolbar() {
                 <img src='/svg/image.svg' />
                 <input type="file" accept="image/*" onChange={handleImportImage} className="hidden" />
               </label>
-              <button title='G - Background' onClick={() => setTool('background')} className="h-12 w-12 rounded-md p-2 cursor-pointer border-2" style={{ borderColor: currentTool === "background" ? "#4781e6" : "transparent" }}>
+              <button title='G - Background' onClick={() => { setTool('background'); setOpenFolders(new Set()); }} className="h-12 w-12 rounded-md p-2 cursor-pointer border-2" style={{ borderColor: currentTool === "background" ? "#4781e6" : "transparent" }}>
                 <img src='/svg/background.svg' />
               </button>
             </>
@@ -231,7 +231,7 @@ export function Toolbar() {
       {/* Main toolbar at bottom */}
       <div className="fixed bottom-4 left-1/2 -translate-x-1/2 bg-white rounded-lg p-2 shadow-lg flex items-center gap-2 z-[2000]">
         {/* Cursor - standalone */}
-        <button title='W - Cursor' onClick={() => setTool('select')} className="h-12 w-12 rounded-md p-2 cursor-pointer border-2" style={{ borderColor: currentTool === "select" ? "#4781e6" : "transparent" }}>
+        <button title='W - Cursor' onClick={() => { setTool('select'); setOpenFolders(new Set()); }} className="h-12 w-12 rounded-md p-2 cursor-pointer border-2" style={{ borderColor: currentTool === "select" ? "#4781e6" : "transparent" }}>
           <img src='/svg/pointer.svg' />
         </button>
 
@@ -242,7 +242,7 @@ export function Toolbar() {
           title='Drawing Tools' 
           onClick={() => toggleFolder('drawing')}
           className="h-12 w-12 rounded-md p-2 cursor-pointer hover:bg-gray-100 relative"
-          style={{ backgroundColor: openFolders.has('drawing') ? '#f3f4f6' : 'transparent' }}
+          style={{ backgroundColor: openFolders.has('drawing') || currentTool === 'pen' ? '#f3f4f6' : 'transparent' }}
         >
           <img src='/svg/pen.svg' />
           <span className="absolute bottom-1 right-1 text-[10px] font-bold text-gray-600">
@@ -257,7 +257,7 @@ export function Toolbar() {
           title='Seaming Tools' 
           onClick={() => toggleFolder('seaming')}
           className="h-12 w-12 rounded-md p-2 cursor-pointer hover:bg-gray-100 relative"
-          style={{ backgroundColor: openFolders.has('seaming') ? '#f3f4f6' : 'transparent' }}
+          style={{ backgroundColor: openFolders.has('seaming') || currentTool === 'seam' ? '#f3f4f6' : 'transparent' }}
         >
           <img src='/svg/seam.svg' />
           <span className="absolute bottom-1 right-1 text-[10px] font-bold text-gray-600">
@@ -287,7 +287,7 @@ export function Toolbar() {
           title='Reference Tools' 
           onClick={() => toggleFolder('reference')}
           className="h-12 w-12 rounded-md p-2 cursor-pointer hover:bg-gray-100 relative"
-          style={{ backgroundColor: openFolders.has('reference') ? '#f3f4f6' : 'transparent' }}
+          style={{ backgroundColor: openFolders.has('reference') || currentTool === 'background' ? '#f3f4f6' : 'transparent' }}
         >
           <img src='/svg/image.svg' />
           <span className="absolute bottom-1 right-1 text-[10px] font-bold text-gray-600">
