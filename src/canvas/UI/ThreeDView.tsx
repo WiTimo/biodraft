@@ -4,7 +4,7 @@ import type { CanvasPresent } from "../state/types";
 
 const FRONT_IMAGE_ID = "static-man";
 const BACK_IMAGE_ID = "static-man-back";
-const STATIC_MAN_DIMENSIONS = { width: 1920, height: 1080 };
+const STATIC_MAN_DIMENSIONS_FALLBACK = { width: 1920, height: 1080 };
 const HUMAN_REFERENCE_FALLBACK = {
   top: 17,
   bottom: 765,
@@ -19,16 +19,28 @@ type BackgroundImageEntry = CanvasPresent["backgroundImages"][number];
 
 function computeImageMetrics(image: BackgroundImageEntry | undefined) {
   if (!image) return null;
-  const scaleX = Number.isFinite(image.scaleX) ? image.scaleX : 1;
-  const scaleY = Number.isFinite(image.scaleY) ? image.scaleY : 1;
-  const width = STATIC_MAN_DIMENSIONS.width * scaleX;
-  const height = STATIC_MAN_DIMENSIONS.height * scaleY;
-  return {
-    halfWidth: width / 2,
-    centerX: image.x + width / 2,
-    top: image.y,
-    bottom: image.y + height,
-  };
+    const scaleX = Number.isFinite(image.scaleX) ? image.scaleX : 1;
+    const scaleY = Number.isFinite(image.scaleY) ? image.scaleY : 1;
+
+    const imgObj = new Image();
+    imgObj.src = image.src;
+    if (!imgObj.naturalWidth || !imgObj.naturalHeight) {
+      console.error("Image Size and Width not found")
+    }
+    const nativeWidth = imgObj.naturalWidth || STATIC_MAN_DIMENSIONS_FALLBACK.width;
+    const nativeHeight = imgObj.naturalHeight || STATIC_MAN_DIMENSIONS_FALLBACK.height;
+    
+    const width = nativeWidth * scaleX;
+    const height = nativeHeight * scaleY;
+
+    return {
+      width,
+      height,
+      halfWidth: width / 2,
+      centerX: image.x + width / 2,
+      top: image.y,
+      bottom: image.y + height,
+    };
 }
 
 function buildHumanReferencePayload(
@@ -67,7 +79,20 @@ function buildHumanReferencePayload(
       halfWidthSamples.length;
   }
 
-  return payload;
+    if (frontImage && frontMetrics) {
+        const img = new Image();
+        img.src = frontImage.src;
+        
+        if (img.naturalWidth > 0) {
+             // @ts-ignore
+             payload.backgroundImage = {
+                 width: img.naturalWidth * (frontImage.scaleX || 1),
+                 height: img.naturalHeight * (frontImage.scaleY || 1)
+             };
+        }
+    }
+
+    return payload;
 }
 
 export function ThreeDView() {
@@ -102,6 +127,9 @@ export function ThreeDView() {
   }, [iframeLoaded, postMessageToIframe]);
 
   const buildPatternPayload = useCallback((present: CanvasPresent) => {
+    const backgroundImages = present.backgroundImages;
+    const humanRef = buildHumanReferencePayload(backgroundImages);
+    
     const patterns = present.paths.map((path) => ({
       id: path.id,
       points: path.points.map((p) => ({
@@ -126,7 +154,11 @@ export function ThreeDView() {
         : undefined,
     }));
 
-    return { patterns, seams: present.seams };
+    return { 
+        patterns, 
+        seams: present.seams,
+        ...humanRef
+    };
   }, []);
 
   const sendPatterns = useCallback(
@@ -189,9 +221,13 @@ export function ThreeDView() {
   useEffect(() => {
     if (!iframeLoaded) return;
 
-    sendHumanReference();
+    const sync = () => {
+        sendHumanReference();
+    };
 
-    const handleResize = () => sendHumanReference();
+    sync();
+
+    const handleResize = () => sync();
     window.addEventListener("resize", handleResize);
 
     let previousBackgrounds =
@@ -200,7 +236,7 @@ export function ThreeDView() {
       const nextBackgrounds = state.present.backgroundImages;
       if (nextBackgrounds !== previousBackgrounds) {
         previousBackgrounds = nextBackgrounds;
-        sendHumanReference();
+        sync();
       }
     });
 

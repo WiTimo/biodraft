@@ -3,7 +3,7 @@ import type { BackgroundSlice, CanvasStateCreator } from '../types';
 export const createBackgroundSlice: CanvasStateCreator<BackgroundSlice> = (set, get, _api) => ({
   selectedBackgroundId: null,
 
-  addBackgroundImage: (src, id) => {
+  addBackgroundImage: (src, id, nativeWidth, nativeHeight) => {
     const { present, saveState } = get();
     saveState();
     const newImage = {
@@ -16,6 +16,8 @@ export const createBackgroundSlice: CanvasStateCreator<BackgroundSlice> = (set, 
       rotation: 0,
       opacity: 0.4,
       locked: false,
+      nativeWidth,
+      nativeHeight,
     };
 
     set({

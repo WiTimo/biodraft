@@ -42,6 +42,8 @@ export interface BackgroundImage {
   rotation: number;
   opacity: number;
   locked: boolean;
+  nativeWidth?: number;
+  nativeHeight?: number;
 }
 
 export type Segment = [string, string];
@@ -97,7 +99,7 @@ export interface ViewportSlice {
 
 export interface BackgroundSlice {
   selectedBackgroundId: string | null;
-  addBackgroundImage: (src: string, id?: string) => void;
+  addBackgroundImage: (src: string, id?: string, nativeWidth?: number, nativeHeight?: number) => void;
   moveBackgroundImage: (id: string, x: number, y: number) => void;
   scaleBackgroundImage: (id: string, scale: number) => void;
   rotateBackgroundImage: (id: string, rotation: number) => void;
