@@ -25,21 +25,38 @@ export function useStaticManImages(
         const canvasWidth = 1418;
         const canvasHeight = 798;
 
-        const scale = 0.8;
+        // New requested image layout:
+        // Images are larger/closer to dividing line.
+        // We'll place them explicitly.
+        // Assuming the split is roughly at X=canvasWidth/2 (709).
+        
+        // Let's center them in their respective halves more deliberately.
+        // Or just use the user's observation "closer to the dividing line".
+        // Let's fix the scale to 1.0 (since they are reference images, 1:1 pixel mapping is best for pattern drawing).
+        // Or if they are too big, we scale.
+        // Previous scale was 0.8.
+        // If the user says "images have a different size now", let's respect the natural size or a reasonable fit.
+        // Let's try a slightly larger scale or fit to height.
+        
+        const availableHeight = canvasHeight - 100;
+        const scale = Math.min(availableHeight / frontImg.height, availableHeight / backImg.height, 0.9);
 
         const frontWidth = frontImg.width * scale;
         const frontHeight = frontImg.height * scale;
-
         const backWidth = backImg.width * scale;
         const backHeight = backImg.height * scale;
 
-        const totalWidth = frontWidth + backWidth + 40;
+        const splitX = canvasWidth / 2;
+        
+        // Center Front image in left half
+        const frontX = (splitX - frontWidth) / 2;
+        const centerY = (canvasHeight - frontHeight) / 2; // Vertically centered
 
-        const startX = (canvasWidth - totalWidth) / 2;
-        const centerY = (canvasHeight - Math.max(frontHeight, backHeight)) / 2;
+        // Center Back image in right half
+        const backX = splitX + (splitX - backWidth) / 2;
 
         state.addBackgroundImage('/images/man_front.png', frontId);
-        state.moveBackgroundImage(frontId, startX, centerY);
+        state.moveBackgroundImage(frontId, frontX, centerY);
         state.updateBackgroundImageTransform(frontId, {
           scaleX: scale,
           scaleY: scale,
@@ -47,7 +64,6 @@ export function useStaticManImages(
         });
         state.toggleLockBackgroundImage(frontId);
 
-        const backX = startX + frontWidth + 40;
         state.addBackgroundImage('/images/man_back.png', backId);
         state.moveBackgroundImage(backId, backX, centerY);
         state.updateBackgroundImageTransform(backId, {
@@ -58,7 +74,7 @@ export function useStaticManImages(
         state.toggleLockBackgroundImage(backId);
 
         const frontCenter = {
-          x: startX + frontWidth / 2,
+          x: frontX + frontWidth / 2,
           y: centerY + frontHeight / 2,
         };
         const backCenter = {
