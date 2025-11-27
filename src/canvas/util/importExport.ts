@@ -133,7 +133,16 @@ export function exportToJson() {
   });
 
   // Filter out orphaned seams (seams that reference non-existent points)
-  const validSeams = seams.filter(([[p1, p2], [p3, p4]]) => {
+  const validSeams = seams.filter((seam) => {
+    const getPoints = (item: any) => {
+      if (Array.isArray(item)) return item;
+      return item.segment;
+    };
+
+    const [s1, s2] = seam;
+    const [p1, p2] = getPoints(s1);
+    const [p3, p4] = getPoints(s2);
+
     return validPointIds.has(p1) && validPointIds.has(p2) && 
            validPointIds.has(p3) && validPointIds.has(p4);
   });
