@@ -170,6 +170,7 @@ export interface SeamSlice {
   addSeam: (seg1: Segment, seg2: Segment) => void;
   removeSeam: (seg1: Segment, seg2: Segment) => void;
   isSeam: (seg1: Segment, seg2: Segment) => boolean;
+  findSeamBySegment: (segment: Segment) => SegmentSeam | null;
   addPathSeam: (seg1: Segment, seg2: Segment) => void;
   seamSelection: Segment[];
   setSeamSelection: (selection: Segment[]) => void;

@@ -84,6 +84,17 @@ export const createSeamSlice: CanvasStateCreator<SeamSlice> = (set, get, _api) =
     return get().present.seams.some((existing) => seamsEqual(existing, [seg1, seg2]));
   },
 
+  findSeamBySegment: (segment) => {
+    const target = normalizeSegment(segment);
+    return get().present.seams.find((seam) => {
+      const portion1 = seam[0] as any;
+      const portion2 = seam[1] as any;
+      const seg1 = normalizeSegment(portion1.segment || portion1);
+      const seg2 = normalizeSegment(portion2.segment || portion2);
+      return segmentsEqual(seg1, target) || segmentsEqual(seg2, target);
+    }) || null;
+  },
+
   addPathSeam: (seg1, seg2) => {
     set((state) => ({
       present: {
