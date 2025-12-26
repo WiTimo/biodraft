@@ -1,8 +1,9 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { Stage, Layer, Rect, Line, Text } from 'react-konva';
+import { Stage, Layer, Rect, Line } from 'react-konva';
 import Konva from 'konva';
 
 import { BackgroundImage } from '../BackgroundImage/BackgroundImage';
+import { GridLayer } from '../Layers/GridLayer';
 import { PathsLayer } from '../Layers/PathsLayer';
 import { PointsLayer } from '../Layers/PointsLayer';
 import { SelectionTransformer } from '../Layers/SelectionTransformer';
@@ -15,9 +16,11 @@ interface CanvasStageProps {
   isSpacePressed: boolean;
   isPanning: boolean;
   setIsPanning: (value: boolean) => void;
+  width: number;
+  height: number;
 }
 
-export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning }: CanvasStageProps) {
+export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning, width, height }: CanvasStageProps) {
   const present = useCanvasState((state) => state.present);
   const currentTool = useCanvasState((state) => state.currentTool);
   const zoom = useCanvasState((state) => state.zoom);
@@ -408,8 +411,8 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning 
       scale={{ x: zoom, y: zoom }}
       x={offset.x}
       y={offset.y}
-      width={window.innerWidth}
-      height={window.innerHeight}
+      width={width}
+      height={height}
       style={{ background: '#f0f0f0', cursor: stageCursor }}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
@@ -417,6 +420,7 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning 
       onMouseLeave={handleMouseLeave}
       onWheel={handleWheel}
     >
+      <GridLayer width={width} height={height} zoom={zoom} offset={offset} />
       <Layer>
         {backgroundImages.map((image) => (
           <BackgroundImage key={image.id} {...image} />
@@ -448,10 +452,6 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning 
         )}
 
         <SelectionTransformer isVisible={isTransformVisible} />
-
-        <Line points={[700, -1500, 700, 2000]} stroke="gray" strokeWidth={2} />
-        <Text offsetX={175} offsetY={400} fontSize={78} fontVariant="bold" fill="gray" text="Front" />
-        <Text offsetX={-1400} offsetY={400} fontSize={78} fontVariant="bold" fill="gray" text="Back" />
       </Layer>
     </Stage>
   );

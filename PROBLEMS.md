@@ -1,0 +1,3 @@
+# Problems
+
+- Our current logic has a random x=700 that defines front and back of the drawings. Please leave everything as it is, but change the export to convert all the values to 0:0, meaning both pieces would be centered at 0:0 instead of x=875.5 or something, instead it should be in this case like x= 175.5 when it goes from 0:0 and define a "side": "front", "back" in the .json per pattern in the export, just fix the positioning, it's really bad, just make it consistent and better. This is hard but please try your best

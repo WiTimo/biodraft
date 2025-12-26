@@ -1,5 +1,10 @@
 import { useCanvasState } from '../state/CanvasState';
 import { normalizeSegment, segmentsEqual } from '../state/utils';
+import type { Segment, SegmentPortion } from '../state/types';
+
+function seamPartToSegment(part: Segment | SegmentPortion): Segment {
+  return Array.isArray(part) ? part : part.segment;
+}
 import { importFromJson, exportToJson } from '../util/importExport';
 import ZoomControls from './ZoomControls';
 
@@ -109,10 +114,10 @@ export function Toolbar() {
                 const target = normalizeSegment(selectedSeg as any);
                 for (const s of seams) {
                   const [a, b] = s;
-                  const na = normalizeSegment(a as any);
-                  const nb = normalizeSegment(b as any);
-                  if (segmentsEqual(na as any, target as any) || segmentsEqual(nb as any, target as any)) {
-                    state.removeSeam(s[0], s[1]);
+                  const na = normalizeSegment(seamPartToSegment(a));
+                  const nb = normalizeSegment(seamPartToSegment(b));
+                  if (segmentsEqual(na, target as any) || segmentsEqual(nb, target as any)) {
+                    state.removeSeam(seamPartToSegment(a), seamPartToSegment(b));
                     state.setSeamSelection([]);
                     state.setSelectedSeamSegment(null);
                     return;

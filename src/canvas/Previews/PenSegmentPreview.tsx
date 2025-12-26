@@ -1,6 +1,6 @@
 import { Shape, Circle } from 'react-konva';
 import { useCanvasState } from '../state/CanvasState';
-import { useMemo } from 'react';
+ 
 
 export function PenSegmentPreview() {
   const currentPathId = useCanvasState(s => s.currentPathId);
@@ -8,10 +8,6 @@ export function PenSegmentPreview() {
   const mouse = useCanvasState(s => s.mousePosition);
   const zoom = useCanvasState(s => s.zoom);
   const snapGuides = useCanvasState(s => s.snapGuides);
-
-  const allPoints = useMemo(() => {
-    return paths.flatMap(p => p.points);
-  }, [paths]);
 
   if (!mouse || !currentPathId) return null;
 

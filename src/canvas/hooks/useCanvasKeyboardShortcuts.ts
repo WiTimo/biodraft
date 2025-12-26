@@ -1,5 +1,10 @@
 import { useEffect } from 'react';
 import { useCanvasState } from '../state/CanvasState';
+import type { Segment, SegmentPortion } from '../state/types';
+
+function seamPartToSegment(part: Segment | SegmentPortion): Segment {
+  return Array.isArray(part) ? part : part.segment;
+}
 
 interface KeyboardShortcutOptions {
   setIsSpacePressed: (value: boolean) => void;
@@ -71,14 +76,17 @@ export function useCanvasKeyboardShortcuts({
           const selectedSegment = state.selectedSeamSegment;
           if (selectedSegment) {
             const seams = state.present.seams;
-            const seamPair = seams.find(([segA, segB]) => {
+            const seamPair = seams.find(([partA, partB]) => {
+              const segA = seamPartToSegment(partA);
+              const segB = seamPartToSegment(partB);
               const isFirstMatch = segA[0] === selectedSegment[0] && segA[1] === selectedSegment[1];
               const isSecondMatch = segB[0] === selectedSegment[0] && segB[1] === selectedSegment[1];
               return isFirstMatch || isSecondMatch;
             });
 
             if (seamPair) {
-              state.removeSeam(seamPair[0], seamPair[1]);
+              const [partA, partB] = seamPair;
+              state.removeSeam(seamPartToSegment(partA), seamPartToSegment(partB));
               state.setSelectedSeamSegment(null);
             }
             return;

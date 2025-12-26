@@ -1,6 +1,6 @@
 import { Shape } from 'react-konva';
 import useImage from 'use-image';
-import type { PathTexture } from '../state/CanvasState';
+import type { PathTexture } from '../state/types';
 
 export function LinePath({
   points,

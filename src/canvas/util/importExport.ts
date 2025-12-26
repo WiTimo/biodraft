@@ -1,8 +1,51 @@
 import { useCanvasState } from '../state/CanvasState';
-import type { Path, Point } from '../state/types';
+import type { BackgroundImage, Path, Point, Segment, SegmentPortion } from '../state/types';
 
 // Tolerance for considering two points as overlapping (in pixels)
 const POINT_OVERLAP_TOLERANCE = 5;
+
+// Canvas split line between front/back drawing areas.
+// We keep editor behavior as-is (it already uses x=700 as a visual divider),
+// but export normalizes coordinates so each side has a consistent local origin.
+const FRONT_BACK_SPLIT_X = 700;
+
+const FRONT_IMAGE_ID = 'static-man';
+const BACK_IMAGE_ID = 'static-man-back';
+
+type PatternSide = 'front' | 'back';
+
+function inferPatternSideFromPath(path: Path): PatternSide {
+  if (path.points.length === 0) return 'front';
+
+  const meanX = path.points.reduce((sum, p) => sum + p.x, 0) / path.points.length;
+  return meanX < FRONT_BACK_SPLIT_X ? 'front' : 'back';
+}
+
+function seamPartToSegment(part: Segment | SegmentPortion): Segment {
+  return Array.isArray(part) ? part : part.segment;
+}
+
+function getBackgroundCenter(backgroundImages: BackgroundImage[], id: string): { x: number; y: number } | null {
+  const img = backgroundImages.find((b) => b.id === id);
+  if (!img) return null;
+  if (typeof img.nativeWidth !== 'number' || typeof img.nativeHeight !== 'number') return null;
+  return {
+    x: img.x + (img.nativeWidth * img.scaleX) / 2,
+    y: img.y + (img.nativeHeight * img.scaleY) / 2,
+  };
+}
+
+function getSideOrigin(
+  side: PatternSide,
+  opts: { manImageCenters: Record<string, { x: number; y: number }>; backgroundImages: BackgroundImage[] }
+): { x: number; y: number } {
+  const id = side === 'front' ? FRONT_IMAGE_ID : BACK_IMAGE_ID;
+  const center = opts.manImageCenters[id] ?? getBackgroundCenter(opts.backgroundImages, id);
+  if (center) return center;
+
+  // Fallback to previous behavior (back normalized by split line; front unchanged)
+  return { x: side === 'back' ? FRONT_BACK_SPLIT_X : 0, y: 0 };
+}
 
 interface PointWithPath {
   point: Point;
@@ -112,7 +155,9 @@ export function cleanupEmptyPaths() {
 }
 
 export function exportToJson() {
-  const { paths, seams } = useCanvasState.getState().present;
+  const state = useCanvasState.getState();
+  const { paths, seams, backgroundImages } = state.present;
+  const { manImageCenters } = state;
 
   // Filter out empty paths (paths with no points)
   const validPaths = paths.filter(path => path.points.length > 0);
@@ -133,9 +178,13 @@ export function exportToJson() {
   });
 
   // Filter out orphaned seams (seams that reference non-existent points)
-  const validSeams = seams.filter(([[p1, p2], [p3, p4]]) => {
-    return validPointIds.has(p1) && validPointIds.has(p2) && 
-           validPointIds.has(p3) && validPointIds.has(p4);
+  const validSeams = seams.filter((seam) => {
+    const [partA, partB] = seam;
+    const segA = seamPartToSegment(partA);
+    const segB = seamPartToSegment(partB);
+    const [p1, p2] = segA;
+    const [p3, p4] = segB;
+    return validPointIds.has(p1) && validPointIds.has(p2) && validPointIds.has(p3) && validPointIds.has(p4);
   });
   
   if (validSeams.length !== seams.length) {
@@ -154,14 +203,17 @@ export function exportToJson() {
   });
 
   const exportData = validPaths.map((path) => {
+    const side = inferPatternSideFromPath(path);
+    const origin = getSideOrigin(side, { manImageCenters, backgroundImages });
+
     const exportedPoints = path.points.map((p, pointIndex) => {
       const key = `${path.id}-${pointIndex}`;
       const sharedGroup = sharedPointMap.get(key);
       
       return {
         id: p.id,
-        x: p.x,
-        y: p.y,
+        x: p.x - origin.x,
+        y: p.y - origin.y,
         handleIn: { dx: p.handleIn.dx, dy: p.handleIn.dy },
         handleOut: { dx: p.handleOut.dx, dy: p.handleOut.dy },
         // include optional seam allowance in mm for edge from this point to next
@@ -176,6 +228,7 @@ export function exportToJson() {
 
     return {
       id: path.id,
+      side,
       points: exportedPoints,
       closed: path.closed,
       texture: path.texture
@@ -183,8 +236,8 @@ export function exportToJson() {
             src: path.texture.src,
             scaleX: path.texture.scaleX ?? 1,
             scaleY: path.texture.scaleY ?? 1,
-            offsetX: path.texture.offsetX ?? 0,
-            offsetY: path.texture.offsetY ?? 0,
+            offsetX: (path.texture.offsetX ?? 0) - origin.x,
+            offsetY: (path.texture.offsetY ?? 0) - origin.y,
             rotation: path.texture.rotation ?? 0,
             repeat: path.texture.repeat ?? 'repeat',
           }
@@ -213,13 +266,21 @@ export function importFromJson(file: File) {
     const parsed = JSON.parse(reader.result as string);
     if (!parsed.patterns) return;
 
-    const newPaths = parsed.patterns.map((pattern: any) => ({
+    const state = useCanvasState.getState();
+    const { backgroundImages } = state.present;
+    const { manImageCenters } = state;
+
+    const newPaths = parsed.patterns.map((pattern: any) => {
+      const side = pattern.side as PatternSide | undefined;
+      const origin = getSideOrigin(side === 'back' ? 'back' : 'front', { manImageCenters, backgroundImages });
+
+      return {
       id: pattern.id,
       closed: pattern.closed,
       points: pattern.points.map((p: any) => ({
         id: p.id,
-        x: p.x,
-        y: p.y,
+          x: p.x + origin.x,
+          y: p.y + origin.y,
         handleIn: { dx: p.handleIn.dx, dy: p.handleIn.dy },
         handleOut: { dx: p.handleOut.dx, dy: p.handleOut.dy },
         seamRespectMm: typeof p.seamRespectMm === 'number' ? p.seamRespectMm : undefined,
@@ -229,13 +290,14 @@ export function importFromJson(file: File) {
             src: pattern.texture.src,
             scaleX: pattern.texture.scaleX ?? 1,
             scaleY: pattern.texture.scaleY ?? 1,
-            offsetX: pattern.texture.offsetX ?? 0,
-            offsetY: pattern.texture.offsetY ?? 0,
+              offsetX: (pattern.texture.offsetX ?? 0) + origin.x,
+              offsetY: (pattern.texture.offsetY ?? 0) + origin.y,
             rotation: pattern.texture.rotation ?? 0,
             repeat: pattern.texture.repeat ?? 'repeat',
           }
         : null,
-    }));
+      };
+    });
 
     const parsedSeams = (parsed.seams || []) as [[string, string], [string, string]][];
 

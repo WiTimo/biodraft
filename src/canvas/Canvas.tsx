@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import Konva from 'konva';
 
 import { useCanvasState } from './state/CanvasState';
@@ -10,19 +10,26 @@ import SelectionToolbarOverlay from './Layers/SelectionToolbarOverlay';
 import { useStaticManImages } from './hooks/useStaticManImages';
 import { useCanvasKeyboardShortcuts } from './hooks/useCanvasKeyboardShortcuts';
 import { useSplitResize } from './hooks/useSplitResize';
+import { RulersOverlay } from './UI/RulersOverlay';
+
+const RULER_SIZE = 24;
 
 Konva.showWarnings = false;
 
 export function Canvas() {
   const stageRef = useRef<Konva.Stage>(null);
+  const viewportRef = useRef<HTMLDivElement | null>(null);
   const [isSpacePressed, setIsSpacePressed] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
+  const [viewportSize, setViewportSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
 
   const threeDEnabled = useCanvasState((state) => state.threeDEnabled);
   const toggle3D = useCanvasState((state) => state.toggle3D);
   const splitWidth = useCanvasState((state) => state.splitWidth);
   const setSplitWidth = useCanvasState((state) => state.setSplitWidth);
   const setIsSimulationMode = useCanvasState((state) => state.setIsSimulationMode);
+  const zoom = useCanvasState((state) => state.zoom);
+  const offset = useCanvasState((state) => state.offset);
 
   useStaticManImages();
   useCanvasKeyboardShortcuts({ setIsSpacePressed, isPanning, setIsPanning });
@@ -35,6 +42,25 @@ export function Canvas() {
     borderTopLeftRadius: threeDEnabled ? '1rem' : 0,
     borderBottomLeftRadius: threeDEnabled ? '1rem' : 0,
   } as const;
+
+  useLayoutEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+
+    const update = () => {
+      const rect = el.getBoundingClientRect();
+      setViewportSize({ width: Math.max(0, Math.floor(rect.width)), height: Math.max(0, Math.floor(rect.height)) });
+    };
+
+    update();
+    const ro = new ResizeObserver(() => update());
+    ro.observe(el);
+    window.addEventListener('resize', update);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', update);
+    };
+  }, [threeDEnabled, splitWidth]);
 
   return (
     <div className="w-full h-full flex">
@@ -60,12 +86,40 @@ export function Canvas() {
 
       <div className="h-full relative overflow-hidden" style={stageContainerStyle}>
         <ImageTransformPanel />
-        <CanvasStage
-          stageRef={stageRef}
-          isSpacePressed={isSpacePressed}
-          isPanning={isPanning}
-          setIsPanning={setIsPanning}
-        />
+
+        <div className="absolute inset-0" style={{ background: '#ffffff' }}>
+          {/* Rulers overlay */}
+          <RulersOverlay
+            width={Math.max(0, viewportSize.width)}
+            height={Math.max(0, viewportSize.height)}
+            zoom={zoom}
+            offset={offset}
+            rulerSize={RULER_SIZE}
+          />
+
+          {/* Stage viewport (space excluding rulers) */}
+          <div
+            ref={viewportRef}
+            style={{
+              position: 'absolute',
+              left: RULER_SIZE,
+              top: RULER_SIZE,
+              right: 0,
+              bottom: 0,
+              overflow: 'hidden',
+            }}
+          >
+            <CanvasStage
+              stageRef={stageRef}
+              isSpacePressed={isSpacePressed}
+              isPanning={isPanning}
+              setIsPanning={setIsPanning}
+              width={viewportSize.width}
+              height={viewportSize.height}
+            />
+          </div>
+        </div>
+
         {/* DOM overlay toolbar for selection transforms */}
         <SelectionToolbarOverlay />
 

@@ -20,7 +20,6 @@ export function SelectionToolbarOverlay() {
   const movePoint = useCanvasState((s) => s.movePoint);
   const moveHandle = useCanvasState((s) => s.moveHandle);
   const saveState = useCanvasState((s) => s.saveState);
-  const setPointSeamRespect = useCanvasState((s: any) => s.setPointSeamRespect);
   // removed setTool usage (Move button removed)
 
   const selectedPoints = useMemo(() => {
