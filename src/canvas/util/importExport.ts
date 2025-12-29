@@ -1,4 +1,5 @@
 import { useCanvasState } from '../state/CanvasState';
+import { evaluateBezier, seamsEqual } from '../state/utils';
 import type { BackgroundImage, Path, Point, Segment, SegmentPortion } from '../state/types';
 
 // Tolerance for considering two points as overlapping (in pixels)
@@ -605,6 +606,16 @@ export function exportToDxf() {
   }
 
   // seams as LINE entities
+  // Build maps for quick lookup of point objects (with handles) and coords
+  const ptObjMap = new Map<string, Point>();
+  const ptMap = new Map<string, {x:number,y:number}>();
+  for (const p of validPaths) {
+    for (const pt of p.points) {
+      ptObjMap.set(pt.id, pt);
+      ptMap.set(pt.id, { x: pt.x, y: pt.y });
+    }
+  }
+
   for (const seam of seams) {
     const [a, b] = seam;
     const segA = seamPartToSegment(a);
@@ -612,24 +623,58 @@ export function exportToDxf() {
     const [p1Id, p2Id] = segA;
     const [p3Id, p4Id] = segB;
 
-    // Try to find point coords in current paths
-    const ptMap = new Map<string, {x:number,y:number}>();
-    for (const p of validPaths) {
-      for (const pt of p.points) ptMap.set(pt.id, { x: pt.x, y: pt.y });
+    // compute exported point for each seam side
+    function computePointForPart(part: typeof a) {
+      // if part is a portion (has .segment and tStart/tEnd)
+      if ((part as any).segment) {
+        const portion = part as SegmentPortion;
+        const [sa, sb] = portion.segment;
+        const pA = ptObjMap.get(sa);
+        const pB = ptObjMap.get(sb);
+        if (!pA || !pB) return null;
+        const t = Math.max(0, Math.min(1, (portion.tStart + portion.tEnd) / 2));
+        // if straight segment (no handles), interpolate linearly
+        const isStraight = (pA.handleOut.dx === 0 && pA.handleOut.dy === 0 && pB.handleIn.dx === 0 && pB.handleIn.dy === 0);
+        if (isStraight) {
+          return { x: pA.x + (pB.x - pA.x) * t, y: pA.y + (pB.y - pA.y) * t };
+        } else {
+          // evaluate cubic bezier at t
+          // import evaluateBezier at top of file
+          return evaluateBezier(pA, pA.handleOut, pB.handleIn, pB, t);
+        }
+      } else {
+        // part is full segment; export midpoint (t=0.5)
+        const [sa, sb] = part as Segment;
+        const pA = ptObjMap.get(sa);
+        const pB = ptObjMap.get(sb);
+        if (!pA || !pB) return null;
+        const t = 0.5;
+        const isStraight = (pA.handleOut.dx === 0 && pA.handleOut.dy === 0 && pB.handleIn.dx === 0 && pB.handleIn.dy === 0);
+        if (isStraight) {
+          return { x: pA.x + (pB.x - pA.x) * t, y: pA.y + (pB.y - pA.y) * t };
+        } else {
+          return evaluateBezier(pA, pA.handleOut, pB.handleIn, pB, t);
+        }
+      }
     }
 
-    const p1 = ptMap.get(p1Id);
-    const p3 = ptMap.get(p3Id);
+    const pa = computePointForPart(a);
+    const pb = computePointForPart(b);
 
-    if (!p1 || !p3) continue; // skip if unresolved
+    if (!pa || !pb) continue;
+
+    // Debug info for exported seams (only in dev)
+    if (process.env.NODE_ENV !== 'production') {
+      console.debug('Exporting seam line between', pa, 'and', pb, 'from parts', a, b);
+    }
 
     push('0'); push('LINE');
     push('8'); push('SEAMS');
-    push('10'); push(String((p1.x * stateScale).toFixed(4)));
-    push('20'); push(String((p1.y * stateScale).toFixed(4)));
+    push('10'); push(String((pa.x * stateScale).toFixed(4)));
+    push('20'); push(String((pa.y * stateScale).toFixed(4)));
     push('30'); push('0');
-    push('11'); push(String((p3.x * stateScale).toFixed(4)));
-    push('21'); push(String((p3.y * stateScale).toFixed(4)));
+    push('11'); push(String((pb.x * stateScale).toFixed(4)));
+    push('21'); push(String((pb.y * stateScale).toFixed(4)));
     push('31'); push('0');
   }
 
@@ -841,6 +886,12 @@ export function importFromDxf(file: File) {
         // convert to editor units
         seamLines.push({ x1: x1 / stateScale, y1: y1 / stateScale, x2: x2 / stateScale, y2: y2 / stateScale });
       }
+    }
+
+    // Debug: show parsed DXF counts
+    if (process.env.NODE_ENV !== 'production') {
+      console.debug('[DXF import] parsed polylines:', polylines.length, 'seamLines:', seamLines.length, 'stateScale:', stateScale);
+      console.debug('[DXF import] seamLines sample:', seamLines.slice(0, 10));
     }
 
     // Optionally simplify polylines to reduce dense point clouds (RDP), preserving seam anchors
@@ -1132,6 +1183,10 @@ export function importFromDxf(file: File) {
     // Convert polylines and splines into paths
     const newPaths: any[] = [];
 
+    if (process.env.NODE_ENV !== 'production') {
+      console.debug('[DXF import] building paths from polylines; polylines count =', polylines.length);
+    }
+
     for (const poly of polylines) {
       if ((poly as any).spline) {
         const s = (poly as any).spline as { degree:number, ctrlPts:{x:number,y:number}[], knots:number[], weights?: number[], closed?: boolean };
@@ -1244,7 +1299,11 @@ export function importFromDxf(file: File) {
 
     // Build spatial index of points and segments to match seams
     const flatPoints: { id: string; x:number; y:number }[] = [];
-    const segments: { pathId: string; aId: string; bId: string; ax:number; ay:number; bx:number; by:number }[] = [];
+    const segments: { pathId: string; aId: string; bId: string; ax:number; ay:number; bx:number; by:number, aHandleOut?: any, bHandleIn?: any }[] = [];
+
+    if (process.env.NODE_ENV !== 'production') {
+      console.debug('[DXF import] newPaths count:', newPaths.length);
+    }
     for (const p of newPaths) {
       for (let i = 0; i < p.points.length; i++) {
         const pt = p.points[i];
@@ -1253,51 +1312,124 @@ export function importFromDxf(file: File) {
       for (let i = 0; i < p.points.length - 1; i++) {
         const a = p.points[i];
         const b = p.points[i+1];
-        segments.push({ pathId: p.id, aId: a.id, bId: b.id, ax: a.x, ay: a.y, bx: b.x, by: b.y });
+        segments.push({ pathId: p.id, aId: a.id, bId: b.id, ax: a.x, ay: a.y, bx: b.x, by: b.y, aHandleOut: a.handleOut, bHandleIn: b.handleIn });
       }
       if (p.closed && p.points.length > 1) {
         const a = p.points[p.points.length - 1];
         const b = p.points[0];
-        segments.push({ pathId: p.id, aId: a.id, bId: b.id, ax: a.x, ay: a.y, bx: b.x, by: b.y });
+        segments.push({ pathId: p.id, aId: a.id, bId: b.id, ax: a.x, ay: a.y, bx: b.x, by: b.y, aHandleOut: a.handleOut, bHandleIn: b.handleIn });
       }
     }
 
-    function pointToSegmentDistance(px:number,py:number, ax:number,ay:number, bx:number,by:number) {
-      const vx = bx - ax; const vy = by - ay;
-      const wx = px - ax; const wy = py - ay;
-      const c = vx*vx + vy*vy;
-      if (c === 0) return { d: Math.hypot(wx,wy), t: 0 };
-      const t = Math.max(0, Math.min(1, (wx*vx + wy*vy)/c));
-      const projx = ax + t*vx; const projy = ay + t*vy;
-      return { d: Math.hypot(px - projx, py - projy), t };
+    function pointToSegmentDistance(px:number,py:number, seg:any) {
+      // If segment has handle info, treat as cubic bezier, else straight segment
+      const { ax, ay, bx, by, aHandleOut, bHandleIn } = seg;
+      const isCurved = !!(aHandleOut && (aHandleOut.dx !== 0 || aHandleOut.dy !== 0) || bHandleIn && (bHandleIn.dx !== 0 || bHandleIn.dy !== 0));
+      if (!isCurved) {
+        const vx = bx - ax; const vy = by - ay;
+        const wx = px - ax; const wy = py - ay;
+        const c = vx*vx + vy*vy;
+        if (c === 0) return { d: Math.hypot(wx,wy), t: 0 };
+        const t = Math.max(0, Math.min(1, (wx*vx + wy*vy)/c));
+        const projx = ax + t*vx; const projy = ay + t*vy;
+        return { d: Math.hypot(px - projx, py - projy), t };
+      }
+      // Approximate nearest on cubic bezier by sampling then refining
+      const p0 = { x: ax, y: ay };
+      const p1 = { x: ax + aHandleOut.dx, y: ay + aHandleOut.dy };
+      const p2 = { x: bx + bHandleIn.dx, y: by + bHandleIn.dy };
+      const p3 = { x: bx, y: by };
+      let bestT = 0; let bestD = Infinity;
+      const samples = 50;
+      for (let i = 0; i <= samples; i++) {
+        const t = i / samples;
+        const { x, y } = evaluateBezier(p0, aHandleOut, bHandleIn, p3, t);
+        const d = Math.hypot(px - x, py - y);
+        if (d < bestD) { bestD = d; bestT = t; }
+      }
+      // refine around bestT
+      let lo = Math.max(0, bestT - 1 / samples);
+      let hi = Math.min(1, bestT + 1 / samples);
+      for (let r = 0; r < 6; r++) {
+        const steps = 20;
+        let improved = false;
+        for (let i = 0; i <= steps; i++) {
+          const t = lo + (i/steps) * (hi - lo);
+          const { x, y } = evaluateBezier(p0, aHandleOut, bHandleIn, p3, t);
+          const d = Math.hypot(px - x, py - y);
+          if (d < bestD) { bestD = d; bestT = t; improved = true; }
+        }
+        if (!improved) break;
+        lo = Math.max(0, bestT - (hi - lo)/4);
+        hi = Math.min(1, bestT + (hi - lo)/4);
+      }
+      const { x: bxp, y: byp } = evaluateBezier(p0, aHandleOut, bHandleIn, p3, bestT);
+      return { d: Math.hypot(px - bxp, py - byp), t: bestT };
     }
 
     const newSeams: [[string,string],[string,string]][] = [];
-    const seamTol = useCanvasState.getState().dxfSeamMatchTolerance ?? 10;
 
-    for (const s of seamLines) {
-      // find nearest segment for each endpoint
-      let bestA: null | { seg: typeof segments[0]; d:number } = null;
+    if (process.env.NODE_ENV !== 'production') console.debug('[DXF import] starting seam-line to segment matching. segments count =', segments.length, 'seamLines =', seamLines.length);
+
+    for (let si = 0; si < seamLines.length; si++) {
+      const s = seamLines[si];
+      // find nearest segment for each endpoint (store distance and param t)
+      let bestA: null | { seg: typeof segments[0]; d:number; t:number } = null;
       for (const seg of segments) {
-        const res = pointToSegmentDistance(s.x1, s.y1, seg.ax, seg.ay, seg.bx, seg.by);
-        if (res.d < (bestA?.d ?? Infinity)) bestA = { seg, d: res.d };
+        const res = pointToSegmentDistance(s.x1, s.y1, seg);
+        if (res.d < (bestA?.d ?? Infinity)) bestA = { seg, d: res.d, t: res.t };
       }
-      let bestB: null | { seg: typeof segments[0]; d:number } = null;
+      let bestB: null | { seg: typeof segments[0]; d:number; t:number } = null;
       for (const seg of segments) {
-        const res = pointToSegmentDistance(s.x2, s.y2, seg.ax, seg.ay, seg.bx, seg.by);
-        if (res.d < (bestB?.d ?? Infinity)) bestB = { seg, d: res.d };
+        const res = pointToSegmentDistance(s.x2, s.y2, seg);
+        if (res.d < (bestB?.d ?? Infinity)) bestB = { seg, d: res.d, t: res.t };
       }
 
-      if (bestA && bestB && bestA.d <= seamTol && bestB.d <= seamTol) {
-        newSeams.push([[bestA.seg.aId, bestA.seg.bId], [bestB.seg.aId, bestB.seg.bId]]);
+      if (process.env.NODE_ENV !== 'production') {
+        console.debug(`[DXF import] seam[${si}] bestA.d=${bestA?.d ?? null} t=${bestA?.t ?? null} seg=${bestA?.seg?.pathId ?? null}`, bestA?.seg);
+        console.debug(`[DXF import] seam[${si}] bestB.d=${bestB?.d ?? null} t=${bestB?.t ?? null} seg=${bestB?.seg?.pathId ?? null}`, bestB?.seg);
+      }
+
+      if (bestA && bestB) {
+        // No strict distance cutoff: always match to nearest segments and record portion if projected to interior
+        const EPS_T = 1e-6;
+        const makePart = (best: { seg: typeof segments[0]; d:number; t:number }) => {
+          if (best.t > EPS_T && best.t < 1 - EPS_T) {
+            return { segment: [best.seg.aId, best.seg.bId] as Segment, tStart: best.t, tEnd: best.t } as SegmentPortion;
+          }
+          return [best.seg.aId, best.seg.bId] as Segment;
+        };
+
+        const partA = makePart(bestA);
+        const partB = makePart(bestB);
+        if (process.env.NODE_ENV !== 'production') {
+          console.debug('Imported seam endpoints matched to', partA, partB, 'dists', bestA.d, bestB.d, 'ts', bestA.t, bestB.t);
+        }
+        // Prevent creating seams that pair a segment with itself (degenerate)
+        const segA = (partA as any).segment || partA;
+        const segB = (partB as any).segment || partB;
+        const sameSegment = segA[0] === segB[0] && segA[1] === segB[1];
+        if (!sameSegment) {
+          newSeams.push([partA as any, partB as any]);
+        }
+      } else {
+        if (process.env.NODE_ENV !== 'production') console.debug(`[DXF import] seam[${si}] could not find both nearest segments (bestA=${!!bestA}, bestB=${!!bestB})`);
       }
     }
-    // Commit to state
+    // Commit to state (deduplicate seams against existing ones)
+    // import seamsEqual helper from utils
+    const existingSeams = useCanvasState.getState().present.seams;
+    const mergedSeams: any[] = [...existingSeams];
+    for (const ns of newSeams) {
+      const exists = mergedSeams.some((es) => seamsEqual(es, ns));
+      if (!exists) mergedSeams.push(ns);
+    }
+
     useCanvasState.setState((prev) => ({
       present: {
         ...prev.present,
         paths: [...prev.present.paths, ...newPaths],
-        seams: [...prev.present.seams, ...newSeams],
+        seams: mergedSeams,
       },
     }));
   };

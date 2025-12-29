@@ -45,7 +45,6 @@ export const HandleCircle = React.memo(function HandleCircle({
         points={[pointX, pointY, pos.x, pos.y]}
         stroke="gray"
         strokeWidth={adjustedStrokeWidth}
-        dash={[4, 4]}
         listening={false}
       />
       <>

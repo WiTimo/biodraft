@@ -492,16 +492,15 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
             height={Math.abs(selectionRect.height)}
             stroke="blue"
             strokeWidth={1 / zoom}
-            dash={[4, 4]}
           />
         )}
 
         {snapGuides.x !== null && (
-          <Line points={[snapGuides.x, -10000, snapGuides.x, 10000]} stroke="deepskyblue" strokeWidth={1 / zoom} dash={[4, 4]} listening={false} />
+          <Line points={[snapGuides.x, -10000, snapGuides.x, 10000]} stroke="deepskyblue" strokeWidth={1 / zoom} listening={false} />
         )}
 
         {snapGuides.y !== null && (
-          <Line points={[-10000, snapGuides.y, 10000, snapGuides.y]} stroke="deepskyblue" strokeWidth={1 / zoom} dash={[4, 4]} listening={false} />
+          <Line points={[-10000, snapGuides.y, 10000, snapGuides.y]} stroke="deepskyblue" strokeWidth={1 / zoom} listening={false} />
         )}
 
         <SelectionTransformer isVisible={isTransformVisible} />

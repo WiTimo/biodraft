@@ -77,7 +77,6 @@ export function SeamLayer() {
             points={renderCurvePortion(p0_1, p1_1, portion1.tStart, portion1.tEnd)}
             stroke={"orange"}
             strokeWidth={2 / useCanvasState.getState().zoom}
-            dash={[10, 5]}
             listening={false}
           />,
           <Line
@@ -85,7 +84,6 @@ export function SeamLayer() {
             points={renderCurvePortion(p0_2, p1_2, portion2.tStart, portion2.tEnd)}
             stroke={"orange"}
             strokeWidth={2 / useCanvasState.getState().zoom}
-            dash={[10, 5]}
             listening={false}
           />,
           // Connection line from start to start (clickable)
@@ -183,7 +181,6 @@ export function SeamLayer() {
             points={getLine(pA1, pA2)}
             stroke={"orange"}
             strokeWidth={2 / useCanvasState.getState().zoom}
-            dash={[10, 5]}
             listening={true}
             onClick={() => {
               const state = useCanvasState.getState();
@@ -215,7 +212,6 @@ export function SeamLayer() {
             points={getLine(pB1, pB2)}
             stroke={"orange"}
             strokeWidth={2 / useCanvasState.getState().zoom}
-            dash={[10, 5]}
             listening={true}
             onClick={() => {
               const state = useCanvasState.getState();
@@ -270,7 +266,6 @@ export function SeamLayer() {
         points={previewPoints}
         stroke={color}
         strokeWidth={3 / useCanvasState.getState().zoom}
-        dash={[8, 4]}
         listening={false}
       />
     );

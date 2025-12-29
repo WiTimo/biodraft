@@ -1,4 +1,4 @@
-import { Line } from 'react-konva';
+import { Line, Group } from 'react-konva';
 
 import { LinePath } from '../Paths/LinePath';
 import { useCanvasState } from '../state/CanvasState';
@@ -165,7 +165,7 @@ export function PathsLayer() {
     <>
       {/* Render all actual paths visually */}
       {paths.map((path) => (
-        <div key={path.id}>
+        <Group key={path.id}>
           <LinePath
             key={`linepath-${path.id}`}
             points={path.points}
@@ -221,7 +221,7 @@ export function PathsLayer() {
               />
             );
           })()}
-        </div>
+        </Group>
       ))}
 
       {paths.flatMap((path) => {
@@ -427,7 +427,6 @@ export function PathsLayer() {
             points={previewPoints}
             stroke={pendingSeamPortion1 ? "rgba(0,150,255,0.8)" : "rgba(255,150,0,0.8)"}
             strokeWidth={4 / zoom}
-            dash={[10, 5]}
             listening={false}
           />
         );

@@ -303,7 +303,6 @@ export function SelectionTransformer({ isVisible }: { isVisible: boolean }) {
         closed
         stroke="deepskyblue"
         strokeWidth={1.5 / zoom}
-        dash={[4, 4]}
         listening={false}
       />
 

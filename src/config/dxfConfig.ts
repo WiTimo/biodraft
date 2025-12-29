@@ -14,5 +14,5 @@ export const DXF_CONFIG = {
   dxfSimplifyTolerance: 2,
 
   // Seam match tolerance in editor units
-  dxfSeamMatchTolerance: 10,
+  dxfSeamMatchTolerance: 1000000,
 };

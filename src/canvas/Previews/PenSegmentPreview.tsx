@@ -50,7 +50,6 @@ export function PenSegmentPreview() {
         }}
         stroke="rgba(0,0,0,0.5)"
         strokeWidth={strokeWidth}
-        dash={[2, 2]}
         listening={false}
       />
 
