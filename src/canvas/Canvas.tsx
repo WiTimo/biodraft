@@ -30,9 +30,6 @@ export function Canvas() {
   const setIsSimulationMode = useCanvasState((state) => state.setIsSimulationMode);
   const zoom = useCanvasState((state) => state.zoom);
   const offset = useCanvasState((state) => state.offset);
-  const setZoom = useCanvasState((s) => s.setZoom);
-  const setOffset = useCanvasState((s) => s.setOffset);
-  const manImageCenters = useCanvasState((s) => s.manImageCenters);
 
   useStaticManImages();
   useCanvasKeyboardShortcuts({ setIsSpacePressed, isPanning, setIsPanning });
