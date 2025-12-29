@@ -1,5 +1,6 @@
 import { Shape } from 'react-konva';
 import useImage from 'use-image';
+import { useCanvasState } from '../state/CanvasState';
 import type { PathTexture } from '../state/types';
 
 export function LinePath({
@@ -16,6 +17,7 @@ export function LinePath({
   if (points.length < 2) return null;
 
   const [img] = useImage(texture?.src || '', 'anonymous');
+  const zoom = useCanvasState(s => s.zoom);
 
   return (
     <Shape
@@ -58,7 +60,7 @@ export function LinePath({
         }
       }}
       stroke="black"
-      strokeWidth={2}
+      strokeWidth={2 / zoom}
       // Pattern fill props (Konva handles these after sceneFunc via fillStrokeShape)
       fillPatternImage={img || undefined}
       fillPatternRepeat={texture?.repeat ?? 'repeat'}

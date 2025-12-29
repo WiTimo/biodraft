@@ -61,7 +61,7 @@ export function PenSegmentPreview() {
           y={snappedY}
           radius={6 / zoom}
           stroke="deepskyblue"
-          strokeWidth={1.5}
+          strokeWidth={1.5 / zoom}
           listening={false}
         />
       )}

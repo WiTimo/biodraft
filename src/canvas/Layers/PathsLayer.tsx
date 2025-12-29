@@ -372,7 +372,7 @@ export function PathsLayer() {
           <Line
             points={previewPoints}
             stroke={pendingSeamPortion1 ? "rgba(0,150,255,0.8)" : "rgba(255,150,0,0.8)"}
-            strokeWidth={4}
+            strokeWidth={4 / zoom}
             dash={[10, 5]}
             listening={false}
           />

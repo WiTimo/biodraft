@@ -12,8 +12,8 @@ export default function ZoomControls({ zoom, onZoomChange, onReset }: ZoomContro
             <label className="text-sm font-medium">Zoom:</label>
             <input
                 type="range"
-                min={0.2}
-                max={3}
+                min={0.05}
+                max={20}
                 step={0.01}
                 value={zoom}
                 onChange={(e) => onZoomChange(parseFloat(e.target.value))}

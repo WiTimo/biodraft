@@ -10,9 +10,9 @@ interface PointCircleProps {
   isOverlapping: boolean;
 }
 
-const baseRadius = 6;
-const minRadius = 2;
-const maxRadius = 10;
+const SCREEN_BASE_RADIUS = 6; // screen pixels
+const SCREEN_MIN_RADIUS = 2; // screen px min
+const SCREEN_MAX_RADIUS = 10; // screen px max
 
 
 export const PointCircle = React.memo(function PointCircle({ x, y, id, isOverlapping }: PointCircleProps) {
@@ -23,18 +23,23 @@ export const PointCircle = React.memo(function PointCircle({ x, y, id, isOverlap
   const shapeRef = useRef<any>(null);
   const zoom = useCanvasState((s) => s.zoom);
 
+  // Keep point visuals constant in screen pixels by computing world radius from screen px
+  const screenRadius = Math.min(SCREEN_MAX_RADIUS, Math.max(SCREEN_MIN_RADIUS, SCREEN_BASE_RADIUS));
+  const worldRadius = screenRadius / zoom;
+  const screenStroke = isOverlapping ? 2 : 1;
+
 
   return (
     <Circle
       id={id}
-      radius={Math.min(maxRadius, Math.max(minRadius, baseRadius / zoom))}
+      radius={worldRadius}
       ref={shapeRef}
       x={x}
       y={y}
       fill={isOverlapping ? '#9C27B0' : isSelected ? '#00C853' : '#FF5722'}
       stroke={isOverlapping ? '#7B1FA2' : 'black'}
-      strokeWidth={isOverlapping ? 2 : 1}
-      draggable={currentTool === 'pen' || currentTool === 'select'}
+      strokeWidth={screenStroke / zoom}
+      hitStrokeWidth={12 / zoom}      draggable={currentTool === 'pen' || currentTool === 'select'}
       name="point"
       perfectDrawEnabled={false}
       onDragStart={() => {

@@ -279,7 +279,7 @@ export function SelectionTransformer({ isVisible }: { isVisible: boolean }) {
         points={[...cornerPoints, cornerPoints[0]].flatMap((p) => [p.x, p.y])}
         closed
         stroke="deepskyblue"
-        strokeWidth={1.5}
+        strokeWidth={1.5 / zoom}
         dash={[4, 4]}
         listening={false}
       />

@@ -48,10 +48,10 @@ export const HandleCircle = React.memo(function HandleCircle({
   <Circle
     x={pos.x}
     y={pos.y}
-    radius={adjustedRadius * 2.5} // ⬅️ increase size of hit zone
+    radius={adjustedRadius * 2.5} // ⬅️ increase size of hit zone (world units)
     fill="transparent"
     stroke="transparent"
-    hitStrokeWidth={20}
+    hitStrokeWidth={20 / zoom}
     draggable={currentTool === 'select' || currentTool === 'pen'}
     name="handle"
     onDragStart={(e) => {

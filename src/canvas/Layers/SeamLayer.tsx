@@ -76,7 +76,7 @@ export function SeamLayer() {
             key={`seam-portion-${i}-1`}
             points={renderCurvePortion(p0_1, p1_1, portion1.tStart, portion1.tEnd)}
             stroke={"orange"}
-            strokeWidth={2}
+            strokeWidth={2 / useCanvasState.getState().zoom}
             dash={[10, 5]}
             listening={false}
           />,
@@ -84,7 +84,7 @@ export function SeamLayer() {
             key={`seam-portion-${i}-2`}
             points={renderCurvePortion(p0_2, p1_2, portion2.tStart, portion2.tEnd)}
             stroke={"orange"}
-            strokeWidth={2}
+            strokeWidth={2 / useCanvasState.getState().zoom}
             dash={[10, 5]}
             listening={false}
           />,
@@ -93,7 +93,7 @@ export function SeamLayer() {
             key={`seam-connection-${i}-start`}
             points={[start1.x, start1.y, start2.x, start2.y]}
             stroke={"rgba(255, 165, 0, 0.6)"}
-            strokeWidth={3}
+            strokeWidth={3 / useCanvasState.getState().zoom}
             listening={true}
             onClick={() => {
               const state = useCanvasState.getState();
@@ -111,10 +111,10 @@ export function SeamLayer() {
               const line = e.target as unknown as KonvaLine;
               if (useCanvasState.getState().seamDeleteMode) {
                 line.stroke("rgba(230, 67, 67, 1)");
-                line.strokeWidth(5);
+                line.strokeWidth(5 / useCanvasState.getState().zoom);
               } else {
                 line.stroke("rgba(255, 100, 0, 1)");
-                line.strokeWidth(4);
+                line.strokeWidth(4 / useCanvasState.getState().zoom);
               }
               const stage = e.target.getStage();
               if (stage) stage.container().style.cursor = 'pointer';
@@ -122,7 +122,7 @@ export function SeamLayer() {
             onMouseLeave={(e) => {
               const line = e.target as unknown as KonvaLine;
               line.stroke(useCanvasState.getState().seamDeleteMode ? "rgba(255, 165, 0, 0.6)" : "rgba(255, 165, 0, 0.6)");
-              line.strokeWidth(3);
+              line.strokeWidth(3 / useCanvasState.getState().zoom);
               const stage = e.target.getStage();
               if (stage) stage.container().style.cursor = 'default';
             }}
@@ -132,7 +132,7 @@ export function SeamLayer() {
             key={`seam-connection-${i}-end`}
             points={[end1.x, end1.y, end2.x, end2.y]}
             stroke={"rgba(255, 165, 0, 0.6)"}
-            strokeWidth={3}
+            strokeWidth={3 / useCanvasState.getState().zoom}
             listening={true}
             onClick={() => {
               const state = useCanvasState.getState();
@@ -150,10 +150,10 @@ export function SeamLayer() {
               const line = e.target as unknown as KonvaLine;
               if (useCanvasState.getState().seamDeleteMode) {
                 line.stroke("rgba(230, 67, 67, 1)");
-                line.strokeWidth(5);
+                line.strokeWidth(5 / useCanvasState.getState().zoom);
               } else {
                 line.stroke("rgba(255, 100, 0, 1)");
-                line.strokeWidth(4);
+                line.strokeWidth(4 / useCanvasState.getState().zoom);
               }
               const stage = e.target.getStage();
               if (stage) stage.container().style.cursor = 'pointer';
@@ -161,7 +161,7 @@ export function SeamLayer() {
             onMouseLeave={(e) => {
               const line = e.target as unknown as KonvaLine;
               line.stroke(useCanvasState.getState().seamDeleteMode ? "rgba(255, 165, 0, 0.6)" : "rgba(255, 165, 0, 0.6)");
-              line.strokeWidth(3);
+              line.strokeWidth(3 / useCanvasState.getState().zoom);
               const stage = e.target.getStage();
               if (stage) stage.container().style.cursor = 'default';
             }}
@@ -182,7 +182,7 @@ export function SeamLayer() {
             key={`seam-${i}-1`}
             points={getLine(pA1, pA2)}
             stroke={"orange"}
-            strokeWidth={2}
+            strokeWidth={2 / useCanvasState.getState().zoom}
             dash={[10, 5]}
             listening={true}
             onClick={() => {
@@ -198,14 +198,14 @@ export function SeamLayer() {
             onMouseEnter={(e) => {
               const line = e.target as unknown as KonvaLine;
               line.stroke(useCanvasState.getState().seamDeleteMode ? "rgba(230, 67, 67, 1)" : "rgba(255, 140, 0, 1)");
-              line.strokeWidth(useCanvasState.getState().seamDeleteMode ? 4 : 3);
+              line.strokeWidth(useCanvasState.getState().seamDeleteMode ? 4 / useCanvasState.getState().zoom : 3 / useCanvasState.getState().zoom);
               const stage = e.target.getStage();
               if (stage) stage.container().style.cursor = 'pointer';
             }}
             onMouseLeave={(e) => {
               const line = e.target as unknown as KonvaLine;
               line.stroke("orange");
-              line.strokeWidth(2);
+              line.strokeWidth(2 / useCanvasState.getState().zoom);
               const stage = e.target.getStage();
               if (stage) stage.container().style.cursor = 'default';
             }}
@@ -214,7 +214,7 @@ export function SeamLayer() {
             key={`seam-${i}-2`}
             points={getLine(pB1, pB2)}
             stroke={"orange"}
-            strokeWidth={2}
+            strokeWidth={2 / useCanvasState.getState().zoom}
             dash={[10, 5]}
             listening={true}
             onClick={() => {
@@ -230,14 +230,14 @@ export function SeamLayer() {
             onMouseEnter={(e) => {
               const line = e.target as unknown as KonvaLine;
               line.stroke(useCanvasState.getState().seamDeleteMode ? "rgba(230, 67, 67, 1)" : "rgba(255, 140, 0, 1)");
-              line.strokeWidth(useCanvasState.getState().seamDeleteMode ? 4 : 3);
+              line.strokeWidth(useCanvasState.getState().seamDeleteMode ? 4 / useCanvasState.getState().zoom : 3 / useCanvasState.getState().zoom);
               const stage = e.target.getStage();
               if (stage) stage.container().style.cursor = 'pointer';
             }}
             onMouseLeave={(e) => {
               const line = e.target as unknown as KonvaLine;
               line.stroke("orange");
-              line.strokeWidth(2);
+              line.strokeWidth(2 / useCanvasState.getState().zoom);
               const stage = e.target.getStage();
               if (stage) stage.container().style.cursor = 'default';
             }}
@@ -269,7 +269,7 @@ export function SeamLayer() {
         key={key}
         points={previewPoints}
         stroke={color}
-        strokeWidth={3}
+        strokeWidth={3 / useCanvasState.getState().zoom}
         dash={[8, 4]}
         listening={false}
       />

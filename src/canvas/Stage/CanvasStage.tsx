@@ -411,11 +411,19 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
 
       const state = useCanvasState.getState();
       const { zoom: currentZoom, offset: currentOffset } = state;
-      const sensitivity = 0.0025;
-      const minZoom = 0.1;
-      const maxZoom = 5;
+      // Use multiplicative (exponential) zooming for smoother behavior at very low/high zoom levels
+      const sensitivity = 0.001; // smaller sensitivity for finer control
+      const minZoom = 0.05;
+      const maxZoom = 20;
       const delta = nativeEvent.deltaY;
-      const nextZoom = Math.min(maxZoom, Math.max(minZoom, currentZoom - delta * sensitivity));
+
+      // Convert wheel delta into a multiplicative factor (exp-based) which scales the current zoom.
+      // This avoids huge additive jumps when current zoom is very small.
+      const rawFactor = Math.exp(-delta * sensitivity);
+      const minFactor = 0.6; // clamp factor to avoid extreme jumps from errant large deltas
+      const maxFactor = 1.5;
+      const factor = Math.max(minFactor, Math.min(maxFactor, rawFactor));
+      const nextZoom = Math.min(maxZoom, Math.max(minZoom, currentZoom * factor));
 
       const mouse = {
         x: (pointer.x - currentOffset.x) / currentZoom,
@@ -483,17 +491,17 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
             width={Math.abs(selectionRect.width)}
             height={Math.abs(selectionRect.height)}
             stroke="blue"
-            strokeWidth={1}
+            strokeWidth={1 / zoom}
             dash={[4, 4]}
           />
         )}
 
         {snapGuides.x !== null && (
-          <Line points={[snapGuides.x, -10000, snapGuides.x, 10000]} stroke="deepskyblue" strokeWidth={1} dash={[4, 4]} listening={false} />
+          <Line points={[snapGuides.x, -10000, snapGuides.x, 10000]} stroke="deepskyblue" strokeWidth={1 / zoom} dash={[4, 4]} listening={false} />
         )}
 
         {snapGuides.y !== null && (
-          <Line points={[-10000, snapGuides.y, 10000, snapGuides.y]} stroke="deepskyblue" strokeWidth={1} dash={[4, 4]} listening={false} />
+          <Line points={[-10000, snapGuides.y, 10000, snapGuides.y]} stroke="deepskyblue" strokeWidth={1 / zoom} dash={[4, 4]} listening={false} />
         )}
 
         <SelectionTransformer isVisible={isTransformVisible} />
