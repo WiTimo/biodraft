@@ -5,6 +5,7 @@ import Konva from 'konva';
 import { BackgroundImage } from '../BackgroundImage/BackgroundImage';
 import { GridLayer } from '../Layers/GridLayer';
 import { PathsLayer } from '../Layers/PathsLayer';
+import { getStep } from '../util/grid';
 import { PointsLayer } from '../Layers/PointsLayer';
 import { SelectionTransformer } from '../Layers/SelectionTransformer';
 import { PenSegmentPreview } from '../Previews/PenSegmentPreview';
@@ -181,10 +182,19 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
           finalX = target.x();
           finalY = target.y();
         } else {
-          // Use snap guides if available
-          const guides = state.snapGuides;
-          finalX = guides.x ?? worldPosition.x;
-          finalY = guides.y ?? worldPosition.y;
+          // If ALT is pressed, snap to the visible grid
+          if (state.isAltPressed) {
+            const basePixelGridSize = 30; // same base size GridLayer uses
+            const rawWorldStep = basePixelGridSize / zoom;
+            const worldStep = getStep(rawWorldStep);
+            finalX = Math.round(worldPosition.x / worldStep) * worldStep;
+            finalY = Math.round(worldPosition.y / worldStep) * worldStep;
+          } else {
+            // Use snap guides if available
+            const guides = state.snapGuides;
+            finalX = guides.x ?? worldPosition.x;
+            finalY = guides.y ?? worldPosition.y;
+          }
         }
 
         const pointId = addPoint(finalX, finalY, true);
@@ -220,6 +230,19 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
 
       if (currentTool === 'pen') {
         const worldPosition = toWorld(pointer);
+        const state = useCanvasState.getState();
+
+        // If ALT is pressed, snap to the visible grid and show a guide
+        if (state.isAltPressed) {
+          const basePixelGridSize = 30;
+          const rawWorldStep = basePixelGridSize / zoom;
+          const worldStep = getStep(rawWorldStep);
+          const snapX = Math.round(worldPosition.x / worldStep) * worldStep;
+          const snapY = Math.round(worldPosition.y / worldStep) * worldStep;
+          setSnapGuides({ x: snapX, y: snapY });
+          return;
+        }
+
         const SNAP_RADIUS = 15 / zoom; // Increased from 10 for easier snapping
         const allPoints = paths.flatMap((path) => path.points);
 
