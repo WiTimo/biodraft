@@ -1,4 +1,4 @@
-import { Group, Line, Rect, Circle, Text } from 'react-konva';
+import { Group, Line, Rect, Circle } from 'react-konva';
 import { useMemo, useRef, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import { useCanvasState } from '../state/CanvasState';
@@ -49,11 +49,6 @@ export function SelectionTransformer({ isVisible }: { isVisible: boolean }) {
   const lockedAxisRef = useRef<"x" | "y" | null>(null);
 
   const dragState = useRef<Record<string, unknown> | null>(null);
-  const rotateState = useRef<{
-    center: { x: number; y: number };
-    originalPointerAngle: number;
-    originalPoints: PointSnapshot[];
-  } | null>(null);
 
   const selectedPoints = useMemo(
     () => paths.flatMap((p) => p.points).filter((pt) => selectedIds.includes(pt.id)),
@@ -200,175 +195,11 @@ export function SelectionTransformer({ isVisible }: { isVisible: boolean }) {
     [moveHandle, movePoint, saveState, selectionSnapshot, selectedPoints.length]
   );
 
-  const rotateSelection = useCallback(
-    (angleRadians: number) => {
-      const cos = Math.cos(angleRadians);
-      const sin = Math.sin(angleRadians);
-      applyToSelection((orig) => {
-        const localX = orig.x - center.x;
-        const localY = orig.y - center.y;
-        const rotatedX = localX * cos - localY * sin;
-        const rotatedY = localX * sin + localY * cos;
-        const handleInX = orig.handleIn.dx * cos - orig.handleIn.dy * sin;
-        const handleInY = orig.handleIn.dx * sin + orig.handleIn.dy * cos;
-        const handleOutX = orig.handleOut.dx * cos - orig.handleOut.dy * sin;
-        const handleOutY = orig.handleOut.dx * sin + orig.handleOut.dy * cos;
-        return {
-          ...orig,
-          x: center.x + rotatedX,
-          y: center.y + rotatedY,
-          handleIn: { dx: handleInX, dy: handleInY },
-          handleOut: { dx: handleOutX, dy: handleOutY },
-        };
-      });
-    },
-    [applyToSelection, center.x, center.y]
-  );
 
-  const flipSelection = useCallback(
-    (axis: 'horizontal' | 'vertical') => {
-      applyToSelection((orig) => {
-        const mirroredX = axis === 'horizontal' ? center.x - (orig.x - center.x) : orig.x;
-        const mirroredY = axis === 'vertical' ? center.y - (orig.y - center.y) : orig.y;
-        const handleInDx = axis === 'horizontal' ? -orig.handleIn.dx : orig.handleIn.dx;
-        const handleOutDx = axis === 'horizontal' ? -orig.handleOut.dx : orig.handleOut.dx;
-        const handleInDy = axis === 'vertical' ? -orig.handleIn.dy : orig.handleIn.dy;
-        const handleOutDy = axis === 'vertical' ? -orig.handleOut.dy : orig.handleOut.dy;
-        return {
-          ...orig,
-          x: mirroredX,
-          y: mirroredY,
-          handleIn: { dx: handleInDx, dy: handleInDy },
-          handleOut: { dx: handleOutDx, dy: handleOutDy },
-        };
-      });
-    },
-    [applyToSelection, center.x, center.y]
-  );
 
   if (!isVisible || selectedPoints.length === 0) return null;
 
-  const toolbarPadding = 6;
-  const buttonSize = 28;
-  const buttonSpacing = 6;
-  // toolbarHeight (screen px) unused - we compute world-space toolbar height below
-  type ToolbarIconProps = { x: number; y: number; size: number };
-  type ToolbarButton = {
-    key: string;
-    label: string;
-    onClick: () => void;
-    icon: (props: ToolbarIconProps) => ReactNode;
-  };
 
-  const toolbarButtons: ToolbarButton[] = [
-    {
-      key: 'rotate-left',
-      label: 'Rotate Left',
-      onClick: () => rotateSelection(-Math.PI / 2),
-  icon: ({ x, y, size }: ToolbarIconProps) => (
-        <>
-          <Line points={[x + size * 0.8, y, x + size * 0.2, y - size * 0.6, x - size * 0.6, y - size * 0.1]} stroke="#f3f4f6" strokeWidth={1.5} lineCap="round" lineJoin="round" />
-          <Line points={[x - size * 0.6, y - size * 0.1, x - size * 0.4, y - size * 0.45]} stroke="#f3f4f6" strokeWidth={1.5} lineCap="round" />
-          <Line points={[x - size * 0.6, y - size * 0.1, x - size * 0.15, y - size * 0.1]} stroke="#f3f4f6" strokeWidth={1.5} lineCap="round" />
-        </>
-      ),
-    },
-    {
-      key: 'rotate-right',
-      label: 'Rotate Right',
-      onClick: () => rotateSelection(Math.PI / 2),
-  icon: ({ x, y, size }: ToolbarIconProps) => (
-        <>
-          <Line points={[x - size * 0.8, y, x - size * 0.2, y - size * 0.6, x + size * 0.6, y - size * 0.1]} stroke="#f3f4f6" strokeWidth={1.5} lineCap="round" lineJoin="round" />
-          <Line points={[x + size * 0.6, y - size * 0.1, x + size * 0.4, y - size * 0.45]} stroke="#f3f4f6" strokeWidth={1.5} lineCap="round" />
-          <Line points={[x + size * 0.6, y - size * 0.1, x + size * 0.15, y - size * 0.1]} stroke="#f3f4f6" strokeWidth={1.5} lineCap="round" />
-        </>
-      ),
-    },
-    {
-      key: 'flip-horizontal',
-      label: 'Flip Horizontal',
-      onClick: () => flipSelection('horizontal'),
-  icon: ({ x, y, size }: ToolbarIconProps) => (
-        <>
-          <Line points={[x - size * 0.6, y - size * 0.8, x - size * 0.6, y + size * 0.8]} stroke="#f3f4f6" strokeWidth={1.5} />
-          <Line points={[x + size * 0.6, y - size * 0.8, x + size * 0.6, y + size * 0.8]} stroke="#f3f4f6" strokeWidth={1.5} />
-          <Line points={[x - size * 0.35, y, x + size * 0.35, y]} stroke="#f3f4f6" strokeWidth={1.5} />
-          <Line points={[x - size * 0.35, y, x - size * 0.15, y - size * 0.2]} stroke="#f3f4f6" strokeWidth={1.5} />
-          <Line points={[x - size * 0.35, y, x - size * 0.15, y + size * 0.2]} stroke="#f3f4f6" strokeWidth={1.5} />
-          <Line points={[x + size * 0.35, y, x + size * 0.15, y - size * 0.2]} stroke="#f3f4f6" strokeWidth={1.5} />
-          <Line points={[x + size * 0.35, y, x + size * 0.15, y + size * 0.2]} stroke="#f3f4f6" strokeWidth={1.5} />
-        </>
-      ),
-    },
-    {
-      key: 'flip-vertical',
-      label: 'Flip Vertical',
-      onClick: () => flipSelection('vertical'),
-  icon: ({ x, y, size }: ToolbarIconProps) => (
-        <>
-          <Line points={[x - size * 0.8, y - size * 0.6, x + size * 0.8, y - size * 0.6]} stroke="#f3f4f6" strokeWidth={1.5} />
-          <Line points={[x - size * 0.8, y + size * 0.6, x + size * 0.8, y + size * 0.6]} stroke="#f3f4f6" strokeWidth={1.5} />
-          <Line points={[x, y - size * 0.35, x, y + size * 0.35]} stroke="#f3f4f6" strokeWidth={1.5} />
-          <Line points={[x, y - size * 0.35, x - size * 0.2, y - size * 0.15]} stroke="#f3f4f6" strokeWidth={1.5} />
-          <Line points={[x, y - size * 0.35, x + size * 0.2, y - size * 0.15]} stroke="#f3f4f6" strokeWidth={1.5} />
-          <Line points={[x, y + size * 0.35, x - size * 0.2, y + size * 0.15]} stroke="#f3f4f6" strokeWidth={1.5} />
-          <Line points={[x, y + size * 0.35, x + size * 0.2, y + size * 0.15]} stroke="#f3f4f6" strokeWidth={1.5} />
-        </>
-      ),
-    },
-  ];
-
-  // Keep toolbar a consistent screen size regardless of canvas zoom by converting
-  // sizes to world units (divide by zoom). Positions remain world-space so toolbar
-  // follows the selection but visual sizes stay constant.
-  const buttonSizeWorld = buttonSize / zoom;
-  const buttonSpacingWorld = buttonSpacing / zoom;
-  const toolbarPaddingWorld = toolbarPadding / zoom;
-  const toolbarHeightWorld = buttonSizeWorld + toolbarPaddingWorld * 2;
-  const toolbarWidth = toolbarButtons.length * buttonSizeWorld + (toolbarButtons.length - 1) * buttonSpacingWorld + toolbarPaddingWorld * 2;
-  const toolbarX = center.x - toolbarWidth / 2;
-  const toolbarY = minY - toolbarHeightWorld - 16 / zoom;
-
-  return (
-    <>
-      <Group x={toolbarX} y={toolbarY} opacity={0.98} listening>
-        {toolbarButtons.map((btn, idx) => {
-          const btnX = toolbarPaddingWorld + idx * (buttonSizeWorld + buttonSpacingWorld);
-          const btnY = toolbarPaddingWorld;
-          return (
-            <Group
-                key={btn.key}
-                x={btnX}
-                y={btnY}
-                listening
-                onMouseDown={(e: any) => { e.cancelBubble = true; e.evt?.stopPropagation?.(); btn.onClick(); }}
-                onTouchStart={(e: any) => { e.cancelBubble = true; e.evt?.stopPropagation?.(); btn.onClick(); }}
-                onMouseEnter={(e) => e.target.getStage()?.container().style.setProperty('cursor', 'pointer')}
-                onMouseLeave={(e) => e.target.getStage()?.container().style.setProperty('cursor', 'default')}
-              >
-              <Rect
-                width={Math.max(buttonSizeWorld, 12 / zoom)}
-                height={Math.max(buttonSizeWorld, 12 / zoom)}
-                cornerRadius={4}
-                fill="rgba(255,255,255,0.06)"
-                stroke="rgba(255,255,255,0.12)"
-                strokeWidth={1}
-                listening
-              />
-              {btn.icon({ x: Math.max(buttonSizeWorld, 12 / zoom) / 2, y: Math.max(buttonSizeWorld, 12 / zoom) / 2, size: Math.max(buttonSizeWorld, 12 / zoom) * 0.35 })}
-              <Text
-                text={btn.label}
-                fontSize={10 / zoom}
-                fill="#f9fafb"
-                y={buttonSizeWorld + 2 / zoom}
-                width={buttonSizeWorld}
-                align="center"
-              />
-            </Group>
-          );
-        })}
-      </Group>
 
       <Rect
         x={minX}
@@ -443,108 +274,6 @@ export function SelectionTransformer({ isVisible }: { isVisible: boolean }) {
         }}
       />
 
-      <Line
-        points={[(minX + maxX) / 2, minY, (minX + maxX) / 2, minY - 40]}
-        stroke="gray"
-        dash={[4, 4]}
-        strokeWidth={1}
-      />
-
-<Circle
-  x={(minX + maxX) / 2}
-  y={minY - 40}
-  radius={handleRadius}
-  fill="#9C27B0"
-  name="transform-handle"
-  onMouseEnter={(e) =>
-    e.target.getStage()?.container().style.setProperty('cursor', 'crosshair')
-  }
-  onMouseLeave={(e) =>
-    e.target.getStage()?.container().style.setProperty('cursor', 'default')
-  }
-  onMouseDown={(e) => {
-    const pointer = e.target.getStage()?.getPointerPosition();
-    if (!pointer) return;
-
-    const worldPointer = toWorldPos(pointer, zoom, offset);
-    const dx = worldPointer.x - center.x;
-    const dy = worldPointer.y - center.y;
-    const angle = Math.atan2(dy, dx);
-
-    rotateState.current = {
-      center: { ...center },
-      originalPointerAngle: angle,
-      originalPoints: selectedPoints.map((p) => ({
-        id: p.id,
-        x: p.x,
-        y: p.y,
-        handleIn: { ...p.handleIn },
-        handleOut: { ...p.handleOut },
-      })),
-    };
-
-    saveState();
-
-    const stage = e.target.getStage();
-    if (!stage) return;
-
-    const handleMouseMove = (ev: MouseEvent) => {
-      const stagePointer = stage.getPointerPosition();
-      if (!stagePointer || !rotateState.current) return;
-
-      const wp = toWorldPos(stagePointer, zoom, offset);
-      const { center, originalPointerAngle, originalPoints } = rotateState.current;
-
-      const dx = wp.x - center.x;
-      const dy = wp.y - center.y;
-      let currentAngle = Math.atan2(dy, dx);
-      let rotation = currentAngle - originalPointerAngle;
-
-      // Snap to 15°
-      if (ev.shiftKey) {
-        const deg = (rotation * 180) / Math.PI;
-        const snapped = Math.round(deg / 15) * 15;
-        rotation = (snapped * Math.PI) / 180;
-        currentAngle = originalPointerAngle + rotation;
-      }
-
-      const cos = Math.cos(rotation);
-      const sin = Math.sin(rotation);
-
-      originalPoints.forEach((orig) => {
-        const localX = orig.x - center.x;
-        const localY = orig.y - center.y;
-
-        const rotatedX = localX * cos - localY * sin;
-        const rotatedY = localX * sin + localY * cos;
-
-        movePoint(orig.id, center.x + rotatedX, center.y + rotatedY);
-
-        const hIn = {
-          x: orig.handleIn.dx * cos - orig.handleIn.dy * sin,
-          y: orig.handleIn.dx * sin + orig.handleIn.dy * cos,
-        };
-        const hOut = {
-          x: orig.handleOut.dx * cos - orig.handleOut.dy * sin,
-          y: orig.handleOut.dx * sin + orig.handleOut.dy * cos,
-        };
-
-        moveHandle(orig.id, 'handleIn', hIn.x, hIn.y, false, true);
-        moveHandle(orig.id, 'handleOut', hOut.x, hOut.y, false, true);
-      });
-    };
-
-    const handleMouseUp = () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-      rotateState.current = null;
-      document.body.style.cursor = 'default';
-    };
-
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
-  }}
-/>
 
       <Line
         points={[...cornerPoints, cornerPoints[0]].flatMap((p) => [p.x, p.y])}
