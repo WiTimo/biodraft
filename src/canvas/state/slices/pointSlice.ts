@@ -30,14 +30,34 @@ export const createPointSlice: CanvasStateCreator<PointSlice> = (set, get, _api)
     if (existingPoint) {
       if (currentPathId) {
         const currentPath = present.paths.find(p => p.id === currentPathId);
-        
-        // Don't add the same point twice to the same path
-        if (currentPath?.points.some(p => p.id === existingPoint.id)) {
+
+        // If currentPathId points to a path that no longer exists (e.g., after an undo),
+        // create a new path instead of trying to append to a missing one.
+        if (!currentPath) {
+          saveState();
+          const newPathId = crypto.randomUUID();
+          set({
+            present: {
+              ...present,
+              paths: [
+                ...present.paths,
+                { id: newPathId, points: [existingPoint], closed: false, texture: null },
+              ],
+            },
+            currentPathId: newPathId,
+            justPlacedPointId: existingPoint.id,
+          });
+
           return existingPoint.id;
         }
-        
+
+        // Don't add the same point twice to the same path
+        if (currentPath.points.some(p => p.id === existingPoint.id)) {
+          return existingPoint.id;
+        }
+
         saveState();
-        
+
         // Add the existing point to the current path (creating a shared point reference)
         set({
           present: {
@@ -50,12 +70,12 @@ export const createPointSlice: CanvasStateCreator<PointSlice> = (set, get, _api)
           },
           justPlacedPointId: existingPoint.id,
         });
-        
+
         return existingPoint.id;
       } else {
         // Starting a new path with an existing point (shared point)
         saveState();
-        
+
         const newPathId = crypto.randomUUID();
         set({
           present: {
@@ -68,7 +88,7 @@ export const createPointSlice: CanvasStateCreator<PointSlice> = (set, get, _api)
           currentPathId: newPathId,
           justPlacedPointId: existingPoint.id,
         });
-        
+
         return existingPoint.id;
       }
     }
@@ -85,17 +105,34 @@ export const createPointSlice: CanvasStateCreator<PointSlice> = (set, get, _api)
     };
 
     if (currentPathId) {
-      set({
-        present: {
-          ...present,
-          paths: present.paths.map((path) =>
-            path.id === currentPathId
-              ? { ...path, points: [...path.points, point] }
-              : path,
-          ),
-        },
-        justPlacedPointId: point.id,
-      });
+      const currentPath = present.paths.find(p => p.id === currentPathId);
+      if (currentPath) {
+        set({
+          present: {
+            ...present,
+            paths: present.paths.map((path) =>
+              path.id === currentPathId
+                ? { ...path, points: [...path.points, point] }
+                : path,
+            ),
+          },
+          justPlacedPointId: point.id,
+        });
+      } else {
+        // currentPathId is stale (path was removed by an undo); create a new path
+        const newPathId = crypto.randomUUID();
+        set({
+          present: {
+            ...present,
+            paths: [
+              ...present.paths,
+              { id: newPathId, points: [point], closed: false, texture: null },
+            ],
+          },
+          currentPathId: newPathId,
+          justPlacedPointId: point.id,
+        });
+      }
     } else {
       const newPathId = crypto.randomUUID();
       set({

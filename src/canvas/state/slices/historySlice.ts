@@ -16,10 +16,18 @@ export const createHistorySlice: CanvasStateCreator<HistorySlice> = (set, _get, 
       if (state.past.length === 0) return state;
       const previous = state.past[state.past.length - 1];
       const newPast = state.past.slice(0, -1);
+
+      // If the current path id references a path that no longer exists after undo,
+      // clear currentPathId and justPlacedPointId to avoid leaving the pen tool in an invalid state.
+      const currentPathId: string | null = (state as any).currentPathId ?? null;
+      const hasPath = currentPathId ? previous.paths.some(p => p.id === currentPathId) : false;
+
       return {
         past: newPast,
         present: previous,
         future: [clonePresent(state.present), ...state.future],
+        currentPathId: hasPath ? currentPathId : null,
+        justPlacedPointId: hasPath ? (state as any).justPlacedPointId ?? null : null,
       };
     });
   },
