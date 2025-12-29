@@ -425,6 +425,19 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
     [],
   );
 
+  // Right-click behavior: prevent browser context menu on the canvas
+  // and finish the current pen path automatically when drawing.
+  const handleContextMenu = useCallback((event: Konva.KonvaEventObject<MouseEvent>) => {
+    // Prevent the browser context menu
+    event.evt.preventDefault();
+
+    const state = useCanvasState.getState();
+    if (state.currentTool === 'pen') {
+      // Finish the path being drawn (if any)
+      state.finishCurrentPath?.();
+    }
+  }, []);
+
   const isTransformVisible = selectedPointIds.length > 0 && !selectionStart;
   const showPenPreview = currentTool === 'pen' && !isDraggingNewPoint && !useCanvasState.getState().isDraggingHandle;
 
@@ -442,6 +455,7 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseLeave}
       onWheel={handleWheel}
+      onContextMenu={handleContextMenu}
     >
       <GridLayer width={width} height={height} zoom={zoom} offset={offset} />
       <Layer>
