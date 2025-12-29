@@ -76,6 +76,24 @@ export function SelectionTransformer({ isVisible }: { isVisible: boolean }) {
         }
       }
     }
+
+    // If the path is closed, also include the closing segment from last -> first
+    if (pts.length >= 2 && path.closed) {
+      const pLast = pts[pts.length - 1];
+      const pFirst = pts[0];
+      if (selectedIds.includes(pLast.id) && selectedIds.includes(pFirst.id)) {
+        for (let t = 0; t <= 1.0; t += 0.05) {
+          //@ts-ignore
+          allBoundingPoints.push(sampleCubicBezier(
+            { x: pLast.x, y: pLast.y },
+            { x: pLast.x + pLast.handleOut.dx, y: pLast.y + pLast.handleOut.dy },
+            { x: pFirst.x + pFirst.handleIn.dx, y: pFirst.y + pFirst.handleIn.dy },
+            { x: pFirst.x, y: pFirst.y },
+            t
+          ));
+        }
+      }
+    }
   });
 
   const { minX: rawMinX, minY: rawMinY, maxX: rawMaxX, maxY: rawMaxY } = getCenterAndBounds(allBoundingPoints);
@@ -118,7 +136,12 @@ export function SelectionTransformer({ isVisible }: { isVisible: boolean }) {
 
   const zoom = useCanvasState((s) => s.zoom);
   const offset = useCanvasState((s) => s.offset);
-  const handleRadius = Math.min(10, Math.max(4, 8 / zoom));
+  // Keep handle size constant in screen pixels
+  const HANDLE_SCREEN_BASE = 8; // px
+  const HANDLE_SCREEN_MIN = 4;
+  const HANDLE_SCREEN_MAX = 10;
+  const handleScreenRadius = Math.min(HANDLE_SCREEN_MAX, Math.max(HANDLE_SCREEN_MIN, HANDLE_SCREEN_BASE));
+  const handleRadius = handleScreenRadius / zoom;
 
   const onHandleDragStart = (_: any, cornerIndex: number) => {
     const corner = cornerPoints[cornerIndex];

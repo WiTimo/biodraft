@@ -25,7 +25,12 @@ export const HandleCircle = React.memo(function HandleCircle({
   const [pos, setPos] = useState({ x: pointX + dx, y: pointY + dy });
   const zoom = useCanvasState((s) => s.zoom);
 
-  const adjustedRadius = Math.min(8, Math.max(2, 4 / zoom));
+  // Keep handle dot size constant in screen pixels
+  const HANDLE_SCREEN_BASE = 4; // px
+  const HANDLE_SCREEN_MIN = 2;
+  const HANDLE_SCREEN_MAX = 8;
+  const adjustedScreenRadius = Math.min(HANDLE_SCREEN_MAX, Math.max(HANDLE_SCREEN_MIN, HANDLE_SCREEN_BASE));
+  const adjustedRadius = adjustedScreenRadius / zoom;
   const adjustedStrokeWidth = Math.min(2, Math.max(0.5, 1 / zoom));
 
   useEffect(() => {

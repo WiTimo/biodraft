@@ -158,16 +158,70 @@ export function PathsLayer() {
       setPendingSeamPortion1, setPendingSeamPortion2, clearPendingSeamPortions, commitPendingSeamPortions, 
       calculateTFromMouse, zoom, offset, mouseDownPos, hasMoved]);
 
+  const [hoveredPathId, setHoveredPathId] = useState<string | null>(null);
+  const selectPoint = useCanvasState(s => s.selectPoint);
+
   return (
     <>
       {/* Render all actual paths visually */}
       {paths.map((path) => (
-        <LinePath
-          key={path.id}
-          points={path.points}
-          closed={path.closed}
-          texture={path.texture ?? null}
-        />
+        <div key={path.id}>
+          <LinePath
+            key={`linepath-${path.id}`}
+            points={path.points}
+            closed={path.closed}
+            texture={path.texture ?? null}
+            highlighted={currentTool === 'select' && path.closed && hoveredPathId === path.id}
+          />
+
+          {/* Invisible overlay to capture hover/click for selection (works reliably across Konva shapes) */}
+          {path.closed && currentTool === 'select' && (() => {
+            // Build sampled points for the entire path (closed)
+            const sampled: number[] = [];
+            for (let i = 0; i < path.points.length - 1; i++) {
+              const a = path.points[i];
+              const b = path.points[i + 1];
+              sampled.push(...generateBezierPoints(a, a.handleOut, b.handleIn, b, 20));
+            }
+            if (path.closed && path.points.length >= 2) {
+              const a = path.points[path.points.length - 1];
+              const b = path.points[0];
+              sampled.push(...generateBezierPoints(a, a.handleOut, b.handleIn, b, 20));
+            }
+
+            // Closed fill overlay to capture interior hover/clicks reliably
+            return (
+              <Line
+                key={`fill-overlay-${path.id}`}
+                points={sampled}
+                closed
+                fill={hoveredPathId === path.id ? 'rgba(0,120,255,0.06)' : 'rgba(0,0,0,0.001)'}
+                strokeWidth={0}
+                listening={true}
+                onMouseEnter={(e) => {
+                  setHoveredPathId(path.id);
+                  const stage = e.target.getStage();
+                  if (stage) stage.container().style.cursor = 'pointer';
+                }}
+                onMouseLeave={(e) => {
+                  if (hoveredPathId === path.id) setHoveredPathId(null);
+                  const stage = e.target.getStage();
+                  if (stage) stage.container().style.cursor = 'default';
+                }}
+                onClick={(e) => {
+                  const ids = path.points.map((p) => p.id);
+                  const state = useCanvasState.getState();
+                  if (ids.length === 1) {
+                    state.selectPoint(ids[0]);
+                  } else {
+                    state.setSelectedPointIds(ids);
+                    state.deselectPoint();
+                  }
+                }}
+              />
+            );
+          })()}
+        </div>
       ))}
 
       {paths.flatMap((path) => {

@@ -8,16 +8,25 @@ export function LinePath({
   closed = false,
   texture,
   onClick,
+  onMouseEnter,
+  onMouseLeave,
+  highlighted = false,
 }: {
   points: any[];
   closed?: boolean;
   texture?: PathTexture | null;
-  onClick?: () => void;
+  onClick?: (e?: any) => void;
+  onMouseEnter?: (e?: any) => void;
+  onMouseLeave?: (e?: any) => void;
+  highlighted?: boolean;
 }) {
   if (points.length < 2) return null;
 
   const [img] = useImage(texture?.src || '', 'anonymous');
   const zoom = useCanvasState(s => s.zoom);
+
+  const strokeColor = highlighted ? 'rgba(0,120,255,0.6)' : 'black';
+  const strokeW = highlighted ? Math.min(4, 3 / zoom) : 2 / zoom;
 
   return (
     <Shape
@@ -59,8 +68,8 @@ export function LinePath({
           ctx.strokeShape(shape);
         }
       }}
-      stroke="black"
-      strokeWidth={2 / zoom}
+      stroke={strokeColor}
+      strokeWidth={strokeW}
       // Pattern fill props (Konva handles these after sceneFunc via fillStrokeShape)
       fillPatternImage={img || undefined}
       fillPatternRepeat={texture?.repeat ?? 'repeat'}
@@ -70,7 +79,9 @@ export function LinePath({
       fillPatternOffsetY={texture?.offsetY ?? 0}
       fillPatternRotation={texture?.rotation ?? 0}
       onClick={onClick}
-      listening={!!onClick}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+      listening={!!(onClick || onMouseEnter || onMouseLeave)}
     />
   );
 }
