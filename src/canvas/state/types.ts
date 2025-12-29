@@ -102,6 +102,15 @@ export interface ViewportSlice {
   setIsSimulationMode: (value: boolean) => void;
   manImageCenters: Record<string, { x: number; y: number }>;
   setManImageCenter: (id: string, center: { x: number; y: number }) => void;
+
+  // DXF import/export scale factor: number of file units per editor unit.
+  // For example, dxfScale = 100 means exported DXF coordinates are 100x the editor coords.
+  dxfScale: number;
+  setDxfScale: (scale: number) => void;
+
+  // DXF import simplification options
+  dxfSimplifyEnabled: boolean; // whether to run simplification on import
+  dxfSimplifyTolerance: number; // tolerance in editor units for Ramer-Douglas-Peucker
 }
 
 export interface BackgroundSlice {

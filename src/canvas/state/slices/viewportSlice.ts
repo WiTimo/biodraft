@@ -33,4 +33,15 @@ export const createViewportSlice: CanvasStateCreator<ViewportSlice> = (set, _get
       [id]: center,
     },
   })),
+
+  // DXF scaling controls how coordinates are scaled when importing/exporting DXF files.
+  // Default 1 = no scaling. Typical usage: if DXF is in mm and editor in px you might set 100.
+  dxfScale: 1,
+  setDxfScale: (scale) => set({ dxfScale: scale }),
+
+  // DXF simplification settings
+  dxfSimplifyEnabled: true,
+  dxfSimplifyTolerance: 2,
+  setDxfSimplify: (enabled: boolean) => set({ dxfSimplifyEnabled: enabled }),
+  setDxfSimplifyTolerance: (tolerance: number) => set({ dxfSimplifyTolerance: tolerance }),
 });
