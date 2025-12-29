@@ -199,8 +199,8 @@ export function SelectionTransformer({ isVisible }: { isVisible: boolean }) {
 
   if (!isVisible || selectedPoints.length === 0) return null;
 
-
-
+  return (
+    <>
       <Rect
         x={minX}
         y={minY}
