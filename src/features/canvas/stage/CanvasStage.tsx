@@ -5,6 +5,7 @@ import Konva from 'konva';
 import { BackgroundImage } from '../BackgroundImage/BackgroundImage';
 import { GridLayer } from '../Layers/GridLayer';
 import { PathsLayer } from '../Layers/PathsLayer';
+import { getStep } from '../../canvas/util/grid';
 import { PointsLayer } from '../Layers/PointsLayer';
 import { SelectionTransformer } from '../Layers/SelectionTransformer';
 import { PenSegmentPreview } from '../Previews/PenSegmentPreview';
@@ -167,19 +168,34 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
           }
         }
 
-        // Allow clicking on points from other patterns to create overlapping points
+          // Allow clicking on points from other patterns to create overlapping points
         const canPlacePoint = isStageClick || targetName === 'background-image' || targetName === 'background' || isClickingOnPoint;
         
         if (!canPlacePoint) {
           return;
         }
 
-        // If clicking on a point, use its exact coordinates
+        // Don't place a point on right-click; finish the path instead
+        const isRightClick = event.evt.button === 2;
+        if (isRightClick) {
+          event.evt.preventDefault();
+          finishCurrentPath();
+          return;
+        }
+
+        // If clicking on a point and ALT is NOT pressed, use its exact coordinates
         let finalX, finalY;
-        if (isClickingOnPoint) {
+        if (isClickingOnPoint && !state.isAltPressed) {
           // Get the exact position of the clicked point
           finalX = target.x();
           finalY = target.y();
+        } else if (state.isAltPressed) {
+          // ALT overrides all other snapping: snap to the visible grid only
+          const basePixelGridSize = 30;
+          const rawWorldStep = basePixelGridSize / zoom;
+          const worldStep = getStep(rawWorldStep);
+          finalX = Math.round(worldPosition.x / worldStep) * worldStep;
+          finalY = Math.round(worldPosition.y / worldStep) * worldStep;
         } else {
           // Use snap guides if available
           const guides = state.snapGuides;
@@ -220,6 +236,19 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
 
       if (currentTool === 'pen') {
         const worldPosition = toWorld(pointer);
+        const state = useCanvasState.getState();
+
+        // If ALT is pressed, snap to the visible grid and show a guide
+        if (state.isAltPressed) {
+          const basePixelGridSize = 30;
+          const rawWorldStep = basePixelGridSize / zoom;
+          const worldStep = getStep(rawWorldStep);
+          const snapX = Math.round(worldPosition.x / worldStep) * worldStep;
+          const snapY = Math.round(worldPosition.y / worldStep) * worldStep;
+          setSnapGuides({ x: snapX, y: snapY });
+          return;
+        }
+
         const SNAP_RADIUS = 15 / zoom; // Increased from 10 for easier snapping
         const allPoints = paths.flatMap((path) => path.points);
 

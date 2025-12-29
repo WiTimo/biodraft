@@ -183,26 +183,24 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
           return;
         }
 
-        // If clicking on a point, use its exact coordinates
+        // If clicking on a point and ALT is NOT pressed, use its exact coordinates
         let finalX, finalY;
-        if (isClickingOnPoint) {
+        if (isClickingOnPoint && !state.isAltPressed) {
           // Get the exact position of the clicked point
           finalX = target.x();
           finalY = target.y();
+        } else if (state.isAltPressed) {
+          // ALT overrides all other snapping: snap to the visible grid only
+          const basePixelGridSize = 30; // same base size GridLayer uses
+          const rawWorldStep = basePixelGridSize / zoom;
+          const worldStep = getStep(rawWorldStep);
+          finalX = Math.round(worldPosition.x / worldStep) * worldStep;
+          finalY = Math.round(worldPosition.y / worldStep) * worldStep;
         } else {
-          // If ALT is pressed, snap to the visible grid
-          if (state.isAltPressed) {
-            const basePixelGridSize = 30; // same base size GridLayer uses
-            const rawWorldStep = basePixelGridSize / zoom;
-            const worldStep = getStep(rawWorldStep);
-            finalX = Math.round(worldPosition.x / worldStep) * worldStep;
-            finalY = Math.round(worldPosition.y / worldStep) * worldStep;
-          } else {
-            // Use snap guides if available
-            const guides = state.snapGuides;
-            finalX = guides.x ?? worldPosition.x;
-            finalY = guides.y ?? worldPosition.y;
-          }
+          // Use snap guides if available
+          const guides = state.snapGuides;
+          finalX = guides.x ?? worldPosition.x;
+          finalY = guides.y ?? worldPosition.y;
         }
 
         const pointId = addPoint(finalX, finalY, true);
