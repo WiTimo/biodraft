@@ -8,7 +8,7 @@ function seamPartToSegment(part: Segment | SegmentPortion): Segment {
 import { importFromJson, exportToJson } from '../util/importExport';
 import ZoomControls from './ZoomControls';
 
-export function Toolbar() {
+export function Toolbar({ onResetView }: { onResetView?: () => void }) {
   const { currentTool, setTool, setZoom, setOffset, zoom } = useCanvasState();
 
   const handleImportImage = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -71,6 +71,11 @@ export function Toolbar() {
   };
 
   const resetZoom = () => {
+    if (onResetView) {
+      onResetView();
+      return;
+    }
+
     setZoom(1);
     setOffset({
       x: 0,

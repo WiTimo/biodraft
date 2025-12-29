@@ -30,6 +30,9 @@ export function Canvas() {
   const setIsSimulationMode = useCanvasState((state) => state.setIsSimulationMode);
   const zoom = useCanvasState((state) => state.zoom);
   const offset = useCanvasState((state) => state.offset);
+  const setZoom = useCanvasState((s) => s.setZoom);
+  const setOffset = useCanvasState((s) => s.setOffset);
+  const manImageCenters = useCanvasState((s) => s.manImageCenters);
 
   useStaticManImages();
   useCanvasKeyboardShortcuts({ setIsSpacePressed, isPanning, setIsPanning });
@@ -61,6 +64,27 @@ export function Canvas() {
       window.removeEventListener('resize', update);
     };
   }, [threeDEnabled, splitWidth]);
+
+  // Center view on man images once at startup (when manImageCenters is set)
+  const manImageCenters = useCanvasState((s) => s.manImageCenters);
+  const setZoom = useCanvasState((s) => s.setZoom);
+  const setOffset = useCanvasState((s) => s.setOffset);
+  const initialCentered = useRef(false);
+
+  useLayoutEffect(() => {
+    if (initialCentered.current) return;
+    const centers = Object.values(manImageCenters || {}) as Array<{ x: number; y: number }>;
+    if (centers.length === 0) return;
+    if (viewportSize.width === 0 || viewportSize.height === 0) return;
+
+    const avg = centers.reduce((acc, c) => ({ x: acc.x + c.x, y: acc.y + c.y }), { x: 0, y: 0 } as { x: number; y: number });
+    avg.x /= centers.length;
+    avg.y /= centers.length;
+
+    setZoom(1);
+    setOffset({ x: viewportSize.width / 2 - avg.x * 1, y: viewportSize.height / 2 - avg.y * 1 });
+    initialCentered.current = true;
+  }, [manImageCenters, viewportSize.width, viewportSize.height, setOffset, setZoom]);
 
   return (
     <div className="w-full h-full flex">
@@ -139,7 +163,27 @@ export function Canvas() {
           <img src="/svg/toggle3d.svg" className="h-10 w-10" />
         </button>
 
-        <Toolbar />
+        <Toolbar onResetView={() => {
+          // Reset zoom and center view on the man images (averaged center)
+          const centers = Object.values(manImageCenters || {}) as Array<{ x: number; y: number }>;
+
+          // Reset zoom to 1 first
+          setZoom(1);
+
+          if (centers.length === 0) {
+            setOffset({ x: 0, y: 0 });
+            return;
+          }
+
+          const avg = centers.reduce((acc, c) => ({ x: acc.x + c.x, y: acc.y + c.y }), { x: 0, y: 0 } as { x: number; y: number });
+          avg.x /= centers.length;
+          avg.y /= centers.length;
+
+          const vpWidth = Math.max(0, viewportSize.width);
+          const vpHeight = Math.max(0, viewportSize.height);
+
+          setOffset({ x: vpWidth / 2 - avg.x * 1, y: vpHeight / 2 - avg.y * 1 });
+        }} />
       </div>
     </div>
   );

@@ -62,6 +62,27 @@ export function Canvas() {
     };
   }, [threeDEnabled, splitWidth]);
 
+  // Center view on man images once at startup (when manImageCenters is set)
+  const manImageCenters = useCanvasState((s) => s.manImageCenters);
+  const setZoom = useCanvasState((s) => s.setZoom);
+  const setOffset = useCanvasState((s) => s.setOffset);
+  const initialCentered = useRef(false);
+
+  useLayoutEffect(() => {
+    if (initialCentered.current) return;
+    const centers = Object.values(manImageCenters || {}) as Array<{ x: number; y: number }>;
+    if (centers.length === 0) return;
+    if (viewportSize.width === 0 || viewportSize.height === 0) return;
+
+    const avg = centers.reduce((acc, c) => ({ x: acc.x + c.x, y: acc.y + c.y }), { x: 0, y: 0 } as { x: number; y: number });
+    avg.x /= centers.length;
+    avg.y /= centers.length;
+
+    setZoom(1);
+    setOffset({ x: viewportSize.width / 2 - avg.x * 1, y: viewportSize.height / 2 - avg.y * 1 });
+    initialCentered.current = true;
+  }, [manImageCenters, viewportSize.width, viewportSize.height, setOffset, setZoom]);
+
   return (
     <div className="w-full h-full flex">
       {threeDEnabled && (
@@ -139,7 +160,34 @@ export function Canvas() {
           <img src="/svg/toggle3d.svg" className="h-10 w-10" />
         </button>
 
-        <Toolbar />
+        <Toolbar onResetView={() => {
+          // Reset zoom and center view on the man images (averaged center)
+          const state = useCanvasState.getState();
+          const { manImageCenters } = state;
+
+          // Reset zoom to 1 first
+          state.setZoom(1);
+
+          const centers = Object.values(manImageCenters || {}) as Array<{ x: number; y: number }>;
+          if (centers.length === 0) {
+            state.setOffset({ x: 0, y: 0 });
+            return;
+          }
+
+          const avg = centers.reduce((acc, c) => ({ x: acc.x + c.x, y: acc.y + c.y }), { x: 0, y: 0 } as { x: number; y: number });
+          avg.x /= centers.length;
+          avg.y /= centers.length;
+
+          // viewport dimensions (inside rulers)
+          const vpWidth = Math.max(0, viewportSize.width);
+          const vpHeight = Math.max(0, viewportSize.height);
+
+          // Compute offset so that avg world coordinate is centered in the viewport
+          state.setOffset({
+            x: vpWidth / 2 - avg.x * 1,
+            y: vpHeight / 2 - avg.y * 1,
+          });
+        }} />
       </div>
     </div>
   );
