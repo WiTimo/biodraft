@@ -132,6 +132,14 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
       }
 
       if (currentTool === 'pen') {
+        const isRightClick = event.evt.button === 2;
+        if (isRightClick) {
+          // Prevent placing a point on right-click; instead finish the current path
+          event.evt.preventDefault();
+          finishCurrentPath();
+          return;
+        }
+
         const isClickingOnPoint = targetName === 'point';
         
         // Check for double-click first, before processing anything
