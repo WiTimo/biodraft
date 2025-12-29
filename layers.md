@@ -5,9 +5,9 @@
 3. Use industry-standard DXF files for import/export; DXF supports patterns and seams positions. JSON export/import is still available for compatibility.
 
 
-- Added DXF scale control to the toolbar. This value (labeled **DXF scale**) is the number of file units per editor unit — on import coordinates are divided by the scale and on export they are multiplied by it.
+- **DXF settings moved to config file** (`src/config/dxfConfig.ts`): DXF scale, simplification settings, and seam match tolerance are centrally configured and **no longer** exposed in the toolbar.
 
-- Added **DXF simplification** on import (Ramer–Douglas–Peucker) with a toolbar toggle and numeric **Simplify tolerance** (default 2 editor units). Seam anchors are preserved during simplification so seams remain attached.
+- Added **DXF simplification** on import (Ramer–Douglas–Peucker); seam anchors are preserved during simplification so seams remain attached.
 - Added SPLINE parsing and approximation: SPLINE entities are now parsed, evaluated with de Boor (supporting weights), and adaptively approximated as cubic Bézier segments while preserving seam anchors. This keeps files accurate while drastically reducing point counts and preserving editable handles.
 
 - Added support for LWPOLYLINE bulge arcs, ARC, and ELLIPSE: these are converted to cubic Bézier segments on import so curves are preserved as editable handles instead of dense straight-line vertices.

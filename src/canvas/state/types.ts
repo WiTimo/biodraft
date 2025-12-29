@@ -111,6 +111,10 @@ export interface ViewportSlice {
   // DXF import simplification options
   dxfSimplifyEnabled: boolean; // whether to run simplification on import
   dxfSimplifyTolerance: number; // tolerance in editor units for Ramer-Douglas-Peucker
+
+  // seam matching tolerance (editor units) used to snap DXF seam endpoints to path segments
+  dxfSeamMatchTolerance: number;
+  setDxfSeamMatchTolerance: (tolerance: number) => void;
 }
 
 export interface BackgroundSlice {

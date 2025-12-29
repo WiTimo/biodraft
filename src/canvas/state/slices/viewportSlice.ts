@@ -1,4 +1,5 @@
 import type { CanvasStateCreator, ViewportSlice } from '../types';
+import { DXF_CONFIG } from '../../../config/dxfConfig';
 
 export const createViewportSlice: CanvasStateCreator<ViewportSlice> = (set, _get, _api) => ({
   zoom: 1,
@@ -35,13 +36,17 @@ export const createViewportSlice: CanvasStateCreator<ViewportSlice> = (set, _get
   })),
 
   // DXF scaling controls how coordinates are scaled when importing/exporting DXF files.
-  // Default 1 = no scaling. Typical usage: if DXF is in mm and editor in px you might set 100.
-  dxfScale: 1,
+  // Defaults are loaded from config in `src/config/dxfConfig.ts`.
+  dxfScale: DXF_CONFIG.dxfScale,
   setDxfScale: (scale) => set({ dxfScale: scale }),
 
   // DXF simplification settings
-  dxfSimplifyEnabled: true,
-  dxfSimplifyTolerance: 2,
+  dxfSimplifyEnabled: DXF_CONFIG.dxfSimplifyEnabled,
+  dxfSimplifyTolerance: DXF_CONFIG.dxfSimplifyTolerance,
   setDxfSimplify: (enabled: boolean) => set({ dxfSimplifyEnabled: enabled }),
   setDxfSimplifyTolerance: (tolerance: number) => set({ dxfSimplifyTolerance: tolerance }),
+
+  // tolerance in editor units for matching seam endpoints to path segments during DXF import
+  dxfSeamMatchTolerance: DXF_CONFIG.dxfSeamMatchTolerance,
+  setDxfSeamMatchTolerance: (tolerance: number) => set({ dxfSeamMatchTolerance: tolerance }),
 });

@@ -192,46 +192,7 @@ export function Toolbar({ onResetView }: { onResetView?: () => void }) {
           <img src='/svg/import.svg' />
         </button>
 
-        {/* DXF scale control */}
-        <div title="DXF scale: number of file units per editor unit" className="flex items-center gap-2 px-2">
-          <label className="text-xs">DXF scale</label>
-          <input
-            type="number"
-            min="0.0001"
-            step="0.1"
-            value={useCanvasState((s) => s.dxfScale)}
-            onChange={(e) => {
-              const v = Number(e.target.value);
-              if (isFinite(v) && v > 0) useCanvasState.getState().setDxfScale(v);
-            }}
-            className="w-20 h-8 rounded-md border p-1 text-sm"
-            title="Number of file units per editor unit (e.g., 100 means file coordinates are 100× editor coords)"
-          />
-        </div>
 
-        {/* DXF simplify controls */}
-        <div title="Simplify DXF on import to reduce point count" className="flex items-center gap-2 px-2">
-          <label className="text-xs flex items-center gap-1">
-            <input
-              type="checkbox"
-              checked={useCanvasState((s) => s.dxfSimplifyEnabled)}
-              onChange={(e) => useCanvasState.getState().setDxfSimplify(e.target.checked)}
-            />
-            <span>Simplify on import</span>
-          </label>
-          <input
-            type="number"
-            min="0"
-            step="0.25"
-            value={useCanvasState((s) => s.dxfSimplifyTolerance)}
-            onChange={(e) => {
-              const v = Number(e.target.value);
-              if (isFinite(v) && v >= 0) useCanvasState.getState().setDxfSimplifyTolerance(v);
-            }}
-            className="w-20 h-8 rounded-md border p-1 text-sm"
-            title="Simplify tolerance (editor units). Higher values -> fewer points"
-          />
-        </div>
 
         <div className='h-[1px] w-full mt-2 mb-2 bg-gray-600 rounded-full' />
 

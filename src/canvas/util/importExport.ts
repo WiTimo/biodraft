@@ -556,29 +556,52 @@ export function exportToDxf() {
     const side = inferPatternSideFromPath(path);
     const layer = `PATTERN_${path.id}_${side}`;
 
-    // POLYLINE header
-    push('0');
-    push('POLYLINE');
-    push('8'); push(layer);
-    push('66'); push('1'); // vertices follow
-    push('70'); push(path.closed ? '1' : '0');
+    const pts = path.points;
+    if (pts.length === 0) continue;
 
-    // vertices (scaled by stateScale)
-    for (const pt of path.points) {
-      const sx = (pt.x * stateScale).toFixed(4);
-      const sy = (pt.y * stateScale).toFixed(4);
-      push('0');
-      push('VERTEX');
-      push('8'); push(layer);
-      push('10'); push(String(sx));
-      push('20'); push(String(sy));
-      push('30'); push('0');
+    // Export each segment: if both points have zero handles write a LINE, otherwise write a SPLINE (degree 3) representing the cubic Bezier
+    const segCount = path.closed ? pts.length : pts.length - 1;
+    for (let i = 0; i < segCount; i++) {
+      const a = pts[i];
+      const b = pts[(i + 1) % pts.length];
+
+      const ax = a.x * stateScale; const ay = a.y * stateScale;
+      const bx = b.x * stateScale; const by = b.y * stateScale;
+
+      const hasHandle = (a.handleOut.dx !== 0 || a.handleOut.dy !== 0 || b.handleIn.dx !== 0 || b.handleIn.dy !== 0);
+
+      if (!hasHandle) {
+        // simple LINE entity
+        push('0'); push('LINE');
+        push('8'); push(layer);
+        push('10'); push(String(ax.toFixed(4)));
+        push('20'); push(String(ay.toFixed(4)));
+        push('30'); push('0');
+        push('11'); push(String(bx.toFixed(4)));
+        push('21'); push(String(by.toFixed(4)));
+        push('31'); push('0');
+      } else {
+        // Export cubic Bezier as a degree-3 SPLINE with 4 control points (p0, p1, p2, p3)
+        const p0x = ax, p0y = ay;
+        const p1x = (a.x + a.handleOut.dx) * stateScale, p1y = (a.y + a.handleOut.dy) * stateScale;
+        const p2x = (b.x + b.handleIn.dx) * stateScale, p2y = (b.y + b.handleIn.dy) * stateScale;
+        const p3x = bx, p3y = by;
+
+        push('0'); push('SPLINE');
+        push('8'); push(layer);
+        push('71'); push('3'); // degree 3
+        push('70'); push('0'); // spline flags
+        // control points
+        push('10'); push(String(p0x.toFixed(4))); push('20'); push(String(p0y.toFixed(4))); push('30'); push('0');
+        push('10'); push(String(p1x.toFixed(4))); push('20'); push(String(p1y.toFixed(4))); push('30'); push('0');
+        push('10'); push(String(p2x.toFixed(4))); push('20'); push(String(p2y.toFixed(4))); push('30'); push('0');
+        push('10'); push(String(p3x.toFixed(4))); push('20'); push(String(p3y.toFixed(4))); push('30'); push('0');
+        // knot vector for a single cubic Bezier as B-spline: [0,0,0,0,1,1,1,1]
+        for (const k of [0,0,0,0,1,1,1,1]) { push('40'); push(String(k)); }
+        // weights (all 1)
+        push('41'); push('1'); push('41'); push('1'); push('41'); push('1'); push('41'); push('1');
+      }
     }
-
-    // SEQEND
-    push('0');
-    push('SEQEND');
-    push('8'); push(layer);
   }
 
   // seams as LINE entities
@@ -838,8 +861,11 @@ export function importFromDxf(file: File) {
     }
 
     function deBoor(u: number, degree: number, knots: number[], ctrlPts: {x:number,y:number, w?:number}[]) {
-      // convert to homogeneous coords
-      const pts = ctrlPts.map(p => [p.w ?? 1 * p.x, p.w ?? 1 * p.y, p.w ?? 1]);
+      // convert to homogeneous coords correctly: [x*w, y*w, w]
+      const pts = ctrlPts.map(p => {
+        const w = typeof p.w === 'number' ? p.w : 1;
+        return [p.x * w, p.y * w, w];
+      });
       const k = findKnotSpan(u, knots, degree);
       const d: number[][] = [];
       for (let j = 0; j <= degree; j++) {
@@ -1216,29 +1242,54 @@ export function importFromDxf(file: File) {
       }
     }
 
-    // Build spatial index of points to match seams (simple nearest-neighbour)
+    // Build spatial index of points and segments to match seams
     const flatPoints: { id: string; x:number; y:number }[] = [];
-    for (const p of newPaths) for (const pt of p.points) flatPoints.push({ id: pt.id, x: pt.x, y: pt.y });
-
-    function nearestPoint(x:number,y:number, maxDist = 10) {
-      // maxDist is in editor units; it's fine now because we already scaled seamLines into editor units
-      let best: { id:string; x:number; y:number } | null = null;
-      let bestDist = Infinity;
-      for (const pt of flatPoints) {
-        const dx = pt.x - x; const dy = pt.y - y; const d = Math.sqrt(dx*dx+dy*dy);
-        if (d < bestDist) { bestDist = d; best = pt; }
+    const segments: { pathId: string; aId: string; bId: string; ax:number; ay:number; bx:number; by:number }[] = [];
+    for (const p of newPaths) {
+      for (let i = 0; i < p.points.length; i++) {
+        const pt = p.points[i];
+        flatPoints.push({ id: pt.id, x: pt.x, y: pt.y });
       }
-      return bestDist <= maxDist && best ? best : null;
+      for (let i = 0; i < p.points.length - 1; i++) {
+        const a = p.points[i];
+        const b = p.points[i+1];
+        segments.push({ pathId: p.id, aId: a.id, bId: b.id, ax: a.x, ay: a.y, bx: b.x, by: b.y });
+      }
+      if (p.closed && p.points.length > 1) {
+        const a = p.points[p.points.length - 1];
+        const b = p.points[0];
+        segments.push({ pathId: p.id, aId: a.id, bId: b.id, ax: a.x, ay: a.y, bx: b.x, by: b.y });
+      }
+    }
+
+    function pointToSegmentDistance(px:number,py:number, ax:number,ay:number, bx:number,by:number) {
+      const vx = bx - ax; const vy = by - ay;
+      const wx = px - ax; const wy = py - ay;
+      const c = vx*vx + vy*vy;
+      if (c === 0) return { d: Math.hypot(wx,wy), t: 0 };
+      const t = Math.max(0, Math.min(1, (wx*vx + wy*vy)/c));
+      const projx = ax + t*vx; const projy = ay + t*vy;
+      return { d: Math.hypot(px - projx, py - projy), t };
     }
 
     const newSeams: [[string,string],[string,string]][] = [];
+    const seamTol = useCanvasState.getState().dxfSeamMatchTolerance ?? 10;
 
     for (const s of seamLines) {
-      const a = nearestPoint(s.x1, s.y1, 10);
-      const b = nearestPoint(s.x2, s.y2, 10);
-      if (a && b) {
-        // Create seam connecting those two points (we'll use each point as a simple segment edge)
-        newSeams.push([[a.id, a.id], [b.id, b.id]]);
+      // find nearest segment for each endpoint
+      let bestA: null | { seg: typeof segments[0]; d:number } = null;
+      for (const seg of segments) {
+        const res = pointToSegmentDistance(s.x1, s.y1, seg.ax, seg.ay, seg.bx, seg.by);
+        if (res.d < (bestA?.d ?? Infinity)) bestA = { seg, d: res.d };
+      }
+      let bestB: null | { seg: typeof segments[0]; d:number } = null;
+      for (const seg of segments) {
+        const res = pointToSegmentDistance(s.x2, s.y2, seg.ax, seg.ay, seg.bx, seg.by);
+        if (res.d < (bestB?.d ?? Infinity)) bestB = { seg, d: res.d };
+      }
+
+      if (bestA && bestB && bestA.d <= seamTol && bestB.d <= seamTol) {
+        newSeams.push([[bestA.seg.aId, bestA.seg.bId], [bestB.seg.aId, bestB.seg.bId]]);
       }
     }
     // Commit to state
