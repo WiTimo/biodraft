@@ -175,6 +175,8 @@ export interface SeamSlice {
   setSeamSelection: (selection: Segment[]) => void;
   selectedSeamSegment: Segment | null;
   setSelectedSeamSegment: (segment: Segment | null) => void;
+  seamDeleteMode: boolean;
+  setSeamDeleteMode: (active: boolean) => void;
   swapSeam: (segment: Segment) => void;
   swapSeamPortion: (seamIndex: number) => void;
   // Drag-based seaming

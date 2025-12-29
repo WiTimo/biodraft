@@ -95,17 +95,33 @@ export function SeamLayer() {
             stroke={"rgba(255, 165, 0, 0.6)"}
             strokeWidth={3}
             listening={true}
-            onClick={() => handleSwapSeam(i)}
+            onClick={() => {
+              const state = useCanvasState.getState();
+              if (state.seamDeleteMode) {
+                const s1 = portion1.segment || portion1;
+                const s2 = portion2.segment || portion2;
+                state.removeSeam(s1, s2);
+                state.setSeamSelection([]);
+                state.setSeamDeleteMode(false);
+                return;
+              }
+              handleSwapSeam(i);
+            }}
             onMouseEnter={(e) => {
               const line = e.target as unknown as KonvaLine;
-              line.stroke("rgba(255, 100, 0, 1)");
-              line.strokeWidth(4);
+              if (useCanvasState.getState().seamDeleteMode) {
+                line.stroke("rgba(230, 67, 67, 1)");
+                line.strokeWidth(5);
+              } else {
+                line.stroke("rgba(255, 100, 0, 1)");
+                line.strokeWidth(4);
+              }
               const stage = e.target.getStage();
               if (stage) stage.container().style.cursor = 'pointer';
             }}
             onMouseLeave={(e) => {
               const line = e.target as unknown as KonvaLine;
-              line.stroke("rgba(255, 165, 0, 0.6)");
+              line.stroke(useCanvasState.getState().seamDeleteMode ? "rgba(255, 165, 0, 0.6)" : "rgba(255, 165, 0, 0.6)");
               line.strokeWidth(3);
               const stage = e.target.getStage();
               if (stage) stage.container().style.cursor = 'default';
@@ -118,17 +134,33 @@ export function SeamLayer() {
             stroke={"rgba(255, 165, 0, 0.6)"}
             strokeWidth={3}
             listening={true}
-            onClick={() => handleSwapSeam(i)}
+            onClick={() => {
+              const state = useCanvasState.getState();
+              if (state.seamDeleteMode) {
+                const s1 = portion1.segment || portion1;
+                const s2 = portion2.segment || portion2;
+                state.removeSeam(s1, s2);
+                state.setSeamSelection([]);
+                state.setSeamDeleteMode(false);
+                return;
+              }
+              handleSwapSeam(i);
+            }}
             onMouseEnter={(e) => {
               const line = e.target as unknown as KonvaLine;
-              line.stroke("rgba(255, 100, 0, 1)");
-              line.strokeWidth(4);
+              if (useCanvasState.getState().seamDeleteMode) {
+                line.stroke("rgba(230, 67, 67, 1)");
+                line.strokeWidth(5);
+              } else {
+                line.stroke("rgba(255, 100, 0, 1)");
+                line.strokeWidth(4);
+              }
               const stage = e.target.getStage();
               if (stage) stage.container().style.cursor = 'pointer';
             }}
             onMouseLeave={(e) => {
               const line = e.target as unknown as KonvaLine;
-              line.stroke("rgba(255, 165, 0, 0.6)");
+              line.stroke(useCanvasState.getState().seamDeleteMode ? "rgba(255, 165, 0, 0.6)" : "rgba(255, 165, 0, 0.6)");
               line.strokeWidth(3);
               const stage = e.target.getStage();
               if (stage) stage.container().style.cursor = 'default';
@@ -152,7 +184,31 @@ export function SeamLayer() {
             stroke={"orange"}
             strokeWidth={2}
             dash={[10, 5]}
-            listening={false}
+            listening={true}
+            onClick={() => {
+              const state = useCanvasState.getState();
+              if (state.seamDeleteMode) {
+                const s1 = portion1 as [string, string];
+                const s2 = portion2 as [string, string];
+                state.removeSeam(s1, s2);
+                state.setSeamSelection([]);
+                state.setSeamDeleteMode(false);
+              }
+            }}
+            onMouseEnter={(e) => {
+              const line = e.target as unknown as KonvaLine;
+              line.stroke(useCanvasState.getState().seamDeleteMode ? "rgba(230, 67, 67, 1)" : "rgba(255, 140, 0, 1)");
+              line.strokeWidth(useCanvasState.getState().seamDeleteMode ? 4 : 3);
+              const stage = e.target.getStage();
+              if (stage) stage.container().style.cursor = 'pointer';
+            }}
+            onMouseLeave={(e) => {
+              const line = e.target as unknown as KonvaLine;
+              line.stroke("orange");
+              line.strokeWidth(2);
+              const stage = e.target.getStage();
+              if (stage) stage.container().style.cursor = 'default';
+            }}
           />,
           <Line
             key={`seam-${i}-2`}
@@ -160,7 +216,31 @@ export function SeamLayer() {
             stroke={"orange"}
             strokeWidth={2}
             dash={[10, 5]}
-            listening={false}
+            listening={true}
+            onClick={() => {
+              const state = useCanvasState.getState();
+              if (state.seamDeleteMode) {
+                const s1 = portion1 as [string, string];
+                const s2 = portion2 as [string, string];
+                state.removeSeam(s1, s2);
+                state.setSeamSelection([]);
+                state.setSeamDeleteMode(false);
+              }
+            }}
+            onMouseEnter={(e) => {
+              const line = e.target as unknown as KonvaLine;
+              line.stroke(useCanvasState.getState().seamDeleteMode ? "rgba(230, 67, 67, 1)" : "rgba(255, 140, 0, 1)");
+              line.strokeWidth(useCanvasState.getState().seamDeleteMode ? 4 : 3);
+              const stage = e.target.getStage();
+              if (stage) stage.container().style.cursor = 'pointer';
+            }}
+            onMouseLeave={(e) => {
+              const line = e.target as unknown as KonvaLine;
+              line.stroke("orange");
+              line.strokeWidth(2);
+              const stage = e.target.getStage();
+              if (stage) stage.container().style.cursor = 'default';
+            }}
           />,
         ];
       }

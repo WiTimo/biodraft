@@ -43,6 +43,7 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
   const clearSelectedPointIds = useCanvasState((state) => state.clearSelectedPointIds);
   const setSeamSelection = useCanvasState((state) => state.setSeamSelection);
   const setSelectedSeamSegment = useCanvasState((state) => state.setSelectedSeamSegment);
+  const setSeamDeleteMode = useCanvasState((state) => state.setSeamDeleteMode);
 
   const [isDraggingNewPoint, setIsDraggingNewPoint] = useState(false);
   const [newPointId, setNewPointId] = useState<string | null>(null);
@@ -108,6 +109,7 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
         if (clickedOutsideSegment) {
           setSeamSelection([]);
           setSelectedSeamSegment(null);
+          setSeamDeleteMode(false);
         }
         return;
       }

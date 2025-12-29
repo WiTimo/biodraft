@@ -10,6 +10,7 @@ import ZoomControls from './ZoomControls';
 
 export function Toolbar({ onResetView }: { onResetView?: () => void }) {
   const { currentTool, setTool, setZoom, setOffset, zoom } = useCanvasState();
+  const seamDeleteMode = useCanvasState((state) => state.seamDeleteMode);
 
   const handleImportImage = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -111,6 +112,7 @@ export function Toolbar({ onResetView }: { onResetView?: () => void }) {
                 state.removeSeam(seamSelection[0], seamSelection[1]);
                 state.setSeamSelection([]);
                 state.setSelectedSeamSegment(null);
+                state.setSeamDeleteMode(false);
                 return;
               }
 
@@ -125,13 +127,17 @@ export function Toolbar({ onResetView }: { onResetView?: () => void }) {
                     state.removeSeam(seamPartToSegment(a), seamPartToSegment(b));
                     state.setSeamSelection([]);
                     state.setSelectedSeamSegment(null);
+                    state.setSeamDeleteMode(false);
                     return;
                   }
                 }
               }
+
+              // No seam directly selected; arm delete mode so the next seam click removes it
+              state.setSeamDeleteMode(!state.seamDeleteMode);
             }}
             className="h-10 w-10 rounded-md p-1 cursor-pointer border-white border-4"
-            style={{ borderColor: 'white' }}
+            style={{ borderColor: seamDeleteMode ? '#e64343' : 'white' }}
           >
             <img src='/svg/delete.svg' />
           </button>

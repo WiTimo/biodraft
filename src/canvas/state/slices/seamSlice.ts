@@ -5,11 +5,13 @@ export const createSeamSlice: CanvasStateCreator<SeamSlice> = (set, get, _api) =
   seams: [],
   seamSelection: [],
   selectedSeamSegment: null,
+  seamDeleteMode: false,
   pendingSeamPortion1: null,
   pendingSeamPortion2: null,
 
   setSeamSelection: (selection) => set({ seamSelection: selection }),
   setSelectedSeamSegment: (segment) => set({ selectedSeamSegment: segment }),
+  setSeamDeleteMode: (active) => set({ seamDeleteMode: active }),
 
   setPendingSeamPortion1: (portion) => set({ pendingSeamPortion1: portion }),
   setPendingSeamPortion2: (portion) => set({ pendingSeamPortion2: portion }),
@@ -40,6 +42,7 @@ export const createSeamSlice: CanvasStateCreator<SeamSlice> = (set, get, _api) =
       if (exists) {
         return {
           ...state,
+          seamDeleteMode: false,
           pendingSeamPortion1: null,
           pendingSeamPortion2: null,
         };
@@ -50,6 +53,7 @@ export const createSeamSlice: CanvasStateCreator<SeamSlice> = (set, get, _api) =
           ...state.present,
           seams: [...state.present.seams, newSeam],
         },
+        seamDeleteMode: false,
         pendingSeamPortion1: null,
         pendingSeamPortion2: null,
       };

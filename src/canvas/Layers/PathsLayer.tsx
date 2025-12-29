@@ -2,10 +2,12 @@ import { Line } from 'react-konva';
 
 import { LinePath } from '../Paths/LinePath';
 import { useCanvasState } from '../state/CanvasState';
-import type { Handle, Point } from '../state/types';
+import type { Handle, Point, Segment } from '../state/types';
 import type { Line as KonvaLine } from 'konva/lib/shapes/Line';
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { evaluateBezier, generateBezierPoints } from '../state/utils';
+import { evaluateBezier, generateBezierPoints, segmentsEqual } from '../state/utils';
+
+const seamPartToSegment = (part: any): Segment => part.segment || part;
 
 export function PathsLayer() {
   const paths = useCanvasState(s => s.present.paths);
@@ -212,6 +214,28 @@ export function PathsLayer() {
               onMouseDown={(e) => {
                 if (currentTool !== 'seam') return;
                 e.evt.preventDefault();
+
+                const state = useCanvasState.getState();
+
+                // If delete mode is armed, remove the seam that contains this segment
+                if (state.seamDeleteMode) {
+                  const targetSegment: Segment = [a.id, b.id];
+                  const seamToRemove = seams.find(([partA, partB]) => {
+                    const segA = seamPartToSegment(partA as any);
+                    const segB = seamPartToSegment(partB as any);
+                    return segmentsEqual(segA, targetSegment) || segmentsEqual(segB, targetSegment);
+                  });
+
+                  if (seamToRemove) {
+                    const [partA, partB] = seamToRemove;
+                    state.removeSeam(seamPartToSegment(partA as any), seamPartToSegment(partB as any));
+                    state.setSeamSelection([]);
+                    setSelectedSeamSegment(null);
+                  }
+
+                  state.setSeamDeleteMode(false);
+                  return;
+                }
                 
                 const stage = e.target.getStage();
                 if (!stage) return;
@@ -279,9 +303,17 @@ export function PathsLayer() {
               onMouseEnter={(e) => {
                 if (currentTool === 'seam') {
                   setSelectedSeamSegment([a.id, b.id]);
+                  const state = useCanvasState.getState();
                   if (!isSelected) {
                     const line = e.target as KonvaLine;
-                    line.stroke('rgba(0,0,255,0.2)');
+                    if (state.seamDeleteMode) {
+                      line.stroke('rgba(230,67,67,0.6)');
+                      line.strokeWidth(16 / zoom);
+                      const stage = e.target.getStage();
+                      if (stage) stage.container().style.cursor = 'pointer';
+                    } else {
+                      line.stroke('rgba(0,0,255,0.2)');
+                    }
                   }
                   e.target.getLayer()?.batchDraw();
                 }
@@ -292,6 +324,9 @@ export function PathsLayer() {
                   if (!isSelected) {
                     const line = e.target as KonvaLine;
                     line.stroke(baseColor);
+                    line.strokeWidth(12 / zoom);
+                    const stage = e.target.getStage();
+                    if (stage) stage.container().style.cursor = 'default';
                   }
                   e.target.getLayer()?.batchDraw();
                 }
