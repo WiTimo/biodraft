@@ -102,7 +102,7 @@ function downloadBiomeshGLBToFile({ body, outFile, onStage }) {
           if (total > 0) {
             // Map download to 20% -> 60%
             const pct = 20 + Math.floor((received / total) * 40);
-            onStage(Math.min(60, Math.max(20, pct)), `Downloading .glb (${Math.floor(received / 1024)} KB)`);
+            onStage(Math.min(60, Math.max(20, pct)), `Downloading model (${Math.floor(received / 1024)} KB)`);
           }
         });
 
@@ -258,7 +258,7 @@ app.post("/api/jobs", async (req, res) => {
       emitProgress(jobId, 5, "Validating input");
 
       // 1) Call BioMesh and stream glb to disk
-      emitProgress(jobId, 15, "Requesting BioMesh .glb");
+      emitProgress(jobId, 15, "Generating model");
       const glbPath = path.join(dir, "model.glb");
 
       await downloadBiomeshGLBToFile({
@@ -267,12 +267,12 @@ app.post("/api/jobs", async (req, res) => {
         onStage: (pct, msg) => emitProgress(jobId, pct, msg)
       });
 
-      emitProgress(jobId, 65, "Converting .glb to .blend");
+      emitProgress(jobId, 65, "Preparing render");
       const blendPath = path.join(dir, "scene.blend");
       await convertGlbToBlend({ glbPath, blendPath });
 
       // 2) Render with Blender script (writes front.png/back.png into dir)
-      emitProgress(jobId, 80, "Rendering front/back images in Blender");
+      emitProgress(jobId, 80, "Rendering images");
       await runBlenderRender({ blendFile: blendPath, outputDir: dir });
 
       // 3) Delete heavy intermediates (glb + blend). Keep images until download.

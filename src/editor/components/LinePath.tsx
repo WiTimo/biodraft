@@ -11,6 +11,7 @@ export function LinePath({
   onMouseEnter,
   onMouseLeave,
   highlighted = false,
+  highlightColor,
 }: {
   points: any[];
   closed?: boolean;
@@ -19,13 +20,14 @@ export function LinePath({
   onMouseEnter?: (e?: any) => void;
   onMouseLeave?: (e?: any) => void;
   highlighted?: boolean;
+  highlightColor?: string;
 }) {
   if (points.length < 2) return null;
 
   const [img] = useImage(texture?.src || '', 'anonymous');
   const zoom = useCanvasState(s => s.zoom);
 
-  const strokeColor = highlighted ? 'rgba(0,120,255,0.6)' : 'black';
+  const strokeColor = highlighted ? (highlightColor ?? 'rgba(0,120,255,0.6)') : 'black';
   const strokeW = highlighted ? Math.min(4, 3 / zoom) : 2 / zoom;
 
   return (

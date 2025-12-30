@@ -222,7 +222,7 @@ export function SelectionTransformer({ isVisible }: { isVisible: boolean }) {
           saveState();
 
           const selectedIdsSet = new Set(selectedIds);
-          const originalTextures: Array<{ pathId: string; offsetX: number; offsetY: number }> = [];
+          const originalTextures: Array<{ pathId: string; offsetX: number; offsetY: number; scaleX: number; scaleY: number }> = [];
           for (const p of paths) {
             const allSelected = p.points.every((pt: any) => selectedIdsSet.has(pt.id));
             if (!allSelected || !p.texture) continue;
@@ -230,6 +230,8 @@ export function SelectionTransformer({ isVisible }: { isVisible: boolean }) {
               pathId: p.id,
               offsetX: p.texture.offsetX ?? 0,
               offsetY: p.texture.offsetY ?? 0,
+              scaleX: p.texture.scaleX ?? 1,
+              scaleY: p.texture.scaleY ?? 1,
             });
           }
 
@@ -279,11 +281,20 @@ export function SelectionTransformer({ isVisible }: { isVisible: boolean }) {
           // Also move textures for any fully-selected path so textures stay attached to patterns.
           // Use drag-start snapshot to avoid drift and avoid per-move history snapshots.
           const textureSnapshot = dragState.current as {
-            originalTextures?: Array<{ pathId: string; offsetX: number; offsetY: number }>;
+            originalTextures?: Array<{ pathId: string; offsetX: number; offsetY: number; scaleX: number; scaleY: number }>;
           };
           const originals = textureSnapshot.originalTextures ?? [];
           for (const t of originals) {
-            updateTextureForPathLive(t.pathId, { offsetX: t.offsetX + dx, offsetY: t.offsetY + dy });
+            // In Konva pattern fills, decreasing offset moves the pattern in the +axis direction.
+            // When we translate the geometry by +dx/+dy, we must translate the pattern with it.
+            // Offsets are applied in pattern space; when pattern is scaled, offset deltas must be
+            // adjusted to keep world-space motion consistent.
+            const safeScaleX = Number.isFinite(t.scaleX) && Math.abs(t.scaleX) > 1e-6 ? t.scaleX : 1;
+            const safeScaleY = Number.isFinite(t.scaleY) && Math.abs(t.scaleY) > 1e-6 ? t.scaleY : 1;
+            updateTextureForPathLive(t.pathId, {
+              offsetX: t.offsetX - dx / safeScaleX,
+              offsetY: t.offsetY - dy / safeScaleY,
+            });
           }
 
           // Visually snap the rect back

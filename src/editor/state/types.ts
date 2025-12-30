@@ -173,6 +173,15 @@ export interface SelectionSlice {
   selectedPointIds: string[];
   setSelectedPointIds: (ids: string[]) => void;
   clearSelectedPointIds: () => void;
+
+  // Hovered path (pattern) id for tool-specific UI (e.g. texture hover inspector)
+  hoveredPathId: string | null;
+  setHoveredPathId: (id: string | null) => void;
+
+  // Sticky path selection for the texture inspector (set via click in texture tool)
+  textureInspectPathId: string | null;
+  setTextureInspectPathId: (id: string | null) => void;
+
   deleteSelectedPoint: () => void;
   deleteSelectedPoints: () => void;
   mousePosition: { x: number; y: number } | null;

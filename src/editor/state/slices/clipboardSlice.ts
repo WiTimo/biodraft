@@ -18,9 +18,8 @@ export const createClipboardSlice: CanvasStateCreator<ClipboardSlice> = (set, ge
 
       const clonePoints = () => {
         try {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const sc = (globalThis as any).structuredClone as ((value: unknown) => unknown) | undefined;
-          if (typeof sc === 'function') return sc(selectedPoints) as typeof selectedPoints;
+          const sc = globalThis.structuredClone;
+          if (typeof sc === 'function') return sc(selectedPoints);
         } catch {
           // ignore
         }

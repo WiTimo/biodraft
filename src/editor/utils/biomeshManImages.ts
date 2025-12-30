@@ -21,7 +21,7 @@ export const DEFAULT_BIOMESH_MAN_PARAMS: BiomeshManParams = {
   gender: 'male',
   height: 185,
   weight: 88,
-  muscle: 20,
+  muscle: 0,
   units: 'metric',
 };
 

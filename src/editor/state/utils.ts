@@ -10,9 +10,8 @@ export function clonePresent(present: CanvasPresent): CanvasPresent {
   // Prefer native structured cloning (faster, less GC churn) with a safe fallback.
   // CanvasPresent is plain JSON-serializable data.
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const sc = (globalThis as any).structuredClone as ((value: unknown) => unknown) | undefined;
-    if (typeof sc === 'function') return sc(present) as CanvasPresent;
+    const sc = globalThis.structuredClone;
+    if (typeof sc === 'function') return sc(present);
   } catch {
     // ignore
   }

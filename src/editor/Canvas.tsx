@@ -2,8 +2,6 @@ import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import Konva from 'konva';
 
 import { useCanvasState } from './state/CanvasState';
-import { ImageTransformPanel } from './ui/ImageTransformPanel';
-import { TextureTransformPanel } from './ui/TextureTransformPanel';
 import { ThreeDView } from './ui/ThreeDView';
 import { Toolbar } from './ui/Toolbar';
 import { CanvasStage } from './components/CanvasStage';
@@ -12,6 +10,7 @@ import { useStaticManImages } from './hooks/useStaticManImages';
 import { useCanvasKeyboardShortcuts } from './hooks/useCanvasKeyboardShortcuts';
 import { useSplitResize } from './hooks/useSplitResize';
 import { RulersOverlay } from './ui/RulersOverlay';
+import { InspectorPanel } from './ui/InspectorPanel';
 import { DEFAULT_VIEWPORT_SPAN_MM, MM_PER_WORLD_UNIT } from './config/rulerConfig';
 
 const RULER_SIZE = 24;
@@ -111,8 +110,7 @@ export function Canvas() {
       )}
 
       <div className="h-full relative overflow-hidden" style={stageContainerStyle}>
-        <ImageTransformPanel />
-        <TextureTransformPanel />
+        <InspectorPanel />
 
         <div className="absolute inset-0" style={{ background: '#ffffff' }}>
           {/* Rulers overlay */}
@@ -123,7 +121,6 @@ export function Canvas() {
             offset={offset}
             rulerSize={RULER_SIZE}
           />
-
           {/* Stage viewport (space excluding rulers) */}
           <div
             ref={viewportRef}

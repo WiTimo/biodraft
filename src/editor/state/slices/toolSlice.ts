@@ -17,6 +17,8 @@ export const createToolSlice: CanvasStateCreator<ToolSlice> = (set, get, _api) =
     set({
       selectionRect: null,
       selectionStart: null,
+      hoveredPathId: null,
+      textureInspectPathId: null,
     });
 
     // Reset texture interaction when switching tools

@@ -85,6 +85,10 @@ export function PathsLayer() {
   const clearPendingSeamPortions = useCanvasState(s => s.clearPendingSeamPortions);
   const commitPendingSeamPortions = useCanvasState(s => s.commitPendingSeamPortions);
 
+  const hoveredPathId = useCanvasState((s) => s.hoveredPathId);
+  const setHoveredPathId = useCanvasState((s) => s.setHoveredPathId);
+  const textureInspectPathId = useCanvasState((s) => s.textureInspectPathId);
+
   // Local drag state
   const [isDraggingSeam, setIsDraggingSeam] = useState(false);
   const [dragStartT, setDragStartT] = useState<number>(0);
@@ -272,8 +276,6 @@ export function PathsLayer() {
   }, [isDraggingTexture, textureStageRef, textureDragPathId, textureDragStart, textureDragOriginalOffset, updateTextureForPathLive, zoom, offset]);
 
 
-  const [hoveredPathId, setHoveredPathId] = useState<string | null>(null);
-
   const renderFillOverlay = (path: Path) => {
     if (!path.closed) return null;
     if (currentTool !== 'select' && currentTool !== 'texture') return null;
@@ -323,6 +325,11 @@ export function PathsLayer() {
           }
 
           if (currentTool === 'texture') {
+            // Sticky selection for the bottom-left inspector.
+            // Clicking the same pattern again toggles it off.
+            const state = useCanvasState.getState();
+            state.setTextureInspectPathId(state.textureInspectPathId === path.id ? null : path.id);
+
             e.evt.preventDefault();
             const stage = e.target.getStage();
             if (!stage) return;
@@ -343,9 +350,8 @@ export function PathsLayer() {
             setTextureStageRef(stage);
             stage.container().style.cursor = 'grabbing';
 
-            const st = useCanvasState.getState();
-            st.setTextureInteractionActive(true);
-            st.setTextureLastInteractionAt(Date.now());
+            state.setTextureInteractionActive(true);
+            state.setTextureLastInteractionAt(Date.now());
           }
         }}
         onWheel={(e) => {
@@ -584,7 +590,16 @@ export function PathsLayer() {
             points={path.points}
             closed={path.closed}
             texture={path.texture ?? null}
-            highlighted={currentTool === 'select' && path.closed && hoveredPathId === path.id}
+            highlighted={
+              path.closed &&
+              ((hoveredPathId === path.id && (currentTool === 'select' || currentTool === 'texture')) ||
+                (currentTool === 'texture' && textureInspectPathId === path.id))
+            }
+            highlightColor={
+              currentTool === 'texture' && hoveredPathId === path.id
+                ? 'rgba(230,67,67,0.75)'
+                : undefined
+            }
           />
 
           {/* Invisible overlay to capture hover/click for selection (works reliably across Konva shapes) */}

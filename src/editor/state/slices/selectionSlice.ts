@@ -15,6 +15,12 @@ export const createSelectionSlice: CanvasStateCreator<SelectionSlice> = (set, ge
   setSelectedPointIds: (ids) => set({ selectedPointIds: ids }),
   clearSelectedPointIds: () => set({ selectedPointIds: [] }),
 
+  hoveredPathId: null,
+  setHoveredPathId: (id) => set({ hoveredPathId: id }),
+
+  textureInspectPathId: null,
+  setTextureInspectPathId: (id) => set({ textureInspectPathId: id }),
+
   deleteSelectedPoint: () => {
     const { selectedPointId, present, saveState } = get();
     if (!selectedPointId) return;
