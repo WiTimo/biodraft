@@ -30,9 +30,11 @@ function getCenterAndBounds(points: any) {
 export function SelectionTransformer({ isVisible }: { isVisible: boolean }) {
   const selectedIds = useCanvasState((s) => s.selectedPointIds);
   const paths = useCanvasState((s) => s.present.paths);
-  const movePoint = useCanvasState((s) => s.movePoint);
-  const moveHandle = useCanvasState((s) => s.moveHandle);
+  const updatePointsBatch = useCanvasState((s) => s.updatePointsBatch);
   const saveState = useCanvasState((s) => s.saveState);
+  const updateTextureForPathLive = useCanvasState((s) => s.updateTextureForPathLive);
+  const zoom = useCanvasState((s) => s.zoom);
+  const isShiftPressed = useCanvasState((s) => s.isShiftPressed);
   
 
   const dragStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -40,58 +42,68 @@ export function SelectionTransformer({ isVisible }: { isVisible: boolean }) {
 
   const dragState = useRef<Record<string, unknown> | null>(null);
 
-  const selectedPoints = useMemo(
-    () => paths.flatMap((p) => p.points).filter((pt) => selectedIds.includes(pt.id)),
-    [paths, selectedIds]
-  );
+  const selectedPoints = useMemo(() => {
+    if (!isVisible || selectedIds.length === 0) return [];
+    return paths.flatMap((p) => p.points).filter((pt) => selectedIds.includes(pt.id));
+  }, [isVisible, paths, selectedIds]);
 
-  const allBoundingPoints = [...selectedPoints];
+  const bounds = useMemo(() => {
+    if (!isVisible || selectedPoints.length === 0) return null;
 
-  paths.forEach((path) => {
-    const pts = path.points;
-    for (let i = 0; i < pts.length - 1; i++) {
-      const p1 = pts[i];
-      const p2 = pts[i + 1];
+    const selectedIdSet = new Set(selectedIds);
+    const allBoundingPoints: Array<{ x: number; y: number }> = [...selectedPoints];
 
-      if (selectedIds.includes(p1.id) && selectedIds.includes(p2.id)) {
-        for (let t = 0; t <= 1.0; t += 0.05) {
-          //@ts-ignore
-          allBoundingPoints.push(sampleCubicBezier(
-            { x: p1.x, y: p1.y },
-            { x: p1.x + p1.handleOut.dx, y: p1.y + p1.handleOut.dy },
-            { x: p2.x + p2.handleIn.dx, y: p2.y + p2.handleIn.dy },
-            { x: p2.x, y: p2.y },
-            t
-          ));
+    for (const path of paths) {
+      const pts = path.points;
+      for (let i = 0; i < pts.length - 1; i++) {
+        const p1 = pts[i];
+        const p2 = pts[i + 1];
+
+        if (selectedIdSet.has(p1.id) && selectedIdSet.has(p2.id)) {
+          for (let t = 0; t <= 1.0; t += 0.05) {
+            allBoundingPoints.push(
+              sampleCubicBezier(
+                { x: p1.x, y: p1.y },
+                { x: p1.x + p1.handleOut.dx, y: p1.y + p1.handleOut.dy },
+                { x: p2.x + p2.handleIn.dx, y: p2.y + p2.handleIn.dy },
+                { x: p2.x, y: p2.y },
+                t,
+              ),
+            );
+          }
+        }
+      }
+
+      if (pts.length >= 2 && path.closed) {
+        const pLast = pts[pts.length - 1];
+        const pFirst = pts[0];
+        if (selectedIdSet.has(pLast.id) && selectedIdSet.has(pFirst.id)) {
+          for (let t = 0; t <= 1.0; t += 0.05) {
+            allBoundingPoints.push(
+              sampleCubicBezier(
+                { x: pLast.x, y: pLast.y },
+                { x: pLast.x + pLast.handleOut.dx, y: pLast.y + pLast.handleOut.dy },
+                { x: pFirst.x + pFirst.handleIn.dx, y: pFirst.y + pFirst.handleIn.dy },
+                { x: pFirst.x, y: pFirst.y },
+                t,
+              ),
+            );
+          }
         }
       }
     }
 
-    // If the path is closed, also include the closing segment from last -> first
-    if (pts.length >= 2 && path.closed) {
-      const pLast = pts[pts.length - 1];
-      const pFirst = pts[0];
-      if (selectedIds.includes(pLast.id) && selectedIds.includes(pFirst.id)) {
-        for (let t = 0; t <= 1.0; t += 0.05) {
-          //@ts-ignore
-          allBoundingPoints.push(sampleCubicBezier(
-            { x: pLast.x, y: pLast.y },
-            { x: pLast.x + pLast.handleOut.dx, y: pLast.y + pLast.handleOut.dy },
-            { x: pFirst.x + pFirst.handleIn.dx, y: pFirst.y + pFirst.handleIn.dy },
-            { x: pFirst.x, y: pFirst.y },
-            t
-          ));
-        }
-      }
-    }
-  });
+    return getCenterAndBounds(allBoundingPoints);
+  }, [isVisible, paths, selectedIds, selectedPoints]);
 
-  const { minX: rawMinX, minY: rawMinY, maxX: rawMaxX, maxY: rawMaxY } = getCenterAndBounds(allBoundingPoints);
+  if (!isVisible || selectedPoints.length === 0 || !bounds) return null;
+
+  const { minX: rawMinX, minY: rawMinY, maxX: rawMaxX, maxY: rawMaxY } = bounds;
 
   // Ensure the selection bounding box has a minimum screen size so it's always draggable
   const minScreenPx = 12; // minimum size in screen pixels
-  const minWorldW = minScreenPx / (useCanvasState.getState().zoom || 1);
-  const minWorldH = minScreenPx / (useCanvasState.getState().zoom || 1);
+  const minWorldW = minScreenPx / (zoom || 1);
+  const minWorldH = minScreenPx / (zoom || 1);
 
   // Expand bounds if width/height are smaller than the minimum
   let minX = rawMinX;
@@ -124,7 +136,6 @@ export function SelectionTransformer({ isVisible }: { isVisible: boolean }) {
     { x: minX, y: maxY },
   ];
 
-  const zoom = useCanvasState((s) => s.zoom);
   // Keep handle size constant in screen pixels
   const HANDLE_SCREEN_BASE = 8; // px
   const HANDLE_SCREEN_MIN = 4;
@@ -135,9 +146,6 @@ export function SelectionTransformer({ isVisible }: { isVisible: boolean }) {
   const onHandleDragStart = (_: any, cornerIndex: number) => {
     const corner = cornerPoints[cornerIndex];
     const centerVec = { x: corner.x - center.x, y: corner.y - center.y };
-    const selectedPoints = paths
-      .flatMap((p) => p.points)
-      .filter((pt) => selectedIds.includes(pt.id));
     //@ts-ignore
     dragState.current = {
       center: { ...center },
@@ -171,19 +179,23 @@ export function SelectionTransformer({ isVisible }: { isVisible: boolean }) {
     const currentVec = { x: worldPointer.x - center.x, y: worldPointer.y - center.y };
     const currentDistance = Math.sqrt(currentVec.x ** 2 + currentVec.y ** 2);
     const scale = currentDistance / startDistance;
-    originalPoints.forEach((orig: any) => {
+
+    const updates = (originalPoints as any[]).map((orig) => {
       const localX = orig.x - center.x;
       const localY = orig.y - center.y;
-
-      movePoint(orig.id, center.x + localX * scale, center.y + localY * scale);
-      moveHandle(orig.id, 'handleIn', orig.handleIn.dx * scale, orig.handleIn.dy * scale, false, true);
-      moveHandle(orig.id, 'handleOut', orig.handleOut.dx * scale, orig.handleOut.dy * scale, false, true);
+      return {
+        id: orig.id,
+        x: center.x + localX * scale,
+        y: center.y + localY * scale,
+        handleIn: { dx: orig.handleIn.dx * scale, dy: orig.handleIn.dy * scale },
+        handleOut: { dx: orig.handleOut.dx * scale, dy: orig.handleOut.dy * scale },
+      };
     });
+
+    updatePointsBatch(updates);
   };
 
 
-
-  if (!isVisible || selectedPoints.length === 0) return null;
 
   return (
     <>
@@ -209,12 +221,25 @@ export function SelectionTransformer({ isVisible }: { isVisible: boolean }) {
 
           saveState();
 
+          const selectedIdsSet = new Set(selectedIds);
+          const originalTextures: Array<{ pathId: string; offsetX: number; offsetY: number }> = [];
+          for (const p of paths) {
+            const allSelected = p.points.every((pt: any) => selectedIdsSet.has(pt.id));
+            if (!allSelected || !p.texture) continue;
+            originalTextures.push({
+              pathId: p.id,
+              offsetX: p.texture.offsetX ?? 0,
+              offsetY: p.texture.offsetY ?? 0,
+            });
+          }
+
           dragState.current = {
             originalPoints: selectedPoints.map((p) => ({
               id: p.id,
               x: p.x,
               y: p.y,
             })),
+            originalTextures,
           };
         }}
         onDragMove={(e) => {
@@ -228,8 +253,7 @@ export function SelectionTransformer({ isVisible }: { isVisible: boolean }) {
           let dx = worldPointer.x - dragStartRef.current.x;
           let dy = worldPointer.y - dragStartRef.current.y;
 
-          const state = useCanvasState.getState();
-          if (state.isShiftPressed) {
+          if (isShiftPressed) {
             if (!lockedAxisRef.current) {
               lockedAxisRef.current = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
             }
@@ -243,28 +267,23 @@ export function SelectionTransformer({ isVisible }: { isVisible: boolean }) {
           }
 
           const moveSnapshot = dragState.current as { originalPoints: { id: string; x: number; y: number }[] };
-          moveSnapshot.originalPoints.forEach((orig) => {
-            movePoint(orig.id, orig.x + dx, orig.y + dy);
-          });
 
-          // Also move texture offsets for any fully-selected path so textures stay attached to patterns
-          const presentPaths = useCanvasState.getState().present.paths;
-          const selectedIdsSet = new Set(selectedIds);
-          const fullySelectedPathIds: string[] = [];
-          for (const p of presentPaths) {
-            const allSelected = p.points.every((pt: any) => selectedIdsSet.has(pt.id));
-            if (allSelected) fullySelectedPathIds.push(p.id);
-          }
-          if (fullySelectedPathIds.length > 0) {
-            // apply same dx/dy offset to texture offsetX/offsetY for each fully selected path
-            for (const pathId of fullySelectedPathIds) {
-              const path = presentPaths.find((pp) => pp.id === pathId);
-              if (!path || !path.texture) continue;
-              useCanvasState.getState().updateTextureForPath(pathId, {
-                offsetX: (path.texture.offsetX ?? 0) + dx,
-                offsetY: (path.texture.offsetY ?? 0) + dy,
-              });
-            }
+          updatePointsBatch(
+            moveSnapshot.originalPoints.map((orig) => ({
+              id: orig.id,
+              x: orig.x + dx,
+              y: orig.y + dy,
+            })),
+          );
+
+          // Also move textures for any fully-selected path so textures stay attached to patterns.
+          // Use drag-start snapshot to avoid drift and avoid per-move history snapshots.
+          const textureSnapshot = dragState.current as {
+            originalTextures?: Array<{ pathId: string; offsetX: number; offsetY: number }>;
+          };
+          const originals = textureSnapshot.originalTextures ?? [];
+          for (const t of originals) {
+            updateTextureForPathLive(t.pathId, { offsetX: t.offsetX + dx, offsetY: t.offsetY + dy });
           }
 
           // Visually snap the rect back

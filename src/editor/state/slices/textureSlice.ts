@@ -50,9 +50,8 @@ export const createTextureSlice: CanvasStateCreator<TextureSlice> = (set, get, _
     });
   },
 
-  updateTextureForPath: (pathId, partial) => {
-    const { present, saveState } = get();
-    saveState();
+  updateTextureForPathLive: (pathId, partial) => {
+    const { present } = get();
     set({
       present: {
         ...present,
@@ -63,5 +62,12 @@ export const createTextureSlice: CanvasStateCreator<TextureSlice> = (set, get, _
         }),
       },
     });
+  },
+
+  // Kept for backwards-compat. History snapshots should be managed at the gesture level
+  // (e.g. drag start / wheel burst) instead of per-mousemove.
+  updateTextureForPath: (pathId, partial) => {
+    const { updateTextureForPathLive } = get();
+    updateTextureForPathLive(pathId, partial);
   },
 });

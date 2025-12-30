@@ -75,6 +75,7 @@ export function PathsLayer() {
   const offset = useCanvasState(s => s.offset);
   const selectedSegment = useCanvasState(s => s.selectedSeamSegment);
   const setSelectedSeamSegment = useCanvasState(s => s.setSelectedSeamSegment);
+  const saveState = useCanvasState(s => s.saveState);
   
   // Drag-based seaming state
   const pendingSeamPortion1 = useCanvasState(s => s.pendingSeamPortion1);
@@ -95,12 +96,13 @@ export function PathsLayer() {
   const [hasMoved, setHasMoved] = useState(false);
 
   // Texture-drag state for texture-select tool
-  const updateTextureForPath = useCanvasState(s => s.updateTextureForPath);
+  const updateTextureForPathLive = useCanvasState(s => s.updateTextureForPathLive);
   const [isDraggingTexture, setIsDraggingTexture] = useState(false);
   const [textureDragPathId, setTextureDragPathId] = useState<string | null>(null);
   const [textureDragStart, setTextureDragStart] = useState<{ x: number; y: number } | null>(null);
   const [textureDragOriginalOffset, setTextureDragOriginalOffset] = useState<{ x: number; y: number } | null>(null);
   const [textureStageRef, setTextureStageRef] = useState<any>(null);
+  const lastTextureWheelSaveAtRef = useRef<number>(0);
 
   // Helper to calculate t value (0-1) along a bezier curve from mouse position
   const calculateTFromMouse = useCallback((mouseX: number, mouseY: number, p0: Point, h0: Handle, h1: Handle, p1: Point) => {
@@ -240,7 +242,7 @@ export function PathsLayer() {
       const dy = worldY - textureDragStart.y;
 
       // Invert direction so dragging feels natural (dragging right moves texture to the right)
-      updateTextureForPath(textureDragPathId, {
+      updateTextureForPathLive(textureDragPathId, {
         offsetX: textureDragOriginalOffset.x - dx,
         offsetY: textureDragOriginalOffset.y - dy,
       });
@@ -267,7 +269,8 @@ export function PathsLayer() {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isDraggingTexture, textureStageRef, textureDragPathId, textureDragStart, textureDragOriginalOffset, updateTextureForPath, zoom, offset]);
+  }, [isDraggingTexture, textureStageRef, textureDragPathId, textureDragStart, textureDragOriginalOffset, updateTextureForPathLive, zoom, offset]);
+
 
   const [hoveredPathId, setHoveredPathId] = useState<string | null>(null);
 
@@ -329,6 +332,9 @@ export function PathsLayer() {
             const { offsetX = 0, offsetY = 0 } = path.texture ?? {};
             const world = getWorldPosFromStagePointer(pointer, offset, zoom);
 
+            // Create a single undo step for the whole drag gesture.
+            saveState();
+
             setIsDraggingTexture(true);
             setTextureDragPathId(path.id);
             setTextureDragStart({ x: world.x, y: world.y });
@@ -362,6 +368,13 @@ export function PathsLayer() {
 
           useCanvasState.getState().setTextureLastInteractionAt(Date.now());
 
+          // Ctrl+wheel fires many events; record a single undo snapshot per wheel burst.
+          const now = Date.now();
+          if (now - lastTextureWheelSaveAtRef.current > 400) {
+            saveState();
+            lastTextureWheelSaveAtRef.current = now;
+          }
+
           const delta = e.evt.deltaY;
           const sensitivity = 0.0015;
           const rawFactor = Math.exp(-delta * sensitivity);
@@ -379,7 +392,7 @@ export function PathsLayer() {
           const adjustedOffsetX = (oldOffsetX - world.x) * (newScaleX / curScaleX) + world.x;
           const adjustedOffsetY = (oldOffsetY - world.y) * (newScaleY / curScaleY) + world.y;
 
-          updateTextureForPath(path.id, {
+          updateTextureForPathLive(path.id, {
             scaleX: newScaleX,
             scaleY: newScaleY,
             offsetX: adjustedOffsetX,
@@ -579,7 +592,7 @@ export function PathsLayer() {
         </Group>
       ))}
 
-      {renderSeamSelectableSegments()}
+      {currentTool === 'seam' ? renderSeamSelectableSegments() : null}
 
       {/* Preview line during drag */}
       {renderDragPreview()}

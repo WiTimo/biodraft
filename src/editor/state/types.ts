@@ -145,6 +145,7 @@ export interface PointSlice {
   addPoint: (x: number, y: number, sharp?: boolean) => string;
   finishCurrentPath: () => void;
   movePoint: (id: string, x: number, y: number) => void;
+  updatePointsBatch: (updates: Array<{ id: string; x?: number; y?: number; handleIn?: Handle; handleOut?: Handle }>) => void;
   moveHandle: (
     pointId: string,
     type: 'handleIn' | 'handleOut',
@@ -214,6 +215,7 @@ export interface TextureSlice {
   setTextureForPath: (pathId: string, texture: PathTexture | null) => void;
   clearTextureForPath: (pathId: string) => void;
   setTextureForSelectedPaths: (texture: PathTexture | null) => void;
+  updateTextureForPathLive: (pathId: string, partial: Partial<PathTexture>) => void;
   updateTextureForPath: (pathId: string, partial: Partial<PathTexture>) => void;
 }
 

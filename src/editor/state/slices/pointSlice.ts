@@ -286,6 +286,41 @@ export const createPointSlice: CanvasStateCreator<PointSlice> = (set, get, _api)
     });
   },
 
+  updatePointsBatch: (updates) => {
+    const { present } = get();
+    if (!updates || updates.length === 0) return;
+
+    const byId = new Map<string, (typeof updates)[number]>();
+    for (const u of updates) {
+      if (!u || !u.id) continue;
+      byId.set(u.id, u);
+    }
+    if (byId.size === 0) return;
+
+    set({
+      present: {
+        ...present,
+        paths: present.paths.map((path) => {
+          let changed = false;
+          const nextPoints = path.points.map((pt) => {
+            const u = byId.get(pt.id);
+            if (!u) return pt;
+            changed = true;
+
+            const next: typeof pt = { ...pt };
+            if (u.x !== undefined) next.x = u.x;
+            if (u.y !== undefined) next.y = u.y;
+            if (u.handleIn !== undefined) next.handleIn = { ...u.handleIn };
+            if (u.handleOut !== undefined) next.handleOut = { ...u.handleOut };
+            return next;
+          });
+
+          return changed ? { ...path, points: nextPoints } : path;
+        }),
+      },
+    });
+  },
+
   moveHandle: (pointId, type, dx, dy, _save, altPressed = false) => {
     const { present } = get();
     set({

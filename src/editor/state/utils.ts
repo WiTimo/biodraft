@@ -7,7 +7,16 @@ export const INITIAL_PRESENT: CanvasPresent = {
 };
 
 export function clonePresent(present: CanvasPresent): CanvasPresent {
-  return JSON.parse(JSON.stringify(present));
+  // Prefer native structured cloning (faster, less GC churn) with a safe fallback.
+  // CanvasPresent is plain JSON-serializable data.
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sc = (globalThis as any).structuredClone as ((value: unknown) => unknown) | undefined;
+    if (typeof sc === 'function') return sc(present) as CanvasPresent;
+  } catch {
+    // ignore
+  }
+  return JSON.parse(JSON.stringify(present)) as CanvasPresent;
 }
 
 export function updatePointInPath(

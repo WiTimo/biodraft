@@ -16,10 +16,21 @@ export const createClipboardSlice: CanvasStateCreator<ClipboardSlice> = (set, ge
       const selectedPoints = path.points.filter((point) => selectedPointIds.includes(point.id));
       const isFullySelected = selectedPoints.length === path.points.length;
 
+      const clonePoints = () => {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const sc = (globalThis as any).structuredClone as ((value: unknown) => unknown) | undefined;
+          if (typeof sc === 'function') return sc(selectedPoints) as typeof selectedPoints;
+        } catch {
+          // ignore
+        }
+        return JSON.parse(JSON.stringify(selectedPoints)) as typeof selectedPoints;
+      };
+
       return {
         id: crypto.randomUUID(),
         closed: isFullySelected ? path.closed : false,
-        points: JSON.parse(JSON.stringify(selectedPoints)),
+        points: clonePoints(),
         texture: isFullySelected ? path.texture ?? null : null,
       } satisfies Path;
     });
