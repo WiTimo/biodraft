@@ -1,6 +1,66 @@
 import type { CanvasStateCreator, PointSlice } from '../types';
 import { updatePointInPath, filterSeamsReferencingPoints } from '../utils';
 
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function safeNormalize(dx: number, dy: number) {
+  const len = Math.sqrt(dx * dx + dy * dy);
+  if (!Number.isFinite(len) || len <= 1e-9) return { x: 1, y: 0 };
+  return { x: dx / len, y: dy / len };
+}
+
+function computeSpawnHandlesForPoint(paths: Array<{ points: Array<{ id: string; x: number; y: number }>; closed: boolean }>, pointId: string) {
+  // Handle length should be relative to the local geometry, not a fixed world-unit value.
+  // We pick the smallest adjacent-segment length across all occurrences of the point.
+  const MIN_HANDLE_LEN = 2; // world units
+  const MAX_HANDLE_LEN = 50; // world units
+  const HANDLE_LEN_FACTOR = 0.35;
+
+  let bestDist = Number.POSITIVE_INFINITY;
+  let bestDir = { x: 1, y: 0 };
+
+  for (const path of paths) {
+    const pts = path.points;
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i];
+      if (p.id !== pointId) continue;
+
+      const prev = i > 0 ? pts[i - 1] : path.closed && pts.length > 1 ? pts[pts.length - 1] : null;
+      const next = i < pts.length - 1 ? pts[i + 1] : path.closed && pts.length > 1 ? pts[0] : null;
+
+      const distPrev = prev ? Math.hypot(p.x - prev.x, p.y - prev.y) : Number.POSITIVE_INFINITY;
+      const distNext = next ? Math.hypot(next.x - p.x, next.y - p.y) : Number.POSITIVE_INFINITY;
+      const localDist = Math.min(distPrev, distNext);
+
+      // Direction: prefer the chord direction (prev->next) when possible.
+      let dir = { x: 1, y: 0 };
+      if (prev && next && (prev.x !== next.x || prev.y !== next.y)) {
+        dir = safeNormalize(next.x - prev.x, next.y - prev.y);
+      } else if (prev) {
+        dir = safeNormalize(p.x - prev.x, p.y - prev.y);
+      } else if (next) {
+        dir = safeNormalize(next.x - p.x, next.y - p.y);
+      }
+
+      // Pick the smallest local segment so handles never spawn overly large.
+      if (Number.isFinite(localDist) && localDist > 1e-6 && localDist < bestDist) {
+        bestDist = localDist;
+        bestDir = dir;
+      }
+    }
+  }
+
+  const computedLen = Number.isFinite(bestDist) ? bestDist * HANDLE_LEN_FACTOR : 10;
+  const len = clamp(computedLen, MIN_HANDLE_LEN, MAX_HANDLE_LEN);
+
+  return {
+    handleIn: { dx: -bestDir.x * len, dy: -bestDir.y * len },
+    handleOut: { dx: bestDir.x * len, dy: bestDir.y * len },
+  };
+}
+
 export const createPointSlice: CanvasStateCreator<PointSlice> = (set, get, _api) => ({
   justPlacedPointId: null,
   isDraggingHandle: false,
@@ -254,6 +314,9 @@ export const createPointSlice: CanvasStateCreator<PointSlice> = (set, get, _api)
   toggleHandlesForPoint: (id) => {
     const { present, saveState } = get();
     saveState();
+
+    const spawned = computeSpawnHandlesForPoint(present.paths, id);
+
     set({
       present: {
         ...present,
@@ -275,8 +338,8 @@ export const createPointSlice: CanvasStateCreator<PointSlice> = (set, get, _api)
                 }
               : {
                   ...point,
-                  handleIn: { dx: -200, dy: 0 },
-                  handleOut: { dx: 200, dy: 0 },
+                  handleIn: spawned.handleIn,
+                  handleOut: spawned.handleOut,
                 };
           }),
         })),

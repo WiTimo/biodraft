@@ -1,7 +1,7 @@
 # Editor
 
 Cloth Engine -> 
-wasm-pack build --target bundler --out-dir ../src/canvas/wasm
+wasm-pack build --target bundler --out-dir ../src/editor/wasm
 
 ## Pen Tool
 

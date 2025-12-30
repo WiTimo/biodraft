@@ -7,7 +7,7 @@ import { BiomeshManModal } from './BiomeshManModal';
 function seamPartToSegment(part: Segment | SegmentPortion): Segment {
   return Array.isArray(part) ? part : part.segment;
 }
-import { importFromJson, exportToJson, importFromDxf, exportToDxf } from '../util/importExport';
+import { importFromJson, exportToJson, importFromDxf, exportToDxf } from '../utils/importExport';
 import ZoomControls from './ZoomControls';
 
 export function Toolbar({ onResetView, defaultZoom }: { onResetView?: () => void; defaultZoom?: number }) {

@@ -1,7 +1,7 @@
 import { Layer, Line } from 'react-konva';
 import { useMemo } from 'react';
 
-import { getStep } from '../util/grid';
+import { getStep } from '../utils/grid';
 
 const MM_PER_WORLD_UNIT = 10;
 

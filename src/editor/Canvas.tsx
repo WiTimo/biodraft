@@ -2,16 +2,16 @@ import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import Konva from 'konva';
 
 import { useCanvasState } from './state/CanvasState';
-import { ImageTransformPanel } from './UI/ImageTransformPanel';
-import { TextureTransformPanel } from './UI/TextureTransformPanel';
-import { ThreeDView } from './UI/ThreeDView';
-import { Toolbar } from './UI/Toolbar';
-import { CanvasStage } from './Stage/CanvasStage';
+import { ImageTransformPanel } from './ui/ImageTransformPanel';
+import { TextureTransformPanel } from './ui/TextureTransformPanel';
+import { ThreeDView } from './ui/ThreeDView';
+import { Toolbar } from './ui/Toolbar';
+import { CanvasStage } from './components/CanvasStage';
 
 import { useStaticManImages } from './hooks/useStaticManImages';
 import { useCanvasKeyboardShortcuts } from './hooks/useCanvasKeyboardShortcuts';
 import { useSplitResize } from './hooks/useSplitResize';
-import { RulersOverlay } from './UI/RulersOverlay';
+import { RulersOverlay } from './ui/RulersOverlay';
 import { DEFAULT_VIEWPORT_SPAN_MM, MM_PER_WORLD_UNIT } from './config/rulerConfig';
 
 const RULER_SIZE = 24;

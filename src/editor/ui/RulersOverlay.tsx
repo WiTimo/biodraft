@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 
-import { formatRulerNumber, getStep } from '../util/grid';
+import { formatRulerNumber, getStep } from '../utils/grid';
 
 // World units in this editor are treated as centimeters.
 // Rulers should display millimeters.

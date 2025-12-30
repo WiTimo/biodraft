@@ -1,6 +1,6 @@
 import { Line, Group } from 'react-konva';
 
-import { LinePath } from '../Paths/LinePath';
+import { LinePath } from '../components/LinePath';
 import { useCanvasState } from '../state/CanvasState';
 import type { Handle, Point, Segment, Path } from '../state/types';
 import type { Line as KonvaLine } from 'konva/lib/shapes/Line';

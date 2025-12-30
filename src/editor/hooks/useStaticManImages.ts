@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useCanvasState } from '../state/CanvasState';
-import { dataUrlToBlobUrl, loadStoredBiomeshManImages, revokeIfBlobUrl } from '../util/biomeshManImages';
+import { dataUrlToBlobUrl, loadStoredBiomeshManImages, revokeIfBlobUrl } from '../utils/biomeshManImages';
 
 const DEFAULT_FRONT_ID = 'static-man';
 const DEFAULT_BACK_ID = 'static-man-back';

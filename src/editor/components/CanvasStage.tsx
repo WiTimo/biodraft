@@ -2,14 +2,14 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { Stage, Layer, Rect, Line } from 'react-konva';
 import Konva from 'konva';
 
-import { BackgroundImage } from '../BackgroundImage/BackgroundImage';
-import { GridLayer } from '../Layers/GridLayer';
-import { PathsLayer } from '../Layers/PathsLayer';
-import { getStep } from '../util/grid';
-import { PointsLayer } from '../Layers/PointsLayer';
-import { SelectionTransformer } from '../Layers/SelectionTransformer';
-import { PenSegmentPreview } from '../Previews/PenSegmentPreview';
-import { SeamLayer } from '../Layers/SeamLayer';
+import { BackgroundImage } from './BackgroundImage';
+import { PenSegmentPreview } from './PenSegmentPreview';
+import { GridLayer } from '../layers/GridLayer';
+import { PathsLayer } from '../layers/PathsLayer';
+import { PointsLayer } from '../layers/PointsLayer';
+import { SeamLayer } from '../layers/SeamLayer';
+import { SelectionTransformer } from '../layers/SelectionTransformer';
+import { getStep } from '../utils/grid';
 import { useCanvasState } from '../state/CanvasState';
 
 const MM_PER_WORLD_UNIT = 10;

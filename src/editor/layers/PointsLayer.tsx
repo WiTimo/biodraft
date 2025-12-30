@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useCanvasState } from '../state/CanvasState';
-import { HandleCircle } from '../Circles/HandleCircle';
-import { PointCircle } from '../Circles/PointCircle';
+import { HandleCircle } from '../components/HandleCircle';
+import { PointCircle } from '../components/PointCircle';
 import React from 'react';
 
 export function PointsLayer() {

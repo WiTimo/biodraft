@@ -5,7 +5,7 @@ import {
   loadLastBiomeshParams,
   storeBiomeshManImages,
   type BiomeshManParams,
-} from '../util/biomeshManImages';
+} from '../utils/biomeshManImages';
 import { applyManImagesToCanvas } from '../hooks/useStaticManImages';
 
 type JobEvent = {
