@@ -87,6 +87,8 @@ function sanitizeStatusMessage(raw: string) {
     .replace(/\.blend\b/gi, 'scene');
 }
 
+const ERROR_MSG = "Could not connect to the render server. Our Team currently investigating what is causing this issue. Please try again later."
+
 // In dev, Vite proxies /api -> biomesh-render-server, so same-origin requests avoid CORS.
 // If you deploy differently, set VITE_BIOMESH_RENDER_SERVER_URL to an absolute base URL.
 const SERVER_URL = (import.meta as any).env?.VITE_BIOMESH_RENDER_SERVER_URL ?? '';
@@ -150,8 +152,8 @@ export function BiomeshManModal({ open, onClose }: { open: boolean; onClose: () 
       });
 
       if (!resp.ok) {
-        const text = await resp.text();
-        throw new Error(`Server error (${resp.status}): ${text}`);
+        const text = (await resp.text()).trim();
+        throw new Error(text ? `Render server returned ${resp.status}: ${text}` : `Render server returned ${resp.status}.`);
       }
 
       const { jobId } = (await resp.json()) as { jobId: string };
@@ -173,8 +175,12 @@ export function BiomeshManModal({ open, onClose }: { open: boolean; onClose: () 
 
             const imagesResp = await fetch(`${SERVER_URL}/api/jobs/${jobId}/images`);
             if (!imagesResp.ok) {
-              const t = await imagesResp.text();
-              throw new Error(`Failed to download images (${imagesResp.status}): ${t}`);
+              const t = (await imagesResp.text()).trim();
+              throw new Error(
+                t
+                  ? `Could not download images (${imagesResp.status}): ${t}`
+                  : `Could not download images (${imagesResp.status}).`
+              );
             }
 
             const payload = (await imagesResp.json()) as {
@@ -217,7 +223,7 @@ export function BiomeshManModal({ open, onClose }: { open: boolean; onClose: () 
               if (lowered.includes('blender') || lowered.includes('glb->blend') || lowered.includes('blend')) {
                 setError('Rendering failed. Please try again.');
               } else {
-                setError(rawErr);
+                setError(ERROR_MSG);
               }
             } catch {
               setError('Job failed.');
@@ -226,7 +232,7 @@ export function BiomeshManModal({ open, onClose }: { open: boolean; onClose: () 
             setIsSubmitting(false);
           }
         } catch (e: any) {
-          setError(String(e?.message || e));
+          setError(ERROR_MSG);
           setIsSubmitting(false);
           if (esRef.current) {
             esRef.current.close();
@@ -236,13 +242,13 @@ export function BiomeshManModal({ open, onClose }: { open: boolean; onClose: () 
       };
 
       es.onerror = () => {
-        setError('Lost connection to server stream.');
+        setError('Lost connection to the render server. If the backend stopped, start it and try again.');
         setIsSubmitting(false);
         es.close();
         esRef.current = null;
       };
     } catch (e: any) {
-      setError(String(e?.message || e));
+      setError(ERROR_MSG);
       setIsSubmitting(false);
       if (esRef.current) {
         esRef.current.close();
@@ -326,7 +332,7 @@ export function BiomeshManModal({ open, onClose }: { open: boolean; onClose: () 
                     className="text-xs text-blue-700 hover:underline"
                     title="Open BioMesh in a new tab"
                   >
-                    What does this do?
+                      View it live
                   </a>
                   <div className="text-xs text-gray-500">{params.muscle} / 100</div>
                 </div>
