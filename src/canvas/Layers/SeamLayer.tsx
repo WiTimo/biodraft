@@ -50,6 +50,7 @@ export function SeamLayer() {
   
   const seamLines = useMemo(() => {
     return seams.flatMap((seam, i) => {
+      if (!seam || seam.length < 2 || !seam[0] || !seam[1]) return [];
       // Check if it's a portion-based seam or old-style seam
       const portion1 = seam[0] as any;
       const portion2 = seam[1] as any;

@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import Konva from 'konva';
 
 import { useCanvasState } from './state/CanvasState';
@@ -72,6 +72,13 @@ export function Canvas() {
   const computedDefaultZoom = targetWorldSpan > 0 ? viewportSize.width / targetWorldSpan : 1;
   const defaultZoom = Number.isFinite(computedDefaultZoom) && computedDefaultZoom > 0 ? computedDefaultZoom : 1;
 
+  const handleResetView = useCallback(() => {
+    const vpWidth = Math.max(0, viewportSize.width);
+    const vpHeight = Math.max(0, viewportSize.height);
+    setZoom(defaultZoom);
+    setOffset({ x: vpWidth / 2, y: vpHeight / 2 });
+  }, [defaultZoom, setOffset, setZoom, viewportSize.height, viewportSize.width]);
+
   useLayoutEffect(() => {
     if (initialCentered.current) return;
     if (viewportSize.width === 0 || viewportSize.height === 0) return;
@@ -84,8 +91,8 @@ export function Canvas() {
 
   return (
     <div className="w-full h-full flex">
-      {threeDEnabled && (
-        isResizing ? (
+      {threeDEnabled &&
+        (isResizing ? (
           <div className="h-full grid place-items-center overflow-hidden rounded-r-2xl bg-black" style={{ width: splitWidth }}>
             <img src="/svg/loader.svg" className="h-14 w-14 select-none" />
           </div>
@@ -93,8 +100,7 @@ export function Canvas() {
           <div className="h-full overflow-hidden rounded-r-2xl" style={{ width: splitWidth }}>
             <ThreeDView />
           </div>
-        )
-      )}
+        ))}
 
       {threeDEnabled && (
         <div
@@ -163,12 +169,7 @@ export function Canvas() {
 
         <Toolbar
           defaultZoom={defaultZoom}
-          onResetView={() => {
-          const vpWidth = Math.max(0, viewportSize.width);
-          const vpHeight = Math.max(0, viewportSize.height);
-          setZoom(defaultZoom);
-          setOffset({ x: vpWidth / 2, y: vpHeight / 2 });
-        }}
+          onResetView={handleResetView}
         />
       </div>
     </div>

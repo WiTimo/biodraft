@@ -13,6 +13,7 @@ import { SeamLayer } from '../Layers/SeamLayer';
 import { useCanvasState } from '../state/CanvasState';
 
 const MM_PER_WORLD_UNIT = 10;
+const BASE_PIXEL_GRID_SIZE = 30; // same base size GridLayer uses
 
 interface CanvasStageProps {
   stageRef: React.RefObject<Konva.Stage | null>;
@@ -60,6 +61,33 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
       y: (pointer.y - offset.y) / zoom,
     }),
     [offset, zoom],
+  );
+
+  const snapWorldToVisibleGrid = useCallback(
+    (worldPosition: { x: number; y: number }) => {
+      const rawWorldStep = BASE_PIXEL_GRID_SIZE / zoom;
+      const rawMmStep = rawWorldStep * MM_PER_WORLD_UNIT;
+      const mmStep = getStep(rawMmStep);
+      const worldStep = mmStep / MM_PER_WORLD_UNIT;
+      return {
+        x: Math.round(worldPosition.x / worldStep) * worldStep,
+        y: Math.round(worldPosition.y / worldStep) * worldStep,
+      };
+    },
+    [zoom],
+  );
+
+  const isPointerInsideSelectionRect = useCallback(
+    (pointer: { x: number; y: number }, rect: { x: number; y: number; width: number; height: number } | null) => {
+      if (!rect) return false;
+      return (
+        pointer.x >= rect.x &&
+        pointer.x <= rect.x + rect.width &&
+        pointer.y >= rect.y &&
+        pointer.y <= rect.y + rect.height
+      );
+    },
+    [],
   );
 
   const stageCursor = useMemo(() => {
@@ -119,13 +147,7 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
 
       if (currentTool === 'select') {
         const isClickingOnEmpty = isStageClick || targetName === '';
-        const pointerRect = selectionRect;
-        const clickedInsideBox =
-          pointerRect &&
-          pointer.x >= pointerRect.x &&
-          pointer.x <= pointerRect.x + pointerRect.width &&
-          pointer.y >= pointerRect.y &&
-          pointer.y <= pointerRect.y + pointerRect.height;
+        const clickedInsideBox = isPointerInsideSelectionRect(pointer, selectionRect);
 
         if (isClickingOnEmpty && !clickedInsideBox) {
           pendingSelectionStart.current = worldPosition;
@@ -196,13 +218,9 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
           finalY = target.y();
         } else if (state.isAltPressed) {
           // ALT overrides all other snapping: snap to the visible grid only
-          const basePixelGridSize = 30; // same base size GridLayer uses
-          const rawWorldStep = basePixelGridSize / zoom;
-          const rawMmStep = rawWorldStep * MM_PER_WORLD_UNIT;
-          const mmStep = getStep(rawMmStep);
-          const worldStep = mmStep / MM_PER_WORLD_UNIT;
-          finalX = Math.round(worldPosition.x / worldStep) * worldStep;
-          finalY = Math.round(worldPosition.y / worldStep) * worldStep;
+          const snapped = snapWorldToVisibleGrid(worldPosition);
+          finalX = snapped.x;
+          finalY = snapped.y;
         } else {
           // Use snap guides if available
           const guides = state.snapGuides;
@@ -224,11 +242,13 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
       deselectPoint,
       finishCurrentPath,
       isSpacePressed,
+      isPointerInsideSelectionRect,
       selectionRect,
       setIsPanning,
       setSelectionRect,
       setSeamSelection,
       setSelectedSeamSegment,
+      snapWorldToVisibleGrid,
       toWorld,
     ],
   );
@@ -247,14 +267,8 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
 
         // If ALT is pressed, snap to the visible grid and show a guide
         if (state.isAltPressed) {
-          const basePixelGridSize = 30;
-          const rawWorldStep = basePixelGridSize / zoom;
-          const rawMmStep = rawWorldStep * MM_PER_WORLD_UNIT;
-          const mmStep = getStep(rawMmStep);
-          const worldStep = mmStep / MM_PER_WORLD_UNIT;
-          const snapX = Math.round(worldPosition.x / worldStep) * worldStep;
-          const snapY = Math.round(worldPosition.y / worldStep) * worldStep;
-          setSnapGuides({ x: snapX, y: snapY });
+          const snapped = snapWorldToVisibleGrid(worldPosition);
+          setSnapGuides({ x: snapped.x, y: snapped.y });
           return;
         }
 
@@ -351,6 +365,7 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
       setSelectionRect,
       setSelectionStart,
       setSnapGuides,
+      snapWorldToVisibleGrid,
       toWorld,
       zoom,
     ],

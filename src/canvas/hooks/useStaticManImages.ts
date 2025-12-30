@@ -138,7 +138,6 @@ export function applyManImagesToCanvas({
       const worldTop = -(offset?.y || 0) / (zoom || 1);
 
       const viewMidY = worldTop + viewH / 2;
-      const halfW = viewW / 2;
 
       // Scale so that the *opaque body height* matches the requested height.
       // World units are centimeters; ruler is millimeters.

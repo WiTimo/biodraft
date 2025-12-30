@@ -1,6 +1,5 @@
-import { Group, Line, Rect, Circle } from 'react-konva';
-import { useMemo, useRef, useCallback } from 'react';
-import type { ReactNode } from 'react';
+import { Line, Rect, Circle } from 'react-konva';
+import { useMemo, useRef } from 'react';
 import { useCanvasState } from '../state/CanvasState';
 
 const cornerCursors = ['nwse-resize', 'nesw-resize', 'nwse-resize', 'nesw-resize'];
@@ -27,15 +26,6 @@ function getCenterAndBounds(points: any) {
   const center = { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
   return { minX, minY, maxX, maxY, center, width: maxX - minX, height: maxY - minY };
 }
-
-type HandleSnapshot = { dx: number; dy: number };
-type PointSnapshot = {
-  id: string;
-  x: number;
-  y: number;
-  handleIn: HandleSnapshot;
-  handleOut: HandleSnapshot;
-};
 
 export function SelectionTransformer({ isVisible }: { isVisible: boolean }) {
   const selectedIds = useCanvasState((s) => s.selectedPointIds);
@@ -135,7 +125,6 @@ export function SelectionTransformer({ isVisible }: { isVisible: boolean }) {
   ];
 
   const zoom = useCanvasState((s) => s.zoom);
-  const offset = useCanvasState((s) => s.offset);
   // Keep handle size constant in screen pixels
   const HANDLE_SCREEN_BASE = 8; // px
   const HANDLE_SCREEN_MIN = 4;
@@ -191,32 +180,6 @@ export function SelectionTransformer({ isVisible }: { isVisible: boolean }) {
       moveHandle(orig.id, 'handleOut', orig.handleOut.dx * scale, orig.handleOut.dy * scale, false, true);
     });
   };
-
-  const selectionSnapshot = useCallback((): PointSnapshot[] => {
-    return selectedPoints.map((p) => ({
-      id: p.id,
-      x: p.x,
-      y: p.y,
-      handleIn: { ...p.handleIn },
-      handleOut: { ...p.handleOut },
-    }));
-  }, [selectedPoints]);
-
-  const applyToSelection = useCallback(
-    (modifier: (orig: PointSnapshot) => PointSnapshot) => {
-      if (!selectedPoints.length) return;
-      const originals = selectionSnapshot();
-      if (!originals.length) return;
-      saveState();
-      originals.forEach((orig: PointSnapshot) => {
-        const next = modifier(orig);
-        movePoint(orig.id, next.x, next.y);
-        moveHandle(orig.id, 'handleIn', next.handleIn.dx, next.handleIn.dy, false, true);
-        moveHandle(orig.id, 'handleOut', next.handleOut.dx, next.handleOut.dy, false, true);
-      });
-    },
-    [moveHandle, movePoint, saveState, selectionSnapshot, selectedPoints.length]
-  );
 
 
 

@@ -50,10 +50,10 @@ export function seamsEqual([segA1, segA2]: SegmentSeam, [segB1, segB2]: SegmentS
  * Cubic Bezier curve evaluation at parameter t (0-1)
  */
 export function evaluateBezier(
-  p0: Point,
+  p0: Pick<Point, 'x' | 'y'>,
   h0: { dx: number; dy: number },
   h1: { dx: number; dy: number },
-  p1: Point,
+  p1: Pick<Point, 'x' | 'y'>,
   t: number
 ): { x: number; y: number } {
   const x = Math.pow(1 - t, 3) * p0.x +
@@ -71,10 +71,10 @@ export function evaluateBezier(
  * Generate points along a cubic Bezier curve
  */
 export function generateBezierPoints(
-  p0: Point,
+  p0: Pick<Point, 'x' | 'y'>,
   h0: { dx: number; dy: number },
   h1: { dx: number; dy: number },
-  p1: Point,
+  p1: Pick<Point, 'x' | 'y'>,
   steps = 80
 ): number[] {
   const points: number[] = [];

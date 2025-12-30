@@ -1,6 +1,18 @@
 import type { CanvasStateCreator, SeamSlice, Segment, SegmentSeam } from '../types';
 import { normalizeSegment, seamsEqual, segmentsEqual } from '../utils';
 
+function seamPartToSegment(part: any): Segment {
+  return (part && (part as any).segment) ? (part as any).segment : (part as Segment);
+}
+
+function reverseSeamPart(part: any): any {
+  if (part && (part as any).segment) {
+    return { segment: (part as any).segment, tStart: (part as any).tEnd, tEnd: (part as any).tStart };
+  }
+  const seg = part as Segment;
+  return [seg[1], seg[0]] as Segment;
+}
+
 export const createSeamSlice: CanvasStateCreator<SeamSlice> = (set, get, _api) => ({
   seams: [],
   seamSelection: [],
@@ -34,8 +46,8 @@ export const createSeamSlice: CanvasStateCreator<SeamSlice> = (set, get, _api) =
       
       // Check if seam already exists (compare segments only for now)
       const exists = state.present.seams.some((existing) => {
-        const seg1 = (existing[0] as any).segment || existing[0];
-        const seg2 = (existing[1] as any).segment || existing[1];
+        const seg1 = seamPartToSegment(existing[0]);
+        const seg2 = seamPartToSegment(existing[1]);
         return seamsEqual([seg1, seg2] as SegmentSeam, [pendingSeamPortion1.segment, pendingSeamPortion2.segment]);
       });
       
@@ -104,31 +116,16 @@ export const createSeamSlice: CanvasStateCreator<SeamSlice> = (set, get, _api) =
       const updated = state.present.seams.map(([segA, segB]) => {
         const portionA = segA as any;
         const portionB = segB as any;
-        
-        // Handle both SegmentPortion and Segment types
-        const normA = normalizeSegment(portionA.segment || portionA);
-        const normB = normalizeSegment(portionB.segment || portionB);
+
+        const normA = normalizeSegment(seamPartToSegment(portionA));
+        const normB = normalizeSegment(seamPartToSegment(portionB));
 
         if (segmentsEqual(normA, target)) {
-          // Swap segB
-          if (portionB.segment) {
-            // It's a SegmentPortion - swap tStart and tEnd
-            return [segA, { segment: portionB.segment, tStart: portionB.tEnd, tEnd: portionB.tStart }] as SegmentSeam;
-          } else {
-            // It's a regular Segment
-            return [segA, [portionB[1], portionB[0]]] as SegmentSeam;
-          }
+          return [segA, reverseSeamPart(segB)] as SegmentSeam;
         }
 
         if (segmentsEqual(normB, target)) {
-          // Swap segA
-          if (portionA.segment) {
-            // It's a SegmentPortion - swap tStart and tEnd
-            return [{ segment: portionA.segment, tStart: portionA.tEnd, tEnd: portionA.tStart }, segB] as SegmentSeam;
-          } else {
-            // It's a regular Segment
-            return [[portionA[1], portionA[0]], segB] as SegmentSeam;
-          }
+          return [reverseSeamPart(segA), segB] as SegmentSeam;
         }
 
         return [segA, segB] as SegmentSeam;
@@ -155,12 +152,7 @@ export const createSeamSlice: CanvasStateCreator<SeamSlice> = (set, get, _api) =
       const isPortionSeam = portion1.segment && portion1.tStart !== undefined;
 
       if (isPortionSeam) {
-        // Swap the direction of portion2 by swapping tStart and tEnd
-        const swappedPortion2 = {
-          segment: portion2.segment,
-          tStart: portion2.tEnd,
-          tEnd: portion2.tStart,
-        };
+        const swappedPortion2 = reverseSeamPart(portion2);
 
         const updated = [...state.present.seams];
         updated[seamIndex] = [portion1, swappedPortion2];
@@ -175,7 +167,7 @@ export const createSeamSlice: CanvasStateCreator<SeamSlice> = (set, get, _api) =
 
       // For old-style seams, swap segment2
       const updated = [...state.present.seams];
-      updated[seamIndex] = [portion1, [portion2[1], portion2[0]]];
+      updated[seamIndex] = [portion1, reverseSeamPart(portion2)];
 
       return {
         present: {
