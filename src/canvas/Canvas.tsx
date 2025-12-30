@@ -3,6 +3,7 @@ import Konva from 'konva';
 
 import { useCanvasState } from './state/CanvasState';
 import { ImageTransformPanel } from './UI/ImageTransformPanel';
+import { TextureTransformPanel } from './UI/TextureTransformPanel';
 import { ThreeDView } from './UI/ThreeDView';
 import { Toolbar } from './UI/Toolbar';
 import { CanvasStage } from './Stage/CanvasStage';
@@ -11,6 +12,7 @@ import { useStaticManImages } from './hooks/useStaticManImages';
 import { useCanvasKeyboardShortcuts } from './hooks/useCanvasKeyboardShortcuts';
 import { useSplitResize } from './hooks/useSplitResize';
 import { RulersOverlay } from './UI/RulersOverlay';
+import { DEFAULT_VIEWPORT_SPAN_MM, MM_PER_WORLD_UNIT } from './config/rulerConfig';
 
 const RULER_SIZE = 24;
 
@@ -62,26 +64,23 @@ export function Canvas() {
     };
   }, [threeDEnabled, splitWidth]);
 
-  // Center view on man images once at startup (when manImageCenters is set)
-  const manImageCenters = useCanvasState((s) => s.manImageCenters);
   const setZoom = useCanvasState((s) => s.setZoom);
   const setOffset = useCanvasState((s) => s.setOffset);
   const initialCentered = useRef(false);
 
+  const targetWorldSpan = DEFAULT_VIEWPORT_SPAN_MM / MM_PER_WORLD_UNIT;
+  const computedDefaultZoom = targetWorldSpan > 0 ? viewportSize.width / targetWorldSpan : 1;
+  const defaultZoom = Number.isFinite(computedDefaultZoom) && computedDefaultZoom > 0 ? computedDefaultZoom : 1;
+
   useLayoutEffect(() => {
     if (initialCentered.current) return;
-    const centers = Object.values(manImageCenters || {}) as Array<{ x: number; y: number }>;
-    if (centers.length === 0) return;
     if (viewportSize.width === 0 || viewportSize.height === 0) return;
 
-    const avg = centers.reduce((acc, c) => ({ x: acc.x + c.x, y: acc.y + c.y }), { x: 0, y: 0 } as { x: number; y: number });
-    avg.x /= centers.length;
-    avg.y /= centers.length;
-
-    setZoom(1);
-    setOffset({ x: viewportSize.width / 2 - avg.x * 1, y: viewportSize.height / 2 - avg.y * 1 });
+    // Default view: baseline zoom based on DEFAULT_VIEWPORT_SPAN_MM and world-origin (0,0) centered.
+    setZoom(defaultZoom);
+    setOffset({ x: viewportSize.width / 2, y: viewportSize.height / 2 });
     initialCentered.current = true;
-  }, [manImageCenters, viewportSize.width, viewportSize.height, setOffset, setZoom]);
+  }, [viewportSize.width, viewportSize.height, defaultZoom, setOffset, setZoom]);
 
   return (
     <div className="w-full h-full flex">
@@ -107,6 +106,7 @@ export function Canvas() {
 
       <div className="h-full relative overflow-hidden" style={stageContainerStyle}>
         <ImageTransformPanel />
+        <TextureTransformPanel />
 
         <div className="absolute inset-0" style={{ background: '#ffffff' }}>
           {/* Rulers overlay */}
@@ -121,6 +121,7 @@ export function Canvas() {
           {/* Stage viewport (space excluding rulers) */}
           <div
             ref={viewportRef}
+            data-canvas-viewport="true"
             style={{
               position: 'absolute',
               left: RULER_SIZE,
@@ -160,27 +161,15 @@ export function Canvas() {
           <img src="/svg/toggle3d.svg" className="h-10 w-10" />
         </button>
 
-        <Toolbar onResetView={() => {
-          // Reset zoom and center view on the man images (averaged center)
-          const centers = Object.values(manImageCenters || {}) as Array<{ x: number; y: number }>;
-
-          // Reset zoom to 1 first
-          setZoom(1);
-
-          if (centers.length === 0) {
-            setOffset({ x: 0, y: 0 });
-            return;
-          }
-
-          const avg = centers.reduce((acc, c) => ({ x: acc.x + c.x, y: acc.y + c.y }), { x: 0, y: 0 } as { x: number; y: number });
-          avg.x /= centers.length;
-          avg.y /= centers.length;
-
+        <Toolbar
+          defaultZoom={defaultZoom}
+          onResetView={() => {
           const vpWidth = Math.max(0, viewportSize.width);
           const vpHeight = Math.max(0, viewportSize.height);
-
-          setOffset({ x: vpWidth / 2 - avg.x * 1, y: vpHeight / 2 - avg.y * 1 });
-        }} />
+          setZoom(defaultZoom);
+          setOffset({ x: vpWidth / 2, y: vpHeight / 2 });
+        }}
+        />
       </div>
     </div>
   );

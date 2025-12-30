@@ -284,6 +284,26 @@ export function SelectionTransformer({ isVisible }: { isVisible: boolean }) {
             movePoint(orig.id, orig.x + dx, orig.y + dy);
           });
 
+          // Also move texture offsets for any fully-selected path so textures stay attached to patterns
+          const presentPaths = useCanvasState.getState().present.paths;
+          const selectedIdsSet = new Set(selectedIds);
+          const fullySelectedPathIds: string[] = [];
+          for (const p of presentPaths) {
+            const allSelected = p.points.every((pt: any) => selectedIdsSet.has(pt.id));
+            if (allSelected) fullySelectedPathIds.push(p.id);
+          }
+          if (fullySelectedPathIds.length > 0) {
+            // apply same dx/dy offset to texture offsetX/offsetY for each fully selected path
+            for (const pathId of fullySelectedPathIds) {
+              const path = presentPaths.find((pp) => pp.id === pathId);
+              if (!path || !path.texture) continue;
+              useCanvasState.getState().updateTextureForPath(pathId, {
+                offsetX: (path.texture.offsetX ?? 0) + dx,
+                offsetY: (path.texture.offsetY ?? 0) + dy,
+              });
+            }
+          }
+
           // Visually snap the rect back
           e.target.x(minX);
           e.target.y(minY);

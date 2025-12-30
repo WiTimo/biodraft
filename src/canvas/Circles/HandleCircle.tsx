@@ -25,13 +25,18 @@ export const HandleCircle = React.memo(function HandleCircle({
   const [pos, setPos] = useState({ x: pointX + dx, y: pointY + dy });
   const zoom = useCanvasState((s) => s.zoom);
 
-  // Keep handle dot size constant in screen pixels
-  const HANDLE_SCREEN_BASE = 4; // px
-  const HANDLE_SCREEN_MIN = 2;
-  const HANDLE_SCREEN_MAX = 8;
-  const adjustedScreenRadius = Math.min(HANDLE_SCREEN_MAX, Math.max(HANDLE_SCREEN_MIN, HANDLE_SCREEN_BASE));
-  const adjustedRadius = adjustedScreenRadius / zoom;
-  const adjustedStrokeWidth = Math.min(2, Math.max(0.5, 1 / zoom));
+  // Keep handle visuals consistent with point circles: compute a screen-space
+  // radius and convert to world units by dividing by zoom, so they visually
+  // match other UI elements' behavior.
+  const SCREEN_BASE_RADIUS = 4; // screen pixels
+  const SCREEN_MIN_RADIUS = 2;
+  const SCREEN_MAX_RADIUS = 8;
+  const screenRadius = Math.min(SCREEN_MAX_RADIUS, Math.max(SCREEN_MIN_RADIUS, SCREEN_BASE_RADIUS));
+  const worldRadius = screenRadius / zoom; // world units
+  const screenStroke = 1; // px
+  const worldStrokeWidth = screenStroke / zoom; // world units
+  const hitStroke = 12; // px
+  const worldHitStroke = hitStroke / zoom; // world units
 
   useEffect(() => {
     setPos({ x: pointX + dx, y: pointY + dy });
@@ -44,7 +49,7 @@ export const HandleCircle = React.memo(function HandleCircle({
       <Line
         points={[pointX, pointY, pos.x, pos.y]}
         stroke="gray"
-        strokeWidth={adjustedStrokeWidth}
+        strokeWidth={worldStrokeWidth}
         listening={false}
       />
       <>
@@ -52,10 +57,10 @@ export const HandleCircle = React.memo(function HandleCircle({
   <Circle
     x={pos.x}
     y={pos.y}
-    radius={adjustedRadius * 2.5} // ⬅️ increase size of hit zone (world units)
+    radius={worldRadius * 2.5} // world units
     fill="transparent"
     stroke="transparent"
-    hitStrokeWidth={20 / zoom}
+    hitStrokeWidth={worldHitStroke}
     draggable={currentTool === 'select' || currentTool === 'pen'}
     name="handle"
     onDragStart={(e) => {
@@ -89,8 +94,10 @@ export const HandleCircle = React.memo(function HandleCircle({
   <Circle
     x={pos.x}
     y={pos.y}
-    radius={adjustedRadius}
+    radius={worldRadius}
     fill="#2196F3"
+    stroke="black"
+    strokeWidth={worldStrokeWidth}
     listening={false}
     perfectDrawEnabled={false}
   />

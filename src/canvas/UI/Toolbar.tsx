@@ -1,6 +1,8 @@
 import { useCanvasState } from '../state/CanvasState';
 import { normalizeSegment, segmentsEqual } from '../state/utils';
 import type { Segment, SegmentPortion } from '../state/types';
+import { useState } from 'react';
+import { BiomeshManModal } from './BiomeshManModal';
 
 function seamPartToSegment(part: Segment | SegmentPortion): Segment {
   return Array.isArray(part) ? part : part.segment;
@@ -8,9 +10,10 @@ function seamPartToSegment(part: Segment | SegmentPortion): Segment {
 import { importFromJson, exportToJson, importFromDxf, exportToDxf } from '../util/importExport';
 import ZoomControls from './ZoomControls';
 
-export function Toolbar({ onResetView }: { onResetView?: () => void }) {
+export function Toolbar({ onResetView, defaultZoom }: { onResetView?: () => void; defaultZoom?: number }) {
   const { currentTool, setTool, setZoom, setOffset, zoom } = useCanvasState();
   const seamDeleteMode = useCanvasState((state) => state.seamDeleteMode);
+  const [isManModalOpen, setIsManModalOpen] = useState(false);
 
   const handleImportImage = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -77,10 +80,18 @@ export function Toolbar({ onResetView }: { onResetView?: () => void }) {
       return;
     }
 
-    setZoom(1);
+    const viewportEl = (typeof document !== 'undefined')
+      ? (document.querySelector('[data-canvas-viewport="true"]') as HTMLElement | null)
+      : null;
+    const rect = viewportEl?.getBoundingClientRect();
+    const vpWidth = rect?.width ? Math.max(0, rect.width) : window.innerWidth;
+    const vpHeight = rect?.height ? Math.max(0, rect.height) : window.innerHeight;
+
+    const nextZoom = (typeof defaultZoom === 'number' && Number.isFinite(defaultZoom) && defaultZoom > 0) ? defaultZoom : 1;
+    setZoom(nextZoom);
     setOffset({
-      x: 0,
-      y: 0,
+      x: vpWidth / 2,
+      y: vpHeight / 2,
     });
   };
 
@@ -97,6 +108,11 @@ export function Toolbar({ onResetView }: { onResetView?: () => void }) {
         </button>
         <button title='S' onClick={() => setTool('seam')} className="h-10 w-10 rounded-md p-1 cursor-pointer border-white border-4" style={{ borderColor: currentTool === "seam" ? "#4781e688" : "white" }}>
           <img src='/svg/seam.svg' />
+        </button>
+
+        {/* Texture-select tool: move texture offsets without moving geometry */}
+        <button title='T' onClick={() => setTool('texture')} className="h-10 w-10 rounded-md p-1 cursor-pointer border-white border-4" style={{ borderColor: currentTool === "texture" ? "#4781e688" : "white" }}>
+          <img src='/svg/fill.svg' />
         </button>
         {/* Delete seam button - only show when seam tool is active */}
         {currentTool === 'seam' && (
@@ -144,6 +160,16 @@ export function Toolbar({ onResetView }: { onResetView?: () => void }) {
         )}
         <button title='G' onClick={() => setTool('background')} className="h-10 w-10 rounded-md p-1 cursor-pointer border-white border-4" style={{ borderColor: currentTool === "background" ? "#4781e688" : "white" }}>
           <img src='/svg/background.svg' />
+        </button>
+
+        {/* BioMesh man generator */}
+        <button
+          title='Generate Man Background'
+          onClick={() => setIsManModalOpen(true)}
+          className="h-10 w-10 rounded-md p-1 cursor-pointer border-white border-4"
+          style={{ borderColor: isManModalOpen ? "#4781e688" : "white" }}
+        >
+          <img src='/svg/reset.svg' />
         </button>
 
         <div className='h-[1px] w-full mt-2 mb-2 bg-gray-600 rounded-full' />
@@ -211,7 +237,9 @@ export function Toolbar({ onResetView }: { onResetView?: () => void }) {
         </button>
       </div>
 
-      <ZoomControls zoom={zoom} onZoomChange={handleZoomChange} onReset={resetZoom} />
+      <ZoomControls zoom={zoom} baseZoom={defaultZoom} onZoomChange={handleZoomChange} onReset={resetZoom} />
+
+      <BiomeshManModal open={isManModalOpen} onClose={() => setIsManModalOpen(false)} />
     </>
   );
 }

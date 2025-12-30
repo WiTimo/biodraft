@@ -12,6 +12,8 @@ import { PenSegmentPreview } from '../Previews/PenSegmentPreview';
 import { SeamLayer } from '../Layers/SeamLayer';
 import { useCanvasState } from '../state/CanvasState';
 
+const MM_PER_WORLD_UNIT = 10;
+
 interface CanvasStageProps {
   stageRef: React.RefObject<Konva.Stage | null>;
   isSpacePressed: boolean;
@@ -65,6 +67,7 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
     if (isSpacePressed) return 'grab';
     if (currentTool === 'pen') return 'url(/cursors/pen.svg) 0 0, auto';
     if (currentTool === 'select') return 'url(/cursors/select.svg) 8 4, auto';
+    if (currentTool === 'texture') return 'url(/cursors/select.svg) 8 4, auto';
     return 'default';
   }, [currentTool, isPanning, isSpacePressed]);
 
@@ -195,7 +198,9 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
           // ALT overrides all other snapping: snap to the visible grid only
           const basePixelGridSize = 30; // same base size GridLayer uses
           const rawWorldStep = basePixelGridSize / zoom;
-          const worldStep = getStep(rawWorldStep);
+          const rawMmStep = rawWorldStep * MM_PER_WORLD_UNIT;
+          const mmStep = getStep(rawMmStep);
+          const worldStep = mmStep / MM_PER_WORLD_UNIT;
           finalX = Math.round(worldPosition.x / worldStep) * worldStep;
           finalY = Math.round(worldPosition.y / worldStep) * worldStep;
         } else {
@@ -244,7 +249,9 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
         if (state.isAltPressed) {
           const basePixelGridSize = 30;
           const rawWorldStep = basePixelGridSize / zoom;
-          const worldStep = getStep(rawWorldStep);
+          const rawMmStep = rawWorldStep * MM_PER_WORLD_UNIT;
+          const mmStep = getStep(rawMmStep);
+          const worldStep = mmStep / MM_PER_WORLD_UNIT;
           const snapX = Math.round(worldPosition.x / worldStep) * worldStep;
           const snapY = Math.round(worldPosition.y / worldStep) * worldStep;
           setSnapGuides({ x: snapX, y: snapY });
@@ -401,7 +408,24 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
 
   const handleWheel = useCallback(
     (event: Konva.KonvaEventObject<WheelEvent>) => {
-      const nativeEvent = event.evt;
+      // If we're currently interacting with a texture overlay while in texture tool,
+      // or if the user is currently holding a mouse button down in the texture tool,
+      // do not let the stage handle zooming. This prevents the "drag then quick
+      // Ctrl+wheel" case where wheel happens before mouseup and the stage still zooms.
+      const nativeEvent = event.evt as WheelEvent & { buttons?: number };
+      const stateNow = useCanvasState.getState();
+      const isMouseDown = !!(nativeEvent && nativeEvent.buttons && nativeEvent.buttons !== 0);
+
+      // Additionally, suppress stage zoom for a short debounce window after the last
+      // texture interaction to be robust against event ordering where wheel can race.
+      const now = Date.now();
+      const lastTexture = stateNow.textureLastInteractionAt || 0;
+      const debounceMs = 400;
+
+      if (stateNow.currentTool === 'texture' && (stateNow.textureInteractionActive || isMouseDown || (now - lastTexture) < debounceMs)) {
+        return;
+      }
+
       if (!nativeEvent.ctrlKey && !nativeEvent.metaKey) return;
 
       nativeEvent.preventDefault();

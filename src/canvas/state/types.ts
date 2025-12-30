@@ -62,7 +62,7 @@ export interface CanvasPresent {
   seams: SegmentSeam[];
 }
 
-export type Tool = 'pen' | 'background' | 'select' | 'seam';
+export type Tool = 'pen' | 'background' | 'select' | 'seam' | 'texture';
 
 export interface HistorySlice {
   present: CanvasPresent;
@@ -79,6 +79,15 @@ export interface ToolSlice {
   currentPathId: string | null;
   currentTool: Tool;
   setTool: (tool: Tool) => void;
+  // When true, the canvas should suppress global zoom and pan while
+  // the user is interacting with a texture overlay (hovering/dragging)
+  textureInteractionActive: boolean;
+  setTextureInteractionActive: (active: boolean) => void;
+
+  // Timestamp (ms) of the most recent texture interaction (mousedown/wheel/drag).
+  // Used to suppress stage zoom for a short debounce window after texture events.
+  textureLastInteractionAt: number;
+  setTextureLastInteractionAt: (t: number) => void;
 }
 
 export interface ViewportSlice {

@@ -7,6 +7,12 @@ import wasm from 'vite-plugin-wasm'
 export default defineConfig({
   plugins: [react(), tailwindcss(), wasm()],
   server: {
-    port: 4900
+    port: 4900,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
+    },
   }
 })

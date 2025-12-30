@@ -2,6 +2,10 @@ import { useEffect, useMemo, useRef } from 'react';
 
 import { formatRulerNumber, getStep } from '../util/grid';
 
+// World units in this editor are treated as centimeters.
+// Rulers should display millimeters.
+const MM_PER_WORLD_UNIT = 10;
+
 const DEFAULT_BASE_PIXEL_GRID_SIZE = 30;
 const DEFAULT_MIN_LABEL_SPACING_PX = 60;
 
@@ -38,7 +42,9 @@ export function RulersOverlay({
     const worldBottom = worldTop + h / zoom;
 
     const rawWorldStep = basePixelGridSize / zoom;
-    const worldStep = getStep(rawWorldStep);
+    const rawMmStep = rawWorldStep * MM_PER_WORLD_UNIT;
+    const mmStep = getStep(rawMmStep);
+    const worldStep = mmStep / MM_PER_WORLD_UNIT;
 
     return { worldLeft, worldTop, worldRight, worldBottom, worldStep };
   }, [basePixelGridSize, height, offset.x, offset.y, width, zoom]);
@@ -119,7 +125,7 @@ export function RulersOverlay({
       const px = x * zoom + offset.x;
       if (px < -50 || px > topWidth + 50) continue;
 
-      const labelText = formatRulerNumber(x);
+      const labelText = formatRulerNumber(x * MM_PER_WORLD_UNIT);
       if (drawnLabelTextX.has(labelText)) continue;
       const labelWidth = topCtx.measureText(labelText).width;
       const minGap = Math.max(minLabelSpacingPx, (lastLabelXWidth + labelWidth) / 2 + 6);
@@ -166,7 +172,7 @@ export function RulersOverlay({
       const py = y * zoom + offset.y;
       if (py < -50 || py > leftHeight + 50) continue;
 
-      const labelTextY = formatRulerNumber(y);
+      const labelTextY = formatRulerNumber(y * MM_PER_WORLD_UNIT);
       if (drawnLabelTextY.has(labelTextY)) continue;
 
       const labelWidthY = leftCtx.measureText(labelTextY).width;

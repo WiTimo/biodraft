@@ -36,6 +36,14 @@ export function PathsLayer() {
   const [mouseDownPos, setMouseDownPos] = useState<{ x: number; y: number } | null>(null);
   const [hasMoved, setHasMoved] = useState(false);
 
+  // Texture-drag state for texture-select tool
+  const updateTextureForPath = useCanvasState(s => s.updateTextureForPath);
+  const [isDraggingTexture, setIsDraggingTexture] = useState(false);
+  const [textureDragPathId, setTextureDragPathId] = useState<string | null>(null);
+  const [textureDragStart, setTextureDragStart] = useState<{ x: number; y: number } | null>(null);
+  const [textureDragOriginalOffset, setTextureDragOriginalOffset] = useState<{ x: number; y: number } | null>(null);
+  const [textureStageRef, setTextureStageRef] = useState<any>(null);
+
   // Helper to calculate t value (0-1) along a bezier curve from mouse position
   const calculateTFromMouse = useCallback((mouseX: number, mouseY: number, p0: Point, h0: Handle, h1: Handle, p1: Point) => {
     // Find closest point on curve by sampling
@@ -158,6 +166,51 @@ export function PathsLayer() {
       setPendingSeamPortion1, setPendingSeamPortion2, clearPendingSeamPortions, commitPendingSeamPortions, 
       calculateTFromMouse, zoom, offset, mouseDownPos, hasMoved]);
 
+  // Handle texture drag global mouse events
+  useEffect(() => {
+    if (!isDraggingTexture || !textureStageRef || !textureDragPathId || !textureDragStart || !textureDragOriginalOffset) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const stage = textureStageRef;
+      const stageBounds = stage.container().getBoundingClientRect();
+      const stageX = e.clientX - stageBounds.left;
+      const stageY = e.clientY - stageBounds.top;
+      const worldX = (stageX - offset.x) / zoom;
+      const worldY = (stageY - offset.y) / zoom;
+
+      const dx = worldX - textureDragStart.x;
+      const dy = worldY - textureDragStart.y;
+
+      // Invert direction so dragging feels natural (dragging right moves texture to the right)
+      updateTextureForPath(textureDragPathId, {
+        offsetX: textureDragOriginalOffset.x - dx,
+        offsetY: textureDragOriginalOffset.y - dy,
+      });
+    };
+
+    const handleMouseUp = () => {
+      if (textureStageRef && textureStageRef.container) {
+        textureStageRef.container().style.cursor = 'default';
+      }
+      setIsDraggingTexture(false);
+      setTextureDragPathId(null);
+      setTextureDragStart(null);
+      setTextureDragOriginalOffset(null);
+      setTextureStageRef(null);
+
+      // clear texture interaction flag so stage zoom resumes
+      useCanvasState.getState().setTextureInteractionActive(false);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDraggingTexture, textureStageRef, textureDragPathId, textureDragStart, textureDragOriginalOffset, updateTextureForPath, zoom, offset]);
+
   const [hoveredPathId, setHoveredPathId] = useState<string | null>(null);
   const selectPoint = useCanvasState(s => s.selectPoint);
 
@@ -175,7 +228,7 @@ export function PathsLayer() {
           />
 
           {/* Invisible overlay to capture hover/click for selection (works reliably across Konva shapes) */}
-          {path.closed && currentTool === 'select' && (() => {
+          {path.closed && (currentTool === 'select' || currentTool === 'texture') && (() => {
             // Build sampled points for the entire path (closed)
             const sampled: number[] = [];
             for (let i = 0; i < path.points.length - 1; i++) {
@@ -193,6 +246,7 @@ export function PathsLayer() {
             return (
               <Line
                 key={`fill-overlay-${path.id}`}
+                name={`fill-overlay`}
                 points={sampled}
                 closed
                 fill={hoveredPathId === path.id ? 'rgba(0,120,255,0.06)' : 'rgba(0,0,0,0.001)'}
@@ -202,21 +256,121 @@ export function PathsLayer() {
                   setHoveredPathId(path.id);
                   const stage = e.target.getStage();
                   if (stage) stage.container().style.cursor = 'pointer';
+
+                  // If we're in texture tool, mark interaction active so stage zoom is suppressed
+                  if (currentTool === 'texture') {
+                    const state = useCanvasState.getState();
+                    state.setTextureInteractionActive(true);
+                    state.setTextureLastInteractionAt(Date.now());
+                  }
                 }}
                 onMouseLeave={(e) => {
                   if (hoveredPathId === path.id) setHoveredPathId(null);
                   const stage = e.target.getStage();
                   if (stage) stage.container().style.cursor = 'default';
-                }}
-                onClick={(e) => {
-                  const ids = path.points.map((p) => p.id);
-                  const state = useCanvasState.getState();
-                  if (ids.length === 1) {
-                    state.selectPoint(ids[0]);
-                  } else {
-                    state.setSelectedPointIds(ids);
-                    state.deselectPoint();
+
+                  // Only clear the texture interaction flag when we're NOT currently dragging the texture.
+                  // This prevents stage zoom from resuming while the user is in the middle of a texture drag
+                  // (i.e., clicked and is moving the mouse). The global mouseup handler will clear the flag
+                  // when the drag ends.
+                  if (currentTool === 'texture' && !isDraggingTexture) {
+                    useCanvasState.getState().setTextureInteractionActive(false);
                   }
+                }}
+                onMouseDown={(e) => {
+                  if (currentTool === 'select') {
+                    const ids = path.points.map((p) => p.id);
+                    const state = useCanvasState.getState();
+                    if (ids.length === 1) {
+                      state.selectPoint(ids[0]);
+                    } else {
+                      state.setSelectedPointIds(ids);
+                      state.deselectPoint();
+                    }
+                    return;
+                  }
+
+                  // Texture tool: start dragging texture offset for this path
+                  if (currentTool === 'texture') {
+                    e.evt.preventDefault();
+                    const stage = e.target.getStage();
+                    if (!stage) return;
+                    const pointer = stage.getPointerPosition();
+                    if (!pointer) return;
+
+                    const { offsetX = 0, offsetY = 0 } = path.texture ?? {};
+                    const worldX = (pointer.x - offset.x) / zoom;
+                    const worldY = (pointer.y - offset.y) / zoom;
+
+                    // Start drag
+                    setIsDraggingTexture(true);
+                    setTextureDragPathId(path.id);
+                    setTextureDragStart({ x: worldX, y: worldY });
+                    setTextureDragOriginalOffset({ x: offsetX, y: offsetY });
+
+                    // set stage ref for global mouse handlers
+                    setTextureStageRef(stage);
+                    stage.container().style.cursor = 'grabbing';
+
+                    // mark active so stage wheel won't zoom while dragging texture
+                    const st = useCanvasState.getState();
+                    st.setTextureInteractionActive(true);
+                    st.setTextureLastInteractionAt(Date.now());
+                  }
+                }}
+                onWheel={(e) => {
+                  // Ctrl + wheel over a textured path should scale the texture, not the canvas
+                  if (currentTool !== 'texture') return;
+                  if (!e.evt.ctrlKey && !e.evt.metaKey) return;
+
+                  e.evt.preventDefault();
+                  // stop propagation so the stage-level zoom handler doesn't run
+                  try {
+                    // Try stopping both DOM and Konva propagation
+                    if (e.evt.stopImmediatePropagation) e.evt.stopImmediatePropagation();
+                    if (e.evt.stopPropagation) e.evt.stopPropagation();
+                    (e as any).cancelBubble = true;
+                  } catch (err) { /* ignore */ }
+
+                  const stage = e.target.getStage();
+                  if (!stage) return;
+                  const pointer = stage.getPointerPosition();
+                  if (!pointer) return;
+
+                  // record interaction timestamp so stage zoom is suppressed even if events race
+                  useCanvasState.getState().setTextureLastInteractionAt(Date.now());
+
+                  const delta = e.evt.deltaY;
+                  const sensitivity = 0.0015; // tweak for comfortable scaling speed
+                  const rawFactor = Math.exp(-delta * sensitivity);
+                  const minFactor = 0.01;
+                  const maxFactor = 100;
+                  const factor = Math.max(minFactor, Math.min(maxFactor, rawFactor));
+
+                  const curScaleX = path.texture?.scaleX ?? 1;
+                  const curScaleY = path.texture?.scaleY ?? 1;
+                  const newScaleX = Math.max(0.01, curScaleX * factor);
+                  const newScaleY = Math.max(0.01, curScaleY * factor);
+
+                  // Scale around the pointer position so the visual point under the cursor stays steady
+                  const worldX = (pointer.x - offset.x) / zoom;
+                  const worldY = (pointer.y - offset.y) / zoom;
+
+                  const oldOffsetX = path.texture?.offsetX ?? 0;
+                  const oldOffsetY = path.texture?.offsetY ?? 0;
+
+                  const adjustedOffsetX = (oldOffsetX - worldX) * (newScaleX / curScaleX) + worldX;
+                  const adjustedOffsetY = (oldOffsetY - worldY) * (newScaleY / curScaleY) + worldY;
+
+                  updateTextureForPath(path.id, {
+                    scaleX: newScaleX,
+                    scaleY: newScaleY,
+                    offsetX: adjustedOffsetX,
+                    offsetY: adjustedOffsetY,
+                  });
+                }}
+                onMouseUp={(e) => {
+                  // Nothing here; drag end is handled by global mouseup
                 }}
               />
             );

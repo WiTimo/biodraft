@@ -6,20 +6,60 @@ import type { BackgroundImage, Path, Point, Segment, SegmentPortion } from '../s
 const POINT_OVERLAP_TOLERANCE = 5;
 
 // Canvas split line between front/back drawing areas.
-// We keep editor behavior as-is (it already uses x=700 as a visual divider),
-// but export normalizes coordinates so each side has a consistent local origin.
-const FRONT_BACK_SPLIT_X = 700;
+// Export normalizes coordinates so each side has a consistent local origin.
+// We prefer deriving the split from the actual front/back man-image placement,
+// because the editor can be responsive and the split isn't always a hardcoded value.
+const FRONT_BACK_SPLIT_X_FALLBACK = 700;
 
 const FRONT_IMAGE_ID = 'static-man';
 const BACK_IMAGE_ID = 'static-man-back';
 
 type PatternSide = 'front' | 'back';
 
-function inferPatternSideFromPath(path: Path): PatternSide {
+type HumanBounds = {
+  width: number;
+  height: number;
+  front?: { width: number; height: number };
+  back?: { width: number; height: number };
+};
+
+function getScaledImageSize(img: BackgroundImage | undefined | null): { width: number; height: number } | null {
+  if (!img) return null;
+  if (typeof img.nativeWidth !== 'number' || typeof img.nativeHeight !== 'number') return null;
+  return { width: img.nativeWidth * img.scaleX, height: img.nativeHeight * img.scaleY };
+}
+
+function computeHumanBounds(backgroundImages: BackgroundImage[]): HumanBounds | null {
+  const front = backgroundImages.find((b) => b.id === FRONT_IMAGE_ID);
+  const back = backgroundImages.find((b) => b.id === BACK_IMAGE_ID);
+
+  const frontSize = getScaledImageSize(front);
+  const backSize = getScaledImageSize(back);
+
+  const widths = [frontSize?.width, backSize?.width].filter((v): v is number => typeof v === 'number');
+  const heights = [frontSize?.height, backSize?.height].filter((v): v is number => typeof v === 'number');
+  if (widths.length === 0 || heights.length === 0) return null;
+
+  return {
+    width: Math.max(...widths),
+    height: Math.max(...heights),
+    ...(frontSize ? { front: frontSize } : {}),
+    ...(backSize ? { back: backSize } : {}),
+  };
+}
+
+function getFrontBackSplitX(opts: { manImageCenters: Record<string, { x: number; y: number }>; backgroundImages: BackgroundImage[] }): number {
+  const frontCenter = opts.manImageCenters[FRONT_IMAGE_ID] ?? getBackgroundCenter(opts.backgroundImages, FRONT_IMAGE_ID);
+  const backCenter = opts.manImageCenters[BACK_IMAGE_ID] ?? getBackgroundCenter(opts.backgroundImages, BACK_IMAGE_ID);
+  if (frontCenter && backCenter) return (frontCenter.x + backCenter.x) / 2;
+  return FRONT_BACK_SPLIT_X_FALLBACK;
+}
+
+function inferPatternSideFromPath(path: Path, splitX: number): PatternSide {
   if (path.points.length === 0) return 'front';
 
   const meanX = path.points.reduce((sum, p) => sum + p.x, 0) / path.points.length;
-  return meanX < FRONT_BACK_SPLIT_X ? 'front' : 'back';
+  return meanX < splitX ? 'front' : 'back';
 }
 
 function seamPartToSegment(part: Segment | SegmentPortion): Segment {
@@ -259,7 +299,7 @@ function getSideOrigin(
   if (center) return center;
 
   // Fallback to previous behavior (back normalized by split line; front unchanged)
-  return { x: side === 'back' ? FRONT_BACK_SPLIT_X : 0, y: 0 };
+  return { x: side === 'back' ? getFrontBackSplitX(opts) : 0, y: 0 };
 }
 
 interface PointWithPath {
@@ -374,6 +414,9 @@ export function exportToJson() {
   const { paths, seams, backgroundImages } = state.present;
   const { manImageCenters } = state;
 
+  const splitX = getFrontBackSplitX({ manImageCenters, backgroundImages });
+  const human_bounds = computeHumanBounds(backgroundImages);
+
   // Filter out empty paths (paths with no points)
   const validPaths = paths.filter(path => path.points.length > 0);
 
@@ -418,7 +461,7 @@ export function exportToJson() {
   });
 
   const exportData = validPaths.map((path) => {
-    const side = inferPatternSideFromPath(path);
+    const side = inferPatternSideFromPath(path, splitX);
     const origin = getSideOrigin(side, { manImageCenters, backgroundImages });
 
     const exportedPoints = path.points.map((p, pointIndex) => {
@@ -460,10 +503,22 @@ export function exportToJson() {
     };
   });
 
-  const blob = new Blob(
-    [JSON.stringify({ patterns: exportData, seams: validSeams, sharedPoints: sharedPoints.length }, null, 2)],
-    { type: 'application/json' }
-  );
+  if (!human_bounds) {
+    console.warn('human_bounds could not be computed (missing nativeWidth/nativeHeight on man images).');
+  }
+
+  const blob = new Blob([
+    JSON.stringify(
+      {
+        human_bounds,
+        patterns: exportData,
+        seams: validSeams,
+        sharedPoints: sharedPoints.length,
+      },
+      null,
+      2
+    ),
+  ], { type: 'application/json' });
 
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -535,7 +590,8 @@ export function importFromJson(file: File) {
  */
 export function exportToDxf() {
   const state = useCanvasState.getState();
-  const { paths, seams } = state.present;
+  const { paths, seams, backgroundImages } = state.present;
+  const { manImageCenters } = state;
 
   const validPaths = paths.filter((p) => p.points.length > 0);
   if (validPaths.length === 0) {
@@ -545,6 +601,9 @@ export function exportToDxf() {
 
   const stateScale = useCanvasState.getState().dxfScale ?? 1;
 
+  const splitX = getFrontBackSplitX({ manImageCenters, backgroundImages });
+  const human_bounds = computeHumanBounds(backgroundImages);
+
   const lines: string[] = [];
   const push = (s: string) => lines.push(s);
 
@@ -553,8 +612,13 @@ export function exportToDxf() {
   push('2');
   push('ENTITIES');
 
+  if (human_bounds) {
+    push('999');
+    push(`HUMAN_BOUNDS:${JSON.stringify(human_bounds)}`);
+  }
+
   for (const path of validPaths) {
-    const side = inferPatternSideFromPath(path);
+    const side = inferPatternSideFromPath(path, splitX);
     const layer = `PATTERN_${path.id}_${side}`;
 
     const pts = path.points;
@@ -616,66 +680,83 @@ export function exportToDxf() {
     }
   }
 
-  for (const seam of seams) {
+  // Export seams.  For partial seams we emit two LINE entities per seam (start/end)
+  // with a comment group 'SEAM_META' so import can reconstruct ranges.
+  for (let si = 0; si < seams.length; si++) {
+    const seam = seams[si];
     const [a, b] = seam;
-    const segA = seamPartToSegment(a);
-    const segB = seamPartToSegment(b);
-    const [p1Id, p2Id] = segA;
-    const [p3Id, p4Id] = segB;
 
-    // compute exported point for each seam side
-    function computePointForPart(part: typeof a) {
-      // if part is a portion (has .segment and tStart/tEnd)
+    function evalAt(part: any, t: number|null) {
+      if (!part) return null;
       if ((part as any).segment) {
         const portion = part as SegmentPortion;
         const [sa, sb] = portion.segment;
         const pA = ptObjMap.get(sa);
         const pB = ptObjMap.get(sb);
         if (!pA || !pB) return null;
-        const t = Math.max(0, Math.min(1, (portion.tStart + portion.tEnd) / 2));
-        // if straight segment (no handles), interpolate linearly
+        const tt = (t === null) ? Math.max(0, Math.min(1, (portion.tStart + portion.tEnd) / 2)) : Math.max(0, Math.min(1, t));
         const isStraight = (pA.handleOut.dx === 0 && pA.handleOut.dy === 0 && pB.handleIn.dx === 0 && pB.handleIn.dy === 0);
-        if (isStraight) {
-          return { x: pA.x + (pB.x - pA.x) * t, y: pA.y + (pB.y - pA.y) * t };
-        } else {
-          // evaluate cubic bezier at t
-          // import evaluateBezier at top of file
-          return evaluateBezier(pA, pA.handleOut, pB.handleIn, pB, t);
-        }
+        if (isStraight) return { x: pA.x + (pB.x - pA.x) * tt, y: pA.y + (pB.y - pA.y) * tt };
+        return evaluateBezier(pA, pA.handleOut, pB.handleIn, pB, tt);
       } else {
-        // part is full segment; export midpoint (t=0.5)
         const [sa, sb] = part as Segment;
         const pA = ptObjMap.get(sa);
         const pB = ptObjMap.get(sb);
         if (!pA || !pB) return null;
-        const t = 0.5;
+        const tt = (t === null) ? 0.5 : Math.max(0, Math.min(1, t));
         const isStraight = (pA.handleOut.dx === 0 && pA.handleOut.dy === 0 && pB.handleIn.dx === 0 && pB.handleIn.dy === 0);
-        if (isStraight) {
-          return { x: pA.x + (pB.x - pA.x) * t, y: pA.y + (pB.y - pA.y) * t };
-        } else {
-          return evaluateBezier(pA, pA.handleOut, pB.handleIn, pB, t);
-        }
+        if (isStraight) return { x: pA.x + (pB.x - pA.x) * tt, y: pA.y + (pB.y - pA.y) * tt };
+        return evaluateBezier(pA, pA.handleOut, pB.handleIn, pB, tt);
       }
     }
 
-    const pa = computePointForPart(a);
-    const pb = computePointForPart(b);
+    const isPortionA = (a && (a as any).tStart !== undefined && (a as any).tEnd !== undefined);
+    const isPortionB = (b && (b as any).tStart !== undefined && (b as any).tEnd !== undefined);
 
-    if (!pa || !pb) continue;
-
-    // Debug info for exported seams (only in dev)
-    if (process.env.NODE_ENV !== 'production') {
-      console.debug('Exporting seam line between', pa, 'and', pb, 'from parts', a, b);
+    if (isPortionA && isPortionB) {
+      // write start endpoints
+      const pa = evalAt(a, (a as any).tStart);
+      const pb = evalAt(b, (b as any).tStart);
+      if (pa && pb) {
+        push('0'); push('LINE');
+        push('999'); push(`SEAM_META:idx=${si}:part=start`);
+        push('8'); push('SEAMS');
+        push('10'); push(String((pa.x * stateScale).toFixed(4)));
+        push('20'); push(String((pa.y * stateScale).toFixed(4)));
+        push('30'); push('0');
+        push('11'); push(String((pb.x * stateScale).toFixed(4)));
+        push('21'); push(String((pb.y * stateScale).toFixed(4)));
+        push('31'); push('0');
+      }
+      // write end endpoints
+      const pa2 = evalAt(a, (a as any).tEnd);
+      const pb2 = evalAt(b, (b as any).tEnd);
+      if (pa2 && pb2) {
+        push('0'); push('LINE');
+        push('999'); push(`SEAM_META:idx=${si}:part=end`);
+        push('8'); push('SEAMS');
+        push('10'); push(String((pa2.x * stateScale).toFixed(4)));
+        push('20'); push(String((pa2.y * stateScale).toFixed(4)));
+        push('30'); push('0');
+        push('11'); push(String((pb2.x * stateScale).toFixed(4)));
+        push('21'); push(String((pb2.y * stateScale).toFixed(4)));
+        push('31'); push('0');
+      }
+    } else {
+      // simple export using midpoint representative
+      const pa = evalAt(a, null);
+      const pb = evalAt(b, null);
+      if (!pa || !pb) continue;
+      push('0'); push('LINE');
+      push('999'); push(`SEAM_META:idx=${si}:part=mid`);
+      push('8'); push('SEAMS');
+      push('10'); push(String((pa.x * stateScale).toFixed(4)));
+      push('20'); push(String((pa.y * stateScale).toFixed(4)));
+      push('30'); push('0');
+      push('11'); push(String((pb.x * stateScale).toFixed(4)));
+      push('21'); push(String((pb.y * stateScale).toFixed(4)));
+      push('31'); push('0');
     }
-
-    push('0'); push('LINE');
-    push('8'); push('SEAMS');
-    push('10'); push(String((pa.x * stateScale).toFixed(4)));
-    push('20'); push(String((pa.y * stateScale).toFixed(4)));
-    push('30'); push('0');
-    push('11'); push(String((pb.x * stateScale).toFixed(4)));
-    push('21'); push(String((pb.y * stateScale).toFixed(4)));
-    push('31'); push('0');
   }
 
   push('0');
@@ -872,6 +953,7 @@ export function importFromDxf(file: File) {
 
       if (code === '0' && value === 'LINE') {
         let x1 = 0, y1 = 0, x2 = 0, y2 = 0, layer = '0';
+        let meta: string | null = null;
         // read properties of line
         while (i < lines.length) {
           const c = lines[i++] || '';
@@ -882,9 +964,10 @@ export function importFromDxf(file: File) {
           if (c === '11') x2 = Number(v);
           if (c === '21') y2 = Number(v);
           if (c === '8') layer = v;
+          if (c === '999') meta = v;
         }
         // convert to editor units
-        seamLines.push({ x1: x1 / stateScale, y1: y1 / stateScale, x2: x2 / stateScale, y2: y2 / stateScale });
+        seamLines.push({ x1: x1 / stateScale, y1: y1 / stateScale, x2: x2 / stateScale, y2: y2 / stateScale, layer, meta });
       }
     }
 

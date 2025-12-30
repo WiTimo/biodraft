@@ -3,6 +3,8 @@ import { useMemo } from 'react';
 
 import { getStep } from '../util/grid';
 
+const MM_PER_WORLD_UNIT = 10;
+
 export function GridLayer({
   width,
   height,
@@ -25,7 +27,9 @@ export function GridLayer({
     const worldBottom = worldTop + height / zoom;
 
     const rawWorldStep = basePixelGridSize / zoom;
-    const worldStep = getStep(rawWorldStep);
+    const rawMmStep = rawWorldStep * MM_PER_WORLD_UNIT;
+    const mmStep = getStep(rawMmStep);
+    const worldStep = mmStep / MM_PER_WORLD_UNIT;
 
     const startX = Math.floor(worldLeft / worldStep) * worldStep;
     const endX = Math.ceil(worldRight / worldStep) * worldStep;

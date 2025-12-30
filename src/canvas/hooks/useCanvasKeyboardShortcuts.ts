@@ -37,7 +37,8 @@ export function useCanvasKeyboardShortcuts({
         state.setIsShiftPressed(true);
       }
 
-      if (event.key === 'Alt') {
+      // Handle both AltLeft/AltRight and generic 'Alt' keys
+      if (event.key === 'Alt' || event.code === 'AltLeft' || event.code === 'AltRight') {
         state.setIsAltPressed(true);
       }
 
@@ -132,16 +133,46 @@ export function useCanvasKeyboardShortcuts({
         state.setIsShiftPressed(false);
       }
 
-      if (event.key === 'Alt') {
+      if (event.key === 'Alt' || event.code === 'AltLeft' || event.code === 'AltRight') {
         state.setIsAltPressed(false);
       }
     };
 
+    // Sometimes keyboard events can be missed (e.g., focus lost, system menus etc.)
+    // Also listen to pointer events and blur/visibility to keep Alt state in sync.
+    const handlePointer = (e: PointerEvent | MouseEvent) => {
+      const state = useCanvasState.getState();
+      // If pointer event reports altKey state different from store, sync it
+      if ((e as PointerEvent).altKey !== undefined) {
+        const alt = (e as PointerEvent).altKey;
+        if (alt !== state.isAltPressed) state.setIsAltPressed(alt);
+      }
+    };
+
+    const handleWindowBlur = () => {
+      useCanvasState.getState().setIsAltPressed(false);
+    };
+
+    const handleVisibility = () => {
+      if (document.hidden) useCanvasState.getState().setIsAltPressed(false);
+    };
+
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('pointermove', handlePointer);
+    window.addEventListener('mousemove', handlePointer);
+    window.addEventListener('mousedown', handlePointer);
+    window.addEventListener('blur', handleWindowBlur);
+    document.addEventListener('visibilitychange', handleVisibility);
+
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('pointermove', handlePointer);
+      window.removeEventListener('mousemove', handlePointer);
+      window.removeEventListener('mousedown', handlePointer);
+      window.removeEventListener('blur', handleWindowBlur);
+      document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, [
     currentTool,

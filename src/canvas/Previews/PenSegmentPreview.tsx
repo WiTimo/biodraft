@@ -15,6 +15,7 @@ export function PenSegmentPreview() {
   if (!path || path.points.length === 0) return null;
 
   const last = path.points[path.points.length - 1];
+  // Keep preview stroke visually constant on screen by dividing by zoom
   const strokeWidth = Math.min(4, Math.max(0.5, 2 / zoom));
 
   // Use snapGuides from global state
@@ -50,6 +51,8 @@ export function PenSegmentPreview() {
         }}
         stroke="rgba(0,0,0,0.5)"
         strokeWidth={strokeWidth}
+        // Keep stroke size stable by dividing by zoom and disabling stroke scaling
+        strokeScaleEnabled={false}
         listening={false}
       />
 
@@ -61,6 +64,7 @@ export function PenSegmentPreview() {
           radius={6 / zoom}
           stroke="deepskyblue"
           strokeWidth={1.5 / zoom}
+          strokeScaleEnabled={false}
           listening={false}
         />
       )}
