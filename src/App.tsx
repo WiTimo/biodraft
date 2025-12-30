@@ -1,4 +1,4 @@
-import { Canvas } from './canvas/Canvas';
+import { Canvas } from './editor/Canvas';
 
 function App() {
   return (
