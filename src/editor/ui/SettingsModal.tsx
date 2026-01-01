@@ -1,18 +1,22 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useCanvasState } from '../state/CanvasState';
 import { cmToIn, inToCm, kgToLb, lbToKg, formatNumber, validateHeight, validateWeight } from '../utils/unitUtils';
+import { LANGUAGE_OPTIONS, type LanguageCode } from '../../config/languages';
 
 export default function SettingsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { t } = useTranslation();
   const [tab, setTab] = useState<'general' | 'keybinds'>('general');
 
   // General settings
   const theme = useCanvasState((s) => s.theme);
   const setTheme = useCanvasState((s) => s.setTheme);
+  const language = useCanvasState((s) => s.language);
+  const setLanguage = useCanvasState((s) => s.setLanguage);
   const units = useCanvasState((s) => s.units);
   const setUnits = useCanvasState((s) => s.setUnits);
   const metricUnit = useCanvasState((s) => s.metricUnit);
   const setMetricUnit = useCanvasState((s) => s.setMetricUnit);
-  const [language, setLanguage] = useState<'en' | 'de'>('en');
   const showLeftRuler = useCanvasState((s) => s.showLeftRuler);
   const setShowLeftRuler = useCanvasState((s) => s.setShowLeftRuler);
   const showTopRuler = useCanvasState((s) => s.showTopRuler);
@@ -70,9 +74,9 @@ export default function SettingsModal({ open, onClose }: { open: boolean; onClos
   // update validation on input change
   useEffect(() => {
     const hh = validateHeight(formHuman.units as 'metric' | 'imperial', formHuman.height);
-    setHeightError(hh.valid ? null : hh.error ?? '');
+    setHeightError(hh.valid ? null : (hh.error ? t(hh.error.key, hh.error.params as any) : ''));
     const ww = validateWeight(formHuman.units as 'metric' | 'imperial', formHuman.weight);
-    setWeightError(ww.valid ? null : ww.error ?? '');
+    setWeightError(ww.valid ? null : (ww.error ? t(ww.error.key, ww.error.params as any) : ''));
   }, [formHuman.height, formHuman.units, formHuman.weight]);
 
   const canSave = !(heightError || weightError);
@@ -129,7 +133,7 @@ export default function SettingsModal({ open, onClose }: { open: boolean; onClos
                   }
                   onClick={() => setTab('general')}
                 >
-                  General
+                  {t('settings.tabs.general')}
                 </button>
                 <button
                   className={
@@ -138,7 +142,7 @@ export default function SettingsModal({ open, onClose }: { open: boolean; onClos
                   }
                   onClick={() => setTab('keybinds')}
                 >
-                  Keybinds
+                  {t('settings.tabs.keybinds')}
                 </button>
               </div>
             </div>
@@ -146,12 +150,12 @@ export default function SettingsModal({ open, onClose }: { open: boolean; onClos
             <div className="flex-1 flex flex-col">
               <div className="p-4">
                 <div className="flex items-start justify-between mb-3">
-                  <div className="text-base font-semibold">Settings</div>
+                  <div className="text-base font-semibold">{t('settings.title')}</div>
                   <button
                     className="text-sm px-3 py-2 rounded-md border border-gray-200 bg-white hover:bg-gray-50"
                     onClick={onClose}
                   >
-                    Close
+                    {t('common.close')}
                   </button>
                 </div>
               </div>
@@ -163,8 +167,8 @@ export default function SettingsModal({ open, onClose }: { open: boolean; onClos
                     <div className="rounded-lg border border-gray-200 bg-white p-4">
                       <div className="flex items-center justify-between">
                         <div>
-                          <div className="text-sm font-semibold text-gray-800">Appearance</div>
-                          <div className="text-xs text-gray-500">Choose theme for the app (applies immediately)</div>
+                          <div className="text-sm font-semibold text-gray-800">{t('settings.appearance.title')}</div>
+                          <div className="text-xs text-gray-500">{t('settings.appearance.description')}</div>
                         </div>
                       </div>
 
@@ -176,7 +180,7 @@ export default function SettingsModal({ open, onClose }: { open: boolean; onClos
                           }
                           onClick={() => setTheme('light')}
                         >
-                          Light
+                          {t('settings.appearance.light')}
                         </button>
                         <button
                           className={
@@ -185,7 +189,7 @@ export default function SettingsModal({ open, onClose }: { open: boolean; onClos
                           }
                           onClick={() => setTheme('dark')}
                         >
-                          Dark
+                          {t('settings.appearance.dark')}
                         </button>
                         <button
                           className={
@@ -194,7 +198,7 @@ export default function SettingsModal({ open, onClose }: { open: boolean; onClos
                           }
                           onClick={() => setTheme('system')}
                         >
-                          System
+                          {t('settings.appearance.system')}
                         </button>
                       </div>
 
@@ -205,20 +209,23 @@ export default function SettingsModal({ open, onClose }: { open: boolean; onClos
                     <div className="rounded-lg border border-gray-200 bg-white p-4">
                       <div className="flex items-center justify-between">
                         <div>
-                          <div className="text-sm font-semibold text-gray-800">Language</div>
-                          <div className="text-xs text-gray-500">Select the interface language.</div>
+                          <div className="text-sm font-semibold text-gray-800">{t('settings.language.title')}</div>
+                          <div className="text-xs text-gray-500">{t('settings.language.description')}</div>
                         </div>
                       </div>
                       <div className="mt-3">
-                        <label className="sr-only">Language</label>
+                        <label className="sr-only">{t('settings.language.title')}</label>
                         <div className="relative inline-block w-48">
                           <select
                             value={language}
-                            onChange={(e) => setLanguage(e.target.value as 'en' | 'de')}
+                            onChange={(e) => setLanguage(e.target.value as LanguageCode)}
                             className="block appearance-none w-full rounded-md border border-gray-200 bg-white px-3 py-2 pr-8 text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                           >
-                            <option value="en">English</option>
-                            <option value="de">Deutsch</option>
+                            {LANGUAGE_OPTIONS.map((opt) => (
+                              <option key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </option>
+                            ))}
                           </select>
                           <svg className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-gray-400" width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
                             <path d="M6 8L10 12L14 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -231,8 +238,8 @@ export default function SettingsModal({ open, onClose }: { open: boolean; onClos
                     <div className="rounded-lg border border-gray-200 bg-white p-4">
                       <div className="flex items-center justify-between">
                         <div>
-                          <div className="text-sm font-semibold text-gray-800">Units</div>
-                          <div className="text-xs text-gray-500">Choose your preferred measurement system</div>
+                          <div className="text-sm font-semibold text-gray-800">{t('settings.units.title')}</div>
+                          <div className="text-xs text-gray-500">{t('settings.units.description')}</div>
                         </div>
                       </div>
 
@@ -244,7 +251,7 @@ export default function SettingsModal({ open, onClose }: { open: boolean; onClos
                           }
                           onClick={() => { convertHumanUnits('metric'); setUnits('metric'); }}
                         >
-                          Metric
+                          {t('settings.units.metric')}
                         </button>
                         <button
                           className={
@@ -253,12 +260,12 @@ export default function SettingsModal({ open, onClose }: { open: boolean; onClos
                           }
                           onClick={() => { convertHumanUnits('imperial'); setUnits('imperial'); }}
                         >
-                          Imperial
+                          {t('settings.units.imperial')}
                         </button>
 
                         {units === 'metric' && (
                           <div className="ml-6 flex items-center gap-3">
-                            <div className="text-sm text-gray-700">Metric units</div>
+                            <div className="text-sm text-gray-700">{t('settings.units.metricUnits')}</div>
                             <div className="flex gap-2">
                               <button
                                 className={
@@ -288,32 +295,32 @@ export default function SettingsModal({ open, onClose }: { open: boolean; onClos
                     <div className="rounded-lg border border-gray-200 bg-white p-4">
                       <div className="flex items-center justify-between">
                         <div>
-                          <div className="text-sm font-semibold text-gray-800">Rulers & Grid</div>
-                          <div className="text-xs text-gray-500">Toggle rulers and grid visibility</div>
+                          <div className="text-sm font-semibold text-gray-800">{t('settings.rulersGrid.title')}</div>
+                          <div className="text-xs text-gray-500">{t('settings.rulersGrid.description')}</div>
                         </div>
                       </div>
 
                       <div className="mt-3 grid grid-cols-2 gap-4">
                         <div className="flex items-center justify-between">
                           <div>
-                            <div className="text-sm text-gray-700">Left Ruler</div>
-                            <div className="text-xs text-gray-500">Show/hide the left ruler</div>
+                            <div className="text-sm text-gray-700">{t('settings.rulersGrid.leftRuler')}</div>
+                            <div className="text-xs text-gray-500">{t('settings.rulersGrid.leftRulerDesc')}</div>
                           </div>
                           <ToggleSwitch checked={showLeftRuler} onChange={setShowLeftRuler} />
                         </div>
 
                         <div className="flex items-center justify-between">
                           <div>
-                            <div className="text-sm text-gray-700">Top Ruler</div>
-                            <div className="text-xs text-gray-500">Show/hide the top ruler</div>
+                            <div className="text-sm text-gray-700">{t('settings.rulersGrid.topRuler')}</div>
+                            <div className="text-xs text-gray-500">{t('settings.rulersGrid.topRulerDesc')}</div>
                           </div>
                           <ToggleSwitch checked={showTopRuler} onChange={setShowTopRuler} />
                         </div>
 
                         <div className="col-span-2 flex items-center justify-between">
                           <div>
-                            <div className="text-sm text-gray-700">Grid</div>
-                            <div className="text-xs text-gray-500">Enable or disable the canvas grid</div>
+                            <div className="text-sm text-gray-700">{t('settings.rulersGrid.grid')}</div>
+                            <div className="text-xs text-gray-500">{t('settings.rulersGrid.gridDesc')}</div>
                           </div>
                           <ToggleSwitch checked={gridEnabled} onChange={setGridEnabled} />
                         </div>
@@ -326,26 +333,26 @@ export default function SettingsModal({ open, onClose }: { open: boolean; onClos
                     <div className="rounded-lg border border-gray-200 bg-white p-4">
                       <div className="flex items-center justify-between">
                         <div>
-                          <div className="text-sm font-semibold text-gray-800">Default Human</div>
-                          <div className="text-xs text-gray-500">Controls used when generating a default human on canvas clear</div>
+                          <div className="text-sm font-semibold text-gray-800">{t('settings.defaultHuman.title')}</div>
+                          <div className="text-xs text-gray-500">{t('settings.defaultHuman.description')}</div>
                         </div>
                       </div>
 
                       <div className="mt-3 grid grid-cols-2 gap-4">
                         <div>
-                          <div className="text-xs text-gray-500">Gender</div>
+                          <div className="text-xs text-gray-500">{t('settings.defaultHuman.gender')}</div>
                           <select
                             value={formHuman.gender}
                             onChange={(e) => setFormHuman((f) => ({ ...f, gender: e.target.value }))}
                             className="mt-1 w-full rounded-md border border-gray-200 bg-white px-2 py-2 text-sm"
                           >
-                            <option value="male">male</option>
-                            <option value="female">female</option>
+                            <option value="male">{t('settings.defaultHuman.male')}</option>
+                            <option value="female">{t('settings.defaultHuman.female')}</option>
                           </select>
                         </div>
 
                         <div>
-                          <div className="text-xs text-gray-500">Units</div>
+                          <div className="text-xs text-gray-500">{t('settings.defaultHuman.units')}</div>
                           <select
                             value={formHuman.units}
                             onChange={(e) => {
@@ -354,13 +361,13 @@ export default function SettingsModal({ open, onClose }: { open: boolean; onClos
                             }}
                             className="mt-1 w-full rounded-md border border-gray-200 bg-white px-2 py-2 text-sm"
                           >
-                            <option value="metric">metric</option>
-                            <option value="imperial">imperial</option>
+                            <option value="metric">{t('settings.defaultHuman.metric')}</option>
+                            <option value="imperial">{t('settings.defaultHuman.imperial')}</option>
                           </select>
                         </div>
 
                         <div>
-                          <div className="text-xs text-gray-500">Height ({defaultHuman.units === 'metric' ? 'cm' : 'in'})</div>
+                          <div className="text-xs text-gray-500">{t('settings.defaultHuman.height', { unit: defaultHuman.units === 'metric' ? 'cm' : 'in' })}</div>
                           <input
                             type="text"
                             inputMode="numeric"
@@ -371,7 +378,7 @@ export default function SettingsModal({ open, onClose }: { open: boolean; onClos
                         </div>
 
                         <div>
-                          <div className="text-xs text-gray-500">Weight ({defaultHuman.units === 'metric' ? 'kg' : 'lb'})</div>
+                          <div className="text-xs text-gray-500">{t('settings.defaultHuman.weight', { unit: defaultHuman.units === 'metric' ? 'kg' : 'lb' })}</div>
                           <input
                             type="text"
                             inputMode="numeric"
@@ -390,8 +397,8 @@ export default function SettingsModal({ open, onClose }: { open: boolean; onClos
                         <div className="col-span-2">
                           <div className="flex items-center justify-between">
                             <div>
-                              <div className="text-sm text-gray-700">Muscle</div>
-                              <div className="text-xs text-gray-500">Adjust the default muscle level</div>
+                              <div className="text-sm text-gray-700">{t('settings.defaultHuman.muscle')}</div>
+                              <div className="text-xs text-gray-500">{t('settings.defaultHuman.muscleDesc')}</div>
                             </div>
                             <div className="flex items-center gap-3">
                               <a
@@ -399,9 +406,9 @@ export default function SettingsModal({ open, onClose }: { open: boolean; onClos
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="text-xs text-blue-700 hover:underline"
-                                title="Open BioMesh in a new tab"
+                                title={t('settings.defaultHuman.openBioMeshNewTab')}
                               >
-                                View it live
+                                {t('settings.defaultHuman.viewLive')}
                               </a>
                               <div className="text-sm text-gray-500">{formHuman.muscle} / 100</div>
                             </div>
@@ -424,7 +431,7 @@ export default function SettingsModal({ open, onClose }: { open: boolean; onClos
                           className="text-sm px-3 py-2 rounded-md border border-gray-200 bg-white hover:bg-gray-50"
                           onClick={() => { /* Cancel: revert UI-only changes - currently no-op */ onClose(); }}
                         >
-                          Cancel
+                          {t('common.cancel')}
                         </button>
                         <button
                           className={"text-sm px-4 py-2 rounded-md bg-blue-600 text-white " + (canSave ? '' : 'opacity-50')}
@@ -438,7 +445,7 @@ export default function SettingsModal({ open, onClose }: { open: boolean; onClos
                           }}
                           disabled={!canSave}
                         >
-                          Save
+                          {t('common.save')}
                         </button>
                       </div>
                     </div>
@@ -447,7 +454,7 @@ export default function SettingsModal({ open, onClose }: { open: boolean; onClos
                 )}
 
                 {tab === 'keybinds' && (
-                  <div className="text-sm text-gray-600">Placeholder</div>
+                  <div className="text-sm text-gray-600">{t('settings.keybindsPlaceholder')}</div>
                 )}
               </div>
             </div>

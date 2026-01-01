@@ -126,6 +126,10 @@ export interface ViewportSlice {
   theme: 'light' | 'dark' | 'system';
   setTheme: (t: 'light' | 'dark' | 'system') => void;
 
+  // Interface language
+  language: import('../../config/languages').LanguageCode;
+  setLanguage: (lang: import('../../config/languages').LanguageCode) => void;
+
   // Units used for rulers and human params
   units: 'metric' | 'imperial';
   setUnits: (u: 'metric' | 'imperial') => void;

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { useCanvasState } from '../state/CanvasState';
 import { normalizeSegment, segmentsEqual } from '../state/utils';
@@ -122,6 +123,7 @@ function FileMenuItem({
 }
 
 export function Toolbar({ onResetView, defaultZoom }: { onResetView?: () => void; defaultZoom?: number }) {
+  const { t } = useTranslation();
   const { currentTool, setTool, setZoom, setOffset, zoom } = useCanvasState();
   const seamDeleteMode = useCanvasState((state) => state.seamDeleteMode);
   const [isManModalOpen, setIsManModalOpen] = useState(false);
@@ -240,15 +242,15 @@ export function Toolbar({ onResetView, defaultZoom }: { onResetView?: () => void
     <>
       <div className="absolute right-4 top-1/2 -translate-y-1/2 z-[2000]">
         <div className="bg-white/95 backdrop-blur rounded-xl p-3 shadow-lg flex flex-col gap-4 border border-gray-200">
-          <ToolbarSection title="Pattern">
-            <ToolButton tool="select" currentTool={currentTool} onClick={() => setTool('select')} title="Select" iconSrc="/svg/pointer.svg" hotkey="W" />
-            <ToolButton tool="pen" currentTool={currentTool} onClick={() => setTool('pen')} title="Pen" iconSrc="/svg/pen.svg" hotkey="E" />
+          <ToolbarSection title={t('toolbar.sections.pattern')}>
+            <ToolButton tool="select" currentTool={currentTool} onClick={() => setTool('select')} title={t('tools.select')} iconSrc="/svg/pointer.svg" hotkey="W" />
+            <ToolButton tool="pen" currentTool={currentTool} onClick={() => setTool('pen')} title={t('tools.pen')} iconSrc="/svg/pen.svg" hotkey="E" />
           </ToolbarSection>
 
-          <ToolbarSection title="Seams">
-            <ToolButton tool="seam" currentTool={currentTool} onClick={() => setTool('seam')} title="Seam" iconSrc="/svg/seam.svg" hotkey="S" />
+          <ToolbarSection title={t('toolbar.sections.seams')}>
+            <ToolButton tool="seam" currentTool={currentTool} onClick={() => setTool('seam')} title={t('tools.seam')} iconSrc="/svg/seam.svg" hotkey="S" />
             <ActionButton
-              title={seamDeleteMode ? 'Seam delete mode: ON' : 'Delete seam'}
+              title={seamDeleteMode ? t('toolbar.seamDeleteModeOn') : t('toolbar.deleteSeam')}
               iconSrc="/svg/delete.svg"
               tone="danger"
               active={seamDeleteMode}
@@ -291,10 +293,10 @@ export function Toolbar({ onResetView, defaultZoom }: { onResetView?: () => void
             />
           </ToolbarSection>
 
-          <ToolbarSection title="Texture">
-            <ToolButton tool="texture" currentTool={currentTool} onClick={() => setTool('texture')} title="Texture tool" iconSrc="/svg/fill.svg" hotkey="T" />
+          <ToolbarSection title={t('toolbar.sections.texture')}>
+            <ToolButton tool="texture" currentTool={currentTool} onClick={() => setTool('texture')} title={t('toolbar.textureTool')} iconSrc="/svg/fill.svg" hotkey="T" />
             <ActionButton
-              title="Apply texture to selected"
+              title={t('toolbar.applyTextureToSelected')}
               iconSrc="/svg/image.svg"
               disabled={!hasSelectedPoints}
               onClick={() => openFilePicker(fileInputTextureRef)}
@@ -303,19 +305,19 @@ export function Toolbar({ onResetView, defaultZoom }: { onResetView?: () => void
             <div />
           </ToolbarSection>
 
-          <ToolbarSection title="Background">
-            <ToolButton tool="background" currentTool={currentTool} onClick={() => setTool('background')} title="Background" iconSrc="/svg/background.svg" hotkey="G" />
+          <ToolbarSection title={t('toolbar.sections.background')}>
+            <ToolButton tool="background" currentTool={currentTool} onClick={() => setTool('background')} title={t('tools.background')} iconSrc="/svg/background.svg" hotkey="G" />
             <ActionButton
-              title="Import background image"
+              title={t('toolbar.importBackgroundImage')}
               iconSrc="/svg/image.svg"
               onClick={() => openFilePicker(fileInputImageRef)}
             />
-            <ActionButton title="Generate Man Background" iconSrc="/svg/human.svg" onClick={() => setIsManModalOpen(true)} />
+            <ActionButton title={t('toolbar.generateManBackground')} iconSrc="/svg/human.svg" onClick={() => setIsManModalOpen(true)} />
             <div />
           </ToolbarSection>
 
           <div className="flex flex-col gap-2">
-            <div className="px-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Import / Export</div>
+            <div className="px-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">{t('toolbar.sections.importExport')}</div>
             <div ref={fileMenuRef} className="relative">
               <button
                 type="button"
@@ -326,19 +328,19 @@ export function Toolbar({ onResetView, defaultZoom }: { onResetView?: () => void
                 }
                 aria-haspopup="menu"
                 aria-expanded={fileMenuOpen}
-                title="Open import/export menu"
+                title={t('toolbar.openImportExportMenu')}
               >
                 <Icon src="/svg/export.svg" className="h-5 w-5" />
-                <span className="text-gray-900">File</span>
+                <span className="text-gray-900">{t('common.file')}</span>
               </button>
 
               {fileMenuOpen && (
                 <div className="absolute right-full bottom-0 mr-3 w-72 rounded-xl border border-gray-200 bg-white shadow-lg p-2">
-                  <div className="px-2 pb-2 text-xs text-gray-500">Patterns + seams + textures</div>
+                  <div className="px-2 pb-2 text-xs text-gray-500">{t('toolbar.patternsSeamsTextures')}</div>
                   <div className="flex flex-col">
                     <FileMenuItem
-                      title="Import JSON"
-                      description="Load patterns + seams + textures"
+                      title={t('toolbar.importJson')}
+                      description={t('toolbar.importJsonDesc')}
                       iconSrc="/svg/import.svg"
                       onClick={() => {
                         setFileMenuOpen(false);
@@ -346,8 +348,8 @@ export function Toolbar({ onResetView, defaultZoom }: { onResetView?: () => void
                       }}
                     />
                     <FileMenuItem
-                      title="Export JSON"
-                      description="Save patterns + seams + textures"
+                      title={t('toolbar.exportJson')}
+                      description={t('toolbar.exportJsonDesc')}
                       iconSrc="/svg/export.svg"
                       onClick={() => {
                         setFileMenuOpen(false);
@@ -358,8 +360,8 @@ export function Toolbar({ onResetView, defaultZoom }: { onResetView?: () => void
                     <div className="my-2 h-px w-full bg-gray-200" />
 
                     <FileMenuItem
-                      title="Import DXF"
-                      description="Load industry-standard DXF"
+                      title={t('toolbar.importDxf')}
+                      description={t('toolbar.importDxfDesc')}
                       iconSrc="/svg/import.svg"
                       onClick={() => {
                         setFileMenuOpen(false);
@@ -367,8 +369,8 @@ export function Toolbar({ onResetView, defaultZoom }: { onResetView?: () => void
                       }}
                     />
                     <FileMenuItem
-                      title="Export DXF"
-                      description="Export industry-standard DXF"
+                      title={t('toolbar.exportDxf')}
+                      description={t('toolbar.exportDxfDesc')}
                       iconSrc="/svg/export.svg"
                       onClick={() => {
                         setFileMenuOpen(false);

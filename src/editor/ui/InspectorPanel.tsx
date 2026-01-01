@@ -1,4 +1,5 @@
 import { useMemo, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { useCanvasState } from '../state/CanvasState';
 import type { BackgroundImage, PathTexture } from '../state/types';
@@ -43,6 +44,7 @@ function RangeInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
 }
 
 export function InspectorPanel() {
+  const { t } = useTranslation();
   const present = useCanvasState((s) => s.present);
   const currentTool = useCanvasState((s) => s.currentTool);
 
@@ -79,6 +81,8 @@ export function InspectorPanel() {
   const showImage = currentTool === 'background' && !!selectedImage;
   const showTexture = currentTool === 'texture' && !!texturePath;
 
+  const toolLabel = showImage ? t('tools.background') : t('tools.texture');
+
   // Only show this panel for the two cases the user cares about.
   if (!showImage && !showTexture) return null;
 
@@ -88,23 +92,23 @@ export function InspectorPanel() {
     <div className="absolute bottom-3 left-10 z-[2000] w-[280px]">
       <div className="rounded-xl border border-gray-200 bg-white/95 backdrop-blur shadow-lg">
         <div className="px-3 py-2 border-b border-gray-200">
-          <div className="text-sm font-semibold text-gray-900">Inspector</div>
-          <div className="text-xs text-gray-500">Tool: {currentTool}</div>
+          <div className="text-sm font-semibold text-gray-900">{t('inspector.title')}</div>
+          <div className="text-xs text-gray-500">{t('inspector.tool', { tool: toolLabel })}</div>
         </div>
 
         <div className="p-3 flex flex-col gap-4">
           {showImage && selectedImage && (
             <div>
-              <div className="text-xs font-semibold text-gray-700">Image</div>
+              <div className="text-xs font-semibold text-gray-700">{t('inspector.image')}</div>
               <div className="mt-2 grid grid-cols-2 gap-2">
-                <Field label="X">
+                <Field label={t('inspector.fields.x')}>
                   <NumberInput
                     step={10}
                     value={Math.round(selectedImage.x)}
                     onChange={(e) => moveBackgroundImage(selectedImage.id, Number(e.target.value), selectedImage.y)}
                   />
                 </Field>
-                <Field label="Y">
+                <Field label={t('inspector.fields.y')}>
                   <NumberInput
                     step={10}
                     value={Math.round(selectedImage.y)}
@@ -112,7 +116,7 @@ export function InspectorPanel() {
                   />
                 </Field>
 
-                <Field label="Scale X">
+                <Field label={t('inspector.fields.scaleX')}>
                   <NumberInput
                     step={0.01}
                     min={0}
@@ -126,7 +130,7 @@ export function InspectorPanel() {
                     }
                   />
                 </Field>
-                <Field label="Scale Y">
+                <Field label={t('inspector.fields.scaleY')}>
                   <NumberInput
                     step={0.01}
                     min={0}
@@ -141,7 +145,7 @@ export function InspectorPanel() {
                   />
                 </Field>
 
-                <Field label="Rotation">
+                <Field label={t('inspector.fields.rotation')}>
                   <NumberInput
                     step={1}
                     value={Math.round(selectedImage.rotation)}
@@ -155,7 +159,7 @@ export function InspectorPanel() {
                   />
                 </Field>
 
-                <Field label={`Opacity (${Math.round(selectedImage.opacity * 100)}%)`}>
+                <Field label={t('inspector.fields.opacity', { pct: Math.round(selectedImage.opacity * 100) })}>
                   <RangeInput
                     min={0}
                     max={1}
@@ -191,10 +195,10 @@ export function InspectorPanel() {
 
           {showTexture && texturePath && (
             <div>
-              <div className="text-xs font-semibold text-gray-700">Texture</div>
+              <div className="text-xs font-semibold text-gray-700">{t('inspector.texture')}</div>
               {texture ? (
                 <div className="mt-2 grid grid-cols-2 gap-2">
-                  <Field label="Offset X">
+                  <Field label={t('inspector.fields.offsetX')}>
                     <NumberInput
                       step={1}
                       value={Math.round((texture.offsetX ?? 0) * 100) / 100}
@@ -210,7 +214,7 @@ export function InspectorPanel() {
                       onChange={(e) => updateTextureForPathLive(texturePath.id, { offsetX: Number(e.target.value) })}
                     />
                   </Field>
-                  <Field label="Offset Y">
+                  <Field label={t('inspector.fields.offsetY')}>
                     <NumberInput
                       step={1}
                       value={Math.round((texture.offsetY ?? 0) * 100) / 100}
@@ -227,7 +231,7 @@ export function InspectorPanel() {
                     />
                   </Field>
 
-                  <Field label="Scale X">
+                  <Field label={t('inspector.fields.scaleX')}>
                     <NumberInput
                       step={0.01}
                       min={0.01}
@@ -244,7 +248,7 @@ export function InspectorPanel() {
                       onChange={(e) => updateTextureForPathLive(texturePath.id, { scaleX: Number(e.target.value) })}
                     />
                   </Field>
-                  <Field label="Scale Y">
+                  <Field label={t('inspector.fields.scaleY')}>
                     <NumberInput
                       step={0.01}
                       min={0.01}
@@ -262,7 +266,7 @@ export function InspectorPanel() {
                     />
                   </Field>
 
-                  <Field label="Rotation">
+                  <Field label={t('inspector.fields.rotation')}>
                     <NumberInput
                       step={1}
                       value={Math.round((texture.rotation ?? 0) * 100) / 100}
@@ -279,16 +283,16 @@ export function InspectorPanel() {
                     />
                   </Field>
 
-                  <Field label="Remove">
+                  <Field label={t('inspector.fields.remove')}>
                     <button
                       type="button"
                       className="h-[30px] w-full rounded-md border border-gray-200 bg-white px-2 text-sm text-gray-900 hover:bg-gray-50"
-                      title="Remove texture"
+                      title={t('inspector.removeTexture')}
                       onClick={() => clearTextureForPath(texturePath.id)}
                     >
                       <span className="inline-flex items-center justify-center gap-2">
                         <Icon src="/svg/eraser.svg" className="h-4 w-4" />
-                        Remove
+                        {t('inspector.fields.remove')}
                       </span>
                     </button>
                   </Field>
@@ -327,7 +331,7 @@ export function InspectorPanel() {
                     className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 hover:bg-gray-50"
                     onClick={() => textureFileInputRef.current?.click()}
                   >
-                    Add texture to selected pattern
+                    {t('inspector.addTextureToSelectedPattern')}
                   </button>
                 </div>
               )}

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { validateHeight, validateWeight, cmToIn, inToCm, formatNumber, kgToLb, lbToKg } from '../utils/unitUtils';
+import { useTranslation } from 'react-i18next';
+import { validateHeight, validateWeight, cmToIn, inToCm, formatNumber, kgToLb, lbToKg, type ValidationError } from '../utils/unitUtils';
 import {
   DEFAULT_BIOMESH_MAN_PARAMS,
   dataUrlToBlobUrl,
@@ -52,36 +53,21 @@ function NumberInput(props: React.InputHTMLAttributes<HTMLInputElement> & { asTe
   );
 }
 
-function friendlyStatusLabel(status: JobEvent['status'] | 'idle') {
-  switch (status) {
-    case 'queued':
-      return 'Queued';
-    case 'running':
-      return 'Working';
-    case 'done':
-      return 'Complete';
-    case 'error':
-      return 'Error';
-    default:
-      return 'Ready';
-  }
-}
-
 function sanitizeStatusMessage(raw: string) {
   const msg = String(raw || '').trim();
   if (!msg) return '';
 
   // Keep status UI generic; avoid leaking implementation details.
   const lowered = msg.toLowerCase();
-  if (lowered.includes('validating')) return 'Preparing…';
-  if (lowered.includes('generating model')) return 'Generating model…';
-  if (lowered.includes('requesting')) return 'Generating model…';
-  if (lowered.includes('downloading')) return 'Downloading model…';
-  if (lowered.includes('preparing render') || lowered.includes('converting')) return 'Preparing render…';
-  if (lowered.includes('rendering')) return 'Rendering images…';
-  if (lowered === 'done') return 'Done.';
-  if (lowered === 'queued') return 'Queued.';
-  if (lowered === 'error') return 'Something went wrong.';
+  if (lowered.includes('validating')) return 'VALIDATING';
+  if (lowered.includes('generating model')) return 'GENERATING_MODEL';
+  if (lowered.includes('requesting')) return 'GENERATING_MODEL';
+  if (lowered.includes('downloading')) return 'DOWNLOADING_MODEL';
+  if (lowered.includes('preparing render') || lowered.includes('converting')) return 'PREPARING_RENDER';
+  if (lowered.includes('rendering')) return 'RENDERING_IMAGES';
+  if (lowered === 'done') return 'DONE';
+  if (lowered === 'queued') return 'QUEUED';
+  if (lowered === 'error') return 'ERROR';
 
   // Fallback: strip common implementation words.
   return msg
@@ -90,13 +76,12 @@ function sanitizeStatusMessage(raw: string) {
     .replace(/\.blend\b/gi, 'scene');
 }
 
-const ERROR_MSG = "Could not connect to the render server. Our Team currently investigating what is causing this issue. Please try again later."
-
 // In dev, Vite proxies /api -> biomesh-render-server, so same-origin requests avoid CORS.
 // If you deploy differently, set VITE_BIOMESH_RENDER_SERVER_URL to an absolute base URL.
 const SERVER_URL = (import.meta as any).env?.VITE_BIOMESH_RENDER_SERVER_URL ?? '';
 
 export function BiomeshManModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { t } = useTranslation();
   const [params, setParams] = useState<BiomeshManParams>(DEFAULT_BIOMESH_MAN_PARAMS);
   // Local form so numeric inputs can be edited freely
   const [form, setForm] = useState<{ gender: string; units: string; height: string; weight: string; muscle: number }>({
@@ -127,8 +112,8 @@ export function BiomeshManModal({ open, onClose }: { open: boolean; onClose: () 
   }, [open]);
 
   // Validation
-  const [heightErr, setHeightErr] = useState<string | null>(null);
-  const [weightErr, setWeightErr] = useState<string | null>(null);
+  const [heightErr, setHeightErr] = useState<ValidationError | null>(null);
+  const [weightErr, setWeightErr] = useState<ValidationError | null>(null);
 
   useEffect(() => {
     const hh = validateHeight(form.units as 'metric' | 'imperial', form.height);
@@ -172,7 +157,7 @@ export function BiomeshManModal({ open, onClose }: { open: boolean; onClose: () 
     const jobParams = overrideParams ?? params;
     setIsSubmitting(true);
     setError(null);
-    setMessage('Starting…');
+    setMessage(t('biomesh.message.starting'));
     setProgress(0);
     setStatus('idle');
 
@@ -199,7 +184,16 @@ export function BiomeshManModal({ open, onClose }: { open: boolean; onClose: () 
           const data = JSON.parse(evt.data) as JobEvent;
           setStatus(data.status);
           setProgress(data.progress);
-          setMessage(sanitizeStatusMessage(data.message));
+          const sanitized = sanitizeStatusMessage(data.message);
+          if (sanitized === 'VALIDATING') setMessage(t('clearCanvas.status.preparing'));
+          else if (sanitized === 'GENERATING_MODEL') setMessage(t('clearCanvas.status.generatingModel'));
+          else if (sanitized === 'DOWNLOADING_MODEL') setMessage(t('clearCanvas.status.downloadingModel'));
+          else if (sanitized === 'PREPARING_RENDER') setMessage(t('clearCanvas.status.preparingRender'));
+          else if (sanitized === 'RENDERING_IMAGES') setMessage(t('clearCanvas.status.renderingImages'));
+          else if (sanitized === 'DONE') setMessage(t('clearCanvas.status.done'));
+          else if (sanitized === 'QUEUED') setMessage(t('clearCanvas.status.queuedDot'));
+          else if (sanitized === 'ERROR') setMessage(t('clearCanvas.status.error'));
+          else setMessage(sanitized);
 
           if (data.status === 'done') {
             es.close();
@@ -242,7 +236,7 @@ export function BiomeshManModal({ open, onClose }: { open: boolean; onClose: () 
             onClose();
           }
         } catch (e: any) {
-          setError(ERROR_MSG);
+          setError(t('biomesh.errors.connectGeneric'));
           setIsSubmitting(false);
           if (esRef.current) {
             esRef.current.close();
@@ -252,13 +246,13 @@ export function BiomeshManModal({ open, onClose }: { open: boolean; onClose: () 
       };
 
       es.onerror = () => {
-        setError('Lost connection to the render server. If the backend stopped, start it and try again.');
+        setError(t('biomesh.errors.lostConnection'));
         setIsSubmitting(false);
         es.close();
         esRef.current = null;
       };
     } catch (e: any) {
-      setError(ERROR_MSG);
+      setError(t('biomesh.errors.connectGeneric'));
       setIsSubmitting(false);
       if (esRef.current) {
         esRef.current.close();
@@ -277,31 +271,31 @@ export function BiomeshManModal({ open, onClose }: { open: boolean; onClose: () 
         <div className="rounded-xl border border-gray-200 bg-white/95 backdrop-blur shadow-xl">
           <div className="px-5 py-4 border-b border-gray-200 flex items-start justify-between">
             <div>
-              <div className="text-base font-semibold text-gray-900">Generate Human Background</div>
-              <div className="text-xs text-gray-500">Creates front/back reference images</div>
+              <div className="text-base font-semibold text-gray-900">{t('biomesh.title')}</div>
+              <div className="text-xs text-gray-500">{t('biomesh.subtitle')}</div>
             </div>
             <button
               className="text-sm px-3 py-2 rounded-md border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-50"
               onClick={closeAndStopStreaming}
             >
-              Close
+              {t('common.close')}
             </button>
           </div>
 
           <div className="px-5 py-4 flex flex-col gap-4">
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Gender">
+              <Field label={t('settings.defaultHuman.gender')}>
                 <SelectInput
                   value={form.gender}
                   onChange={(e) => setForm((f) => ({ ...f, gender: e.target.value }))}
                   disabled={isSubmitting}
                 >
-                  <option value="male">male</option>
-                  <option value="female">female</option>
+                  <option value="male">{t('settings.defaultHuman.male')}</option>
+                  <option value="female">{t('settings.defaultHuman.female')}</option>
                 </SelectInput>
               </Field>
 
-              <Field label="Units">
+              <Field label={t('settings.defaultHuman.units')}>
                 <SelectInput
                   value={form.units}
                   onChange={(e) => {
@@ -318,12 +312,12 @@ export function BiomeshManModal({ open, onClose }: { open: boolean; onClose: () 
                   }}
                   disabled={isSubmitting}
                 >
-                  <option value="metric">metric</option>
-                  <option value="imperial">imperial</option>
+                  <option value="metric">{t('settings.defaultHuman.metric')}</option>
+                  <option value="imperial">{t('settings.defaultHuman.imperial')}</option>
                 </SelectInput>
               </Field>
 
-              <Field label={form.units === 'imperial' ? 'Height (in)' : 'Height (cm)'}>
+              <Field label={t('settings.defaultHuman.height', { unit: form.units === 'imperial' ? 'in' : 'cm' })}>
                 <NumberInput
                   asText
                   value={form.height}
@@ -331,11 +325,11 @@ export function BiomeshManModal({ open, onClose }: { open: boolean; onClose: () 
                   disabled={isSubmitting}
                 />
                 {heightErr && (
-                  <div className="text-xs text-red-600 mt-1">{heightErr}</div>
+                  <div className="text-xs text-red-600 mt-1">{t(heightErr.key, heightErr.params)}</div>
                 )}
               </Field>
 
-              <Field label={form.units === 'imperial' ? 'Weight (lb)' : 'Weight (kg)'}>
+              <Field label={t('settings.defaultHuman.weight', { unit: form.units === 'imperial' ? 'lb' : 'kg' })}>
                 <NumberInput
                   asText
                   value={form.weight}
@@ -343,23 +337,23 @@ export function BiomeshManModal({ open, onClose }: { open: boolean; onClose: () 
                   disabled={isSubmitting}
                 />
                 {weightErr && (
-                  <div className="text-xs text-red-600 mt-1">{weightErr}</div>
+                  <div className="text-xs text-red-600 mt-1">{t(weightErr.key, weightErr.params)}</div>
                 )}
               </Field>
             </div>
 
             <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
               <div className="flex items-center justify-between">
-                <div className="text-xs font-semibold text-gray-700">Muscle</div>
+                <div className="text-xs font-semibold text-gray-700">{t('settings.defaultHuman.muscle')}</div>
                 <div className="flex items-center gap-3">
                   <a
                     href={`https://biomesh.flussing.com/?muscle=${form.muscle}&gender=${form.gender}&units=${form.units}&height=${encodeURIComponent(form.height || '')}&weight=${encodeURIComponent(form.weight || '')}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-xs text-blue-700 hover:underline"
-                    title="Open BioMesh in a new tab"
+                    title={t('settings.defaultHuman.openBioMeshNewTab')}
                   >
-                      View it live
+                      {t('settings.defaultHuman.viewLive')}
                   </a>
                   <div className="text-xs text-gray-500">{form.muscle} / 100</div>
                 </div>
@@ -373,12 +367,12 @@ export function BiomeshManModal({ open, onClose }: { open: boolean; onClose: () 
                 onChange={(e) => setForm((f) => ({ ...f, muscle: Number(e.target.value) }))}
                 disabled={isSubmitting}
               />
-              <div className="mt-1 text-[11px] text-gray-500">Defaults to 0. Use the link above for details.</div>
+              <div className="mt-1 text-[11px] text-gray-500">{t('settings.defaultHuman.muscleDesc')}</div>
             </div>
 
             <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
               <div className="flex items-center justify-between">
-                <div className="text-xs font-semibold text-gray-700">Status</div>
+                <div className="text-xs font-semibold text-gray-700">{t('common.status')}</div>
                 <div
                   className={
                     'text-[11px] px-2 py-0.5 rounded-full border ' +
@@ -391,7 +385,7 @@ export function BiomeshManModal({ open, onClose }: { open: boolean; onClose: () 
                           : 'border-gray-200 bg-white text-gray-600')
                   }
                 >
-                  {friendlyStatusLabel(status)}
+                  {t(`biomesh.status.${status}`)}
                 </div>
               </div>
 
@@ -403,7 +397,7 @@ export function BiomeshManModal({ open, onClose }: { open: boolean; onClose: () 
               </div>
 
               <div className="mt-2 text-sm text-gray-800">
-                {status === 'idle' ? 'Ready.' : (message || 'Working…')}
+                {status === 'idle' ? `${t('biomesh.status.idle')}.` : (message || `${t('biomesh.status.running')}…`)}
               </div>
 
               {error && <div className="mt-2 text-sm text-red-700">{error}</div>}
@@ -418,7 +412,7 @@ export function BiomeshManModal({ open, onClose }: { open: boolean; onClose: () 
                 }}
                 disabled={isSubmitting}
               >
-                Reset
+                {t('common.reset')}
               </button>
               <button
                 className="text-sm px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
@@ -436,7 +430,7 @@ export function BiomeshManModal({ open, onClose }: { open: boolean; onClose: () 
                 }}
                 disabled={!canSubmit}
               >
-                Generate
+                  {t('common.generate')}
               </button>
             </div>
           </div>

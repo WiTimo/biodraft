@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from 'react-i18next';
 import { useCanvasState } from "../state/CanvasState";
 import type { CanvasPresent } from "../state/types";
 import Icon from './Icon';
@@ -97,6 +98,7 @@ function buildHumanReferencePayload(
 }
 
 export function ThreeDView() {
+  const { t } = useTranslation();
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [iframeLoaded, setIframeLoaded] = useState(false);
 
@@ -287,22 +289,22 @@ export function ThreeDView() {
           className={modeButtonClass(!isSimulationMode)}
           onClick={() => handleModeToggle("edit")}
         >
-          Edit
+          {t('common.edit')}
         </button>
         <button
           type="button"
           className={modeButtonClass(isSimulationMode)}
           onClick={() => handleModeToggle("live")}
         >
-          Live
+          {t('common.live')}
         </button>
         <button
           type="button"
           className="h-10 w-10 rounded-lg bg-white p-2 border-2 border-gray-400 hover:border-blue-400 cursor-pointer"
-          name="Reload View"
+          name={t('threeD.reloadView')}
           onClick={handleReload}
         >
-          <Icon src="/svg/reset.svg" alt="Reload View" />
+          <Icon src="/svg/reset.svg" alt={t('threeD.reloadView')} />
         </button>
       </div>
     </>

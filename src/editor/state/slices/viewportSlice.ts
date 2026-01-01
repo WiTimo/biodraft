@@ -1,5 +1,6 @@
 import type { CanvasStateCreator, ViewportSlice } from '../types';
 import { DXF_CONFIG } from '../../../config/dxfConfig';
+import type { LanguageCode } from '../../../config/languages';
 
 export const createViewportSlice: CanvasStateCreator<ViewportSlice> = (set, _get, _api) => ({
   zoom: 1,
@@ -46,6 +47,10 @@ export const createViewportSlice: CanvasStateCreator<ViewportSlice> = (set, _get
   // Theme
   theme: 'system',
   setTheme: (t: 'light' | 'dark' | 'system') => set({ theme: t }),
+
+  // Language
+  language: 'en' as LanguageCode,
+  setLanguage: (language: LanguageCode) => set({ language }),
 
   // Units & metric unit (used by rulers and defaults)
   units: 'metric',

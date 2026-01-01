@@ -42,6 +42,9 @@ export const useCanvasState = create<CanvasState>()(
         gridEnabled: state.gridEnabled,
         // Persist theme
         theme: state.theme,
+
+        // Persist language
+        language: state.language,
         // Persist units & metric unit
         units: state.units,
         metricUnit: state.metricUnit,

@@ -6,6 +6,7 @@ import {
   getFrontBackSplitX,
   inferPatternSideFromPath,
 } from '../shared';
+import i18n from '../../../../i18n';
 
 /**
  * Minimal DXF exporter supporting:
@@ -21,7 +22,7 @@ export function exportToDxf() {
 
   const validPaths = paths.filter((p) => p.points.length > 0);
   if (validPaths.length === 0) {
-    alert('No patterns to export. Please create at least one pattern with points.');
+    alert(i18n.t('importExport.noPatternsToExport'));
     return;
   }
 

@@ -1,26 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useCanvasState } from '../state/CanvasState';
 import { applyManImagesToCanvas } from '../hooks/useStaticManImages';
 import { dataUrlToBlobUrl, storeBiomeshManImages } from '../utils/biomeshManImages';
 
 const SERVER_URL = (import.meta as any).env?.VITE_BIOMESH_RENDER_SERVER_URL ?? '';
 
-const ERROR_MSG = "Could not connect to the render server. Our Team currently investigating what is causing this issue. Please try again later.";
-
 function sanitizeStatusMessage(raw: string) {
   const msg = String(raw || '').trim();
   if (!msg) return '';
-
-  const lowered = msg.toLowerCase();
-  if (lowered.includes('validating')) return 'Preparing…';
-  if (lowered.includes('generating model')) return 'Generating model…';
-  if (lowered.includes('requesting')) return 'Generating model…';
-  if (lowered.includes('downloading')) return 'Downloading model…';
-  if (lowered.includes('preparing render') || lowered.includes('converting')) return 'Preparing render…';
-  if (lowered.includes('rendering')) return 'Rendering images…';
-  if (lowered === 'done') return 'Done.';
-  if (lowered === 'queued') return 'Queued.';
-  if (lowered === 'error') return 'Something went wrong.';
 
   return msg
     .replace(/\bblender\b/gi, 'renderer')
@@ -29,6 +17,7 @@ function sanitizeStatusMessage(raw: string) {
 }
 
 export default function ClearCanvasModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { t } = useTranslation();
   const clearCanvas = useCanvasState((s) => s.clearCanvas);
   const defaultHuman = useCanvasState((s) => s.defaultHuman);
 
@@ -54,7 +43,7 @@ export default function ClearCanvasModal({ open, onClose }: { open: boolean; onC
 
   const onDeleteAndResetHuman = async () => {
     setIsWorking(true);
-    setStatus('Starting...');
+    setStatus(t('clearCanvas.starting'));
     setProgress(0);
 
     try {
@@ -64,10 +53,10 @@ export default function ClearCanvasModal({ open, onClose }: { open: boolean; onC
         body: JSON.stringify(defaultHuman),
       });
 
-      if (!resp.ok) throw new Error('Render server rejected request');
+      if (!resp.ok) throw new Error('renderServerRejectedRequest');
 
       const { jobId } = await resp.json();
-      setStatus('Queued…');
+      setStatus(t('clearCanvas.queued'));
 
       const es = new EventSource(`${SERVER_URL}/api/jobs/${jobId}/events`);
       esRef.current = es;
@@ -75,7 +64,19 @@ export default function ClearCanvasModal({ open, onClose }: { open: boolean; onC
       es.onmessage = async (evt) => {
         try {
           const data = JSON.parse(evt.data) as any;
-          setStatus(sanitizeStatusMessage(data.message || ''));
+
+          const rawMsg = sanitizeStatusMessage(data.message || '');
+          const lowered = rawMsg.toLowerCase();
+          if (lowered.includes('validating')) setStatus(t('clearCanvas.status.preparing'));
+          else if (lowered.includes('generating model') || lowered.includes('requesting')) setStatus(t('clearCanvas.status.generatingModel'));
+          else if (lowered.includes('downloading')) setStatus(t('clearCanvas.status.downloadingModel'));
+          else if (lowered.includes('preparing render') || lowered.includes('converting')) setStatus(t('clearCanvas.status.preparingRender'));
+          else if (lowered.includes('rendering')) setStatus(t('clearCanvas.status.renderingImages'));
+          else if (lowered === 'done') setStatus(t('clearCanvas.status.done'));
+          else if (lowered === 'queued') setStatus(t('clearCanvas.status.queuedDot'));
+          else if (lowered === 'error') setStatus(t('clearCanvas.status.error'));
+          else setStatus(rawMsg);
+
           setProgress(data.progress ?? 0);
 
           if (data.status === 'done') {
@@ -83,7 +84,7 @@ export default function ClearCanvasModal({ open, onClose }: { open: boolean; onC
             esRef.current = null;
 
             const imagesResp = await fetch(`${SERVER_URL}/api/jobs/${jobId}/images`);
-            if (!imagesResp.ok) throw new Error('Could not download images');
+            if (!imagesResp.ok) throw new Error('couldNotDownloadImages');
             const payload = (await imagesResp.json()) as { jobId: string; frontDataUrl: string; backDataUrl: string };
 
             // Cache stored images for later use
@@ -123,19 +124,19 @@ export default function ClearCanvasModal({ open, onClose }: { open: boolean; onC
               const rawErr = statusJson?.error ? String(statusJson.error) : String(statusJson?.detail || statusJson?.message || 'Job failed');
               const lowered = rawErr.toLowerCase();
               if (lowered.includes('blender') || lowered.includes('glb->blend') || lowered.includes('blend')) {
-                setStatus('Rendering failed. Please try again.');
+                setStatus(t('clearCanvas.errors.renderingFailedTryAgain'));
               } else {
-                setStatus(ERROR_MSG);
+                setStatus(t('clearCanvas.errors.connectGeneric'));
               }
             } catch (err) {
-              setStatus('Job failed.');
+              setStatus(t('clearCanvas.errors.jobFailed'));
             }
 
             setIsWorking(false);
           }
         } catch (e) {
           setIsWorking(false);
-          setStatus(ERROR_MSG);
+          setStatus(t('clearCanvas.errors.connectGeneric'));
           if (esRef.current) {
             esRef.current.close();
             esRef.current = null;
@@ -144,7 +145,7 @@ export default function ClearCanvasModal({ open, onClose }: { open: boolean; onC
       };
 
       es.onerror = () => {
-        setStatus('Lost connection to the render server. If the backend stopped, start it and try again.');
+        setStatus(t('clearCanvas.errors.lostConnection'));
         setIsWorking(false);
         if (esRef.current) {
           esRef.current.close();
@@ -153,7 +154,10 @@ export default function ClearCanvasModal({ open, onClose }: { open: boolean; onC
       };
     } catch (e) {
       setIsWorking(false);
-      setStatus('Failed to start job');
+      const msg = String((e as any)?.message || '');
+      if (msg.includes('renderServerRejectedRequest')) setStatus(t('clearCanvas.errors.renderServerRejectedRequest'));
+      else if (msg.includes('couldNotDownloadImages')) setStatus(t('clearCanvas.errors.couldNotDownloadImages'));
+      else setStatus(t('clearCanvas.errors.failedToStartJob'));
     }
   };
 
@@ -163,13 +167,13 @@ export default function ClearCanvasModal({ open, onClose }: { open: boolean; onC
 
       <div className="absolute left-1/2 top-1/2 w-[520px] max-w-[calc(100vw-32px)] -translate-x-1/2 -translate-y-1/2">
         <div className="rounded-lg bg-white border border-gray-200 p-6 shadow-xl">
-          <div className="text-lg font-semibold">Clear Canvas</div>
-          <div className="mt-2 text-sm text-gray-700">This will delete everything on the canvas. Choose an option:</div>
+          <div className="text-lg font-semibold">{t('clearCanvas.title')}</div>
+          <div className="mt-2 text-sm text-gray-700">{t('clearCanvas.description')}</div>
 
           <div className="mt-4 flex gap-3">
-            <button className="px-3 py-2 rounded-md bg-blue-600 text-white" onClick={onDeleteOnly} disabled={isWorking}>Delete</button>
-            <button className="px-3 py-2 rounded-md border border-gray-200 bg-white hover:bg-gray-50" onClick={onDeleteAndResetHuman} disabled={isWorking}>Delete and Reset Human</button>
-            <button className="ml-auto px-3 py-2 rounded-md border bg-white" onClick={() => { if (!isWorking) onClose(); }} disabled={isWorking}>Cancel</button>
+            <button className="px-3 py-2 rounded-md bg-blue-600 text-white" onClick={onDeleteOnly} disabled={isWorking}>{t('common.delete')}</button>
+            <button className="px-3 py-2 rounded-md border border-gray-200 bg-white hover:bg-gray-50" onClick={onDeleteAndResetHuman} disabled={isWorking}>{t('clearCanvas.deleteAndResetHuman')}</button>
+            <button className="ml-auto px-3 py-2 rounded-md border bg-white" onClick={() => { if (!isWorking) onClose(); }} disabled={isWorking}>{t('common.cancel')}</button>
           </div>
 
           {isWorking && (

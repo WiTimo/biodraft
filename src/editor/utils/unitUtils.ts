@@ -20,20 +20,69 @@ export function formatNumber(n: number, decimals = 2) {
   return s.replace(/\.00$/, '').replace(/(\.\d)0$/, '$1');
 }
 
+export type ValidationError = {
+  key: string;
+  params?: Record<string, string | number>;
+};
+
 export function validateHeight(units: 'metric' | 'imperial', valueStr: string) {
   const v = Number(valueStr);
-  if (!Number.isFinite(v)) return { valid: false, error: 'Height must be a number' };
+  if (!Number.isFinite(v)) return { valid: false, error: { key: 'validation.height.number' } satisfies ValidationError };
   const cm = units === 'metric' ? v : inToCm(v);
-  if (cm < 140) return { valid: false, error: `Height must be at least ${formatNumber(units === 'metric' ? 140 : cmToIn(140))} ${units === 'metric' ? 'cm' : 'in'}` };
-  if (cm > 210) return { valid: false, error: `Height must be at most ${formatNumber(units === 'metric' ? 210 : cmToIn(210))} ${units === 'metric' ? 'cm' : 'in'}` };
+  if (cm < 140) {
+    return {
+      valid: false,
+      error: {
+        key: 'validation.height.min',
+        params: {
+          value: formatNumber(units === 'metric' ? 140 : cmToIn(140)),
+          unit: units === 'metric' ? 'cm' : 'in',
+        },
+      } satisfies ValidationError,
+    };
+  }
+  if (cm > 210) {
+    return {
+      valid: false,
+      error: {
+        key: 'validation.height.max',
+        params: {
+          value: formatNumber(units === 'metric' ? 210 : cmToIn(210)),
+          unit: units === 'metric' ? 'cm' : 'in',
+        },
+      } satisfies ValidationError,
+    };
+  }
   return { valid: true };
 }
 
 export function validateWeight(units: 'metric' | 'imperial', valueStr: string) {
   const v = Number(valueStr);
-  if (!Number.isFinite(v)) return { valid: false, error: 'Weight must be a number' };
+  if (!Number.isFinite(v)) return { valid: false, error: { key: 'validation.weight.number' } satisfies ValidationError };
   const kg = units === 'metric' ? v : lbToKg(v);
-  if (kg < 40) return { valid: false, error: `Weight must be at least ${formatNumber(units === 'metric' ? 40 : kgToLb(40))} ${units === 'metric' ? 'kg' : 'lb'}` };
-  if (kg > 140) return { valid: false, error: `Weight must be at most ${formatNumber(units === 'metric' ? 140 : kgToLb(140))} ${units === 'metric' ? 'kg' : 'lb'}` };
+  if (kg < 40) {
+    return {
+      valid: false,
+      error: {
+        key: 'validation.weight.min',
+        params: {
+          value: formatNumber(units === 'metric' ? 40 : kgToLb(40)),
+          unit: units === 'metric' ? 'kg' : 'lb',
+        },
+      } satisfies ValidationError,
+    };
+  }
+  if (kg > 140) {
+    return {
+      valid: false,
+      error: {
+        key: 'validation.weight.max',
+        params: {
+          value: formatNumber(units === 'metric' ? 140 : kgToLb(140)),
+          unit: units === 'metric' ? 'kg' : 'lb',
+        },
+      } satisfies ValidationError,
+    };
+  }
   return { valid: true };
 }

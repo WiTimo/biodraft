@@ -10,6 +10,7 @@ import {
   type PatternSide,
   type SharedPointGroup,
 } from './shared';
+import i18n from '../../../i18n';
 
 /**
  * Clean up empty paths from the canvas state.
@@ -46,7 +47,7 @@ export function exportToJson() {
   const validPaths = filterEmptyPaths(paths);
 
   if (validPaths.length === 0) {
-    alert('No patterns to export. Please create at least one pattern with points.');
+    alert(i18n.t('importExport.noPatternsToExport'));
     return;
   }
 
