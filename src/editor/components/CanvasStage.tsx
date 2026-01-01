@@ -63,6 +63,8 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
     [offset, zoom],
   );
 
+  const gridEnabled = useCanvasState((s) => s.gridEnabled);
+
   const snapWorldToVisibleGrid = useCallback(
     (worldPosition: { x: number; y: number }) => {
       const rawWorldStep = BASE_PIXEL_GRID_SIZE / zoom;
@@ -216,7 +218,7 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
           // Get the exact position of the clicked point
           finalX = target.x();
           finalY = target.y();
-        } else if (state.isAltPressed) {
+        } else if (state.isAltPressed && state.gridEnabled) {
           // ALT overrides all other snapping: snap to the visible grid only
           const snapped = snapWorldToVisibleGrid(worldPosition);
           finalX = snapped.x;
@@ -265,10 +267,15 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
         const worldPosition = toWorld(pointer);
         const state = useCanvasState.getState();
 
-        // If ALT is pressed, snap to the visible grid and show a guide
-        if (state.isAltPressed) {
+        // If ALT is pressed and grid is enabled, snap to the visible grid and show a guide
+        if (state.isAltPressed && state.gridEnabled) {
           const snapped = snapWorldToVisibleGrid(worldPosition);
           setSnapGuides({ x: snapped.x, y: snapped.y });
+          return;
+        }
+        // If ALT is pressed but grid disabled, don't set grid snap guides; fall through to normal snapping behavior
+        if (state.isAltPressed && !state.gridEnabled) {
+          setSnapGuides({ x: null, y: null });
           return;
         }
 
@@ -512,7 +519,7 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
       onWheel={handleWheel}
       onContextMenu={handleContextMenu}
     >
-      <GridLayer width={width} height={height} zoom={zoom} offset={offset} />
+      {gridEnabled && <GridLayer width={width} height={height} zoom={zoom} offset={offset} />}
       <Layer>
         {backgroundImages.map((image) => (
           <BackgroundImage key={image.id} {...image} />

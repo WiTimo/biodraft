@@ -36,6 +36,15 @@ export const useCanvasState = create<CanvasState>()(
         splitWidth: state.splitWidth,
         cameraPos: state.cameraPos,
         cameraTarget: state.cameraTarget,
+        // Persist ruler/grid visibility
+        showLeftRuler: state.showLeftRuler,
+        showTopRuler: state.showTopRuler,
+        gridEnabled: state.gridEnabled,
+        // Persist units & metric unit
+        units: state.units,
+        metricUnit: state.metricUnit,
+        // Persist default human
+        defaultHuman: state.defaultHuman,
       }),
     },
   ),

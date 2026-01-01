@@ -29,6 +29,11 @@ export function useCanvasKeyboardShortcuts({
     const handleKeyDown = (event: KeyboardEvent) => {
       const state = useCanvasState.getState();
 
+      // If focus is in an input/textarea or editable element, skip global shortcuts so typing/backspace works normally
+      const active = document.activeElement as HTMLElement | null;
+      const isTyping = !!(active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable));
+      if (isTyping) return;
+
       if (event.code === 'Space' || event.code === 'ControlLeft') {
         setIsSpacePressed(true);
       }

@@ -35,6 +35,30 @@ export const createViewportSlice: CanvasStateCreator<ViewportSlice> = (set, _get
     },
   })),
 
+  // Rulers and grid visibility
+  showLeftRuler: true,
+  setShowLeftRuler: (v: boolean) => set({ showLeftRuler: v }),
+  showTopRuler: true,
+  setShowTopRuler: (v: boolean) => set({ showTopRuler: v }),
+  gridEnabled: true,
+  setGridEnabled: (v: boolean) => set({ gridEnabled: v }),
+
+  // Units & metric unit (used by rulers and defaults)
+  units: 'metric',
+  setUnits: (u: 'metric' | 'imperial') => set({ units: u }),
+  metricUnit: 'mm',
+  setMetricUnit: (u: 'cm' | 'mm') => set({ metricUnit: u }),
+
+  // Default human
+  defaultHuman: {
+    gender: 'male',
+    units: 'metric',
+    height: 170,
+    weight: 70,
+    muscle: 0,
+  },
+  setDefaultHuman: (d: { gender: 'male' | 'female'; units: 'metric' | 'imperial'; height: number; weight: number; muscle: number }) => set({ defaultHuman: d }),
+
   // DXF scaling controls how coordinates are scaled when importing/exporting DXF files.
   // Defaults are loaded from config in `src/config/dxfConfig.ts`.
   dxfScale: DXF_CONFIG.dxfScale,

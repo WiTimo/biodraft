@@ -13,7 +13,9 @@ import { RulersOverlay } from './ui/RulersOverlay';
 import { InspectorPanel } from './ui/InspectorPanel';
 import { DEFAULT_VIEWPORT_SPAN_MM, MM_PER_WORLD_UNIT } from './config/rulerConfig';
 
-const RULER_SIZE = 24;
+const RULER_SIZE = 24; 
+
+
 
 Konva.showWarnings = false;
 
@@ -65,6 +67,8 @@ export function Canvas() {
 
   const setZoom = useCanvasState((s) => s.setZoom);
   const setOffset = useCanvasState((s) => s.setOffset);
+  const showLeftRuler = useCanvasState((s) => s.showLeftRuler);
+  const showTopRuler = useCanvasState((s) => s.showTopRuler);
   const initialCentered = useRef(false);
 
   const targetWorldSpan = DEFAULT_VIEWPORT_SPAN_MM / MM_PER_WORLD_UNIT;
@@ -120,6 +124,8 @@ export function Canvas() {
             zoom={zoom}
             offset={offset}
             rulerSize={RULER_SIZE}
+            showLeft={showLeftRuler}
+            showTop={showTopRuler}
           />
           {/* Stage viewport (space excluding rulers) */}
           <div
@@ -127,8 +133,8 @@ export function Canvas() {
             data-canvas-viewport="true"
             style={{
               position: 'absolute',
-              left: RULER_SIZE,
-              top: RULER_SIZE,
+              left: useCanvasState.getState().showLeftRuler ? RULER_SIZE : 0,
+              top: useCanvasState.getState().showTopRuler ? RULER_SIZE : 0,
               right: 0,
               bottom: 0,
               overflow: 'hidden',

@@ -72,6 +72,8 @@ export interface HistorySlice {
   undo: () => void;
   redo: () => void;
   resetCanvas: () => void;
+  // Clear the canvas without reloading the page (used for soft resets like regenerating default human)
+  clearCanvas: () => void;
   cleanupEmptyPaths: () => void;
 }
 
@@ -111,6 +113,30 @@ export interface ViewportSlice {
   setIsSimulationMode: (value: boolean) => void;
   manImageCenters: Record<string, { x: number; y: number }>;
   setManImageCenter: (id: string, center: { x: number; y: number }) => void;
+
+  // Rulers & Grid visibility
+  showLeftRuler: boolean;
+  setShowLeftRuler: (v: boolean) => void;
+  showTopRuler: boolean;
+  setShowTopRuler: (v: boolean) => void;
+  gridEnabled: boolean;
+  setGridEnabled: (v: boolean) => void;
+
+  // Units used for rulers and human params
+  units: 'metric' | 'imperial';
+  setUnits: (u: 'metric' | 'imperial') => void;
+  metricUnit: 'cm' | 'mm';
+  setMetricUnit: (u: 'cm' | 'mm') => void;
+
+  // Default human used when clearing canvas
+  defaultHuman: {
+    gender: 'male' | 'female';
+    units: 'metric' | 'imperial';
+    height: number;
+    weight: number;
+    muscle: number;
+  };
+  setDefaultHuman: (d: { gender: 'male' | 'female'; units: 'metric' | 'imperial'; height: number; weight: number; muscle: number }) => void;
 
   // DXF import/export scale factor: number of file units per editor unit.
   // For example, dxfScale = 100 means exported DXF coordinates are 100x the editor coords.
