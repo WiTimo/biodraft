@@ -64,6 +64,7 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
   );
 
   const gridEnabled = useCanvasState((s) => s.gridEnabled);
+  const theme = useCanvasState((s) => s.theme);
 
   const snapWorldToVisibleGrid = useCallback(
     (worldPosition: { x: number; y: number }) => {
@@ -93,13 +94,28 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
   );
 
   const stageCursor = useMemo(() => {
+    // Choose cursor variants depending on theme (use dark variants when needed)
+    const isDark = (() => {
+      if (theme === 'dark') return true;
+      if (theme === 'light') return false;
+      try {
+        const m = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)');
+        return !!m && m.matches;
+      } catch {
+        return false;
+      }
+    })();
+
+    const penCursor = isDark ? '/cursors/pen_black.svg' : '/cursors/pen.svg';
+    const selectCursor = isDark ? '/cursors/select_black.svg' : '/cursors/select.svg';
+
     if (isPanning) return 'grabbing';
     if (isSpacePressed) return 'grab';
-    if (currentTool === 'pen') return 'url(/cursors/pen.svg) 0 0, auto';
-    if (currentTool === 'select') return 'url(/cursors/select.svg) 8 4, auto';
-    if (currentTool === 'texture') return 'url(/cursors/select.svg) 8 4, auto';
+    if (currentTool === 'pen') return `url(${penCursor}) 0 0, auto`;
+    if (currentTool === 'select') return `url(${selectCursor}) 8 4, auto`;
+    if (currentTool === 'texture') return `url(${selectCursor}) 8 4, auto`;
     return 'default';
-  }, [currentTool, isPanning, isSpacePressed]);
+  }, [currentTool, isPanning, isSpacePressed, theme]);
 
   const handleMouseDown = useCallback(
     (event: Konva.KonvaEventObject<MouseEvent>) => {
@@ -503,6 +519,9 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
   const isTransformVisible = selectedPointIds.length > 0 && !selectionStart;
   const showPenPreview = currentTool === 'pen' && !isDraggingNewPoint && !useCanvasState.getState().isDraggingHandle;
 
+  const cs = typeof window !== 'undefined' ? getComputedStyle(document.documentElement) : null;
+  const snapColor = (cs?.getPropertyValue('--snap') || 'deepskyblue').trim();
+
   return (
     <Stage
       ref={stageRef}
@@ -511,7 +530,7 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
       y={offset.y}
       width={width}
       height={height}
-      style={{ background: '#f0f0f0', cursor: stageCursor }}
+      style={{ background: 'var(--bg)', cursor: stageCursor }}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
@@ -542,11 +561,11 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
         )}
 
         {snapGuides.x !== null && (
-          <Line points={[snapGuides.x, -10000, snapGuides.x, 10000]} stroke="deepskyblue" strokeWidth={1 / zoom} listening={false} />
+          <Line points={[snapGuides.x, -10000, snapGuides.x, 10000]} stroke={snapColor} strokeWidth={1 / zoom} listening={false} />
         )}
 
         {snapGuides.y !== null && (
-          <Line points={[-10000, snapGuides.y, 10000, snapGuides.y]} stroke="deepskyblue" strokeWidth={1 / zoom} listening={false} />
+          <Line points={[-10000, snapGuides.y, 10000, snapGuides.y]} stroke={snapColor} strokeWidth={1 / zoom} listening={false} />
         )}
 
         <SelectionTransformer isVisible={isTransformVisible} />

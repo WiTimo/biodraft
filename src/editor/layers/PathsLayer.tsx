@@ -88,6 +88,7 @@ export function PathsLayer() {
   const hoveredPathId = useCanvasState((s) => s.hoveredPathId);
   const setHoveredPathId = useCanvasState((s) => s.setHoveredPathId);
   const textureInspectPathId = useCanvasState((s) => s.textureInspectPathId);
+  const selectedPointIds = useCanvasState((s) => s.selectedPointIds);
 
   // Local drag state
   const [isDraggingSeam, setIsDraggingSeam] = useState(false);
@@ -278,55 +279,35 @@ export function PathsLayer() {
 
   const renderFillOverlay = (path: Path) => {
     if (!path.closed) return null;
-    if (currentTool !== 'select' && currentTool !== 'texture') return null;
 
     const sampled = buildClosedPathSampledPoints(path.points, 20);
 
-    return (
-      <Line
-        key={`fill-overlay-${path.id}`}
-        name={`fill-overlay`}
-        points={sampled}
-        closed
-        fill={hoveredPathId === path.id ? 'rgba(0,120,255,0.06)' : 'rgba(0,0,0,0.001)'}
-        strokeWidth={0}
-        listening={true}
-        onMouseEnter={(e) => {
-          setHoveredPathId(path.id);
-          const stage = e.target.getStage();
-          if (stage) stage.container().style.cursor = 'pointer';
-
-          if (currentTool === 'texture') {
+    // Texture tool: show a subtle fill overlay used for texture interaction.
+    if (currentTool === 'texture') {
+      return (
+        <Line
+          key={`fill-overlay-${path.id}`}
+          name={`fill-overlay`}
+          points={sampled}
+          closed
+          fill={(typeof window !== 'undefined' ? (getComputedStyle(document.documentElement).getPropertyValue('--path-highlight') || 'rgba(0,120,255,0.06)') : 'rgba(0,0,0,0.001)') as string}
+          strokeWidth={0}
+          listening={true}
+          onMouseEnter={(e) => {
+            setHoveredPathId(path.id);
+            const stage = e.target.getStage();
+            if (stage) stage.container().style.cursor = 'pointer';
             const state = useCanvasState.getState();
             state.setTextureInteractionActive(true);
             state.setTextureLastInteractionAt(Date.now());
-          }
-        }}
-        onMouseLeave={(e) => {
-          if (hoveredPathId === path.id) setHoveredPathId(null);
-          const stage = e.target.getStage();
-          if (stage) stage.container().style.cursor = 'default';
-
-          if (currentTool === 'texture' && !isDraggingTexture) {
-            useCanvasState.getState().setTextureInteractionActive(false);
-          }
-        }}
-        onMouseDown={(e) => {
-          if (currentTool === 'select') {
-            const ids = path.points.map((p) => p.id);
-            const state = useCanvasState.getState();
-            if (ids.length === 1) {
-              state.selectPoint(ids[0]);
-            } else {
-              state.setSelectedPointIds(ids);
-              state.deselectPoint();
-            }
-            return;
-          }
-
-          if (currentTool === 'texture') {
-            // Sticky selection for the bottom-left inspector.
-            // Clicking the same pattern again toggles it off.
+          }}
+          onMouseLeave={(e) => {
+            if (hoveredPathId === path.id) setHoveredPathId(null);
+            const stage = e.target.getStage();
+            if (stage) stage.container().style.cursor = 'default';
+            if (!isDraggingTexture) useCanvasState.getState().setTextureInteractionActive(false);
+          }}
+          onMouseDown={(e) => {
             const state = useCanvasState.getState();
             state.setTextureInspectPathId(state.textureInspectPathId === path.id ? null : path.id);
 
@@ -352,65 +333,99 @@ export function PathsLayer() {
 
             state.setTextureInteractionActive(true);
             state.setTextureLastInteractionAt(Date.now());
-          }
-        }}
-        onWheel={(e) => {
-          if (currentTool !== 'texture') return;
-          if (!e.evt.ctrlKey && !e.evt.metaKey) return;
+          }}
+          onWheel={(e) => {
+            if (!e.evt.ctrlKey && !e.evt.metaKey) return;
 
-          e.evt.preventDefault();
-          try {
-            if (e.evt.stopImmediatePropagation) e.evt.stopImmediatePropagation();
-            if (e.evt.stopPropagation) e.evt.stopPropagation();
-            (e as any).cancelBubble = true;
-          } catch {
-            // ignore
-          }
+            e.evt.preventDefault();
+            try {
+              if (e.evt.stopImmediatePropagation) e.evt.stopImmediatePropagation();
+              if (e.evt.stopPropagation) e.evt.stopPropagation();
+              (e as any).cancelBubble = true;
+            } catch {
+              // ignore
+            }
 
-          const stage = e.target.getStage();
-          if (!stage) return;
-          const pointer = stage.getPointerPosition();
-          if (!pointer) return;
+            const stage = e.target.getStage();
+            if (!stage) return;
+            const pointer = stage.getPointerPosition();
+            if (!pointer) return;
 
-          useCanvasState.getState().setTextureLastInteractionAt(Date.now());
+            useCanvasState.getState().setTextureLastInteractionAt(Date.now());
 
-          // Ctrl+wheel fires many events; record a single undo snapshot per wheel burst.
-          const now = Date.now();
-          if (now - lastTextureWheelSaveAtRef.current > 400) {
-            saveState();
-            lastTextureWheelSaveAtRef.current = now;
-          }
+            // Ctrl+wheel fires many events; record a single undo snapshot per wheel burst.
+            const now = Date.now();
+            if (now - lastTextureWheelSaveAtRef.current > 400) {
+              saveState();
+              lastTextureWheelSaveAtRef.current = now;
+            }
 
-          const delta = e.evt.deltaY;
-          const sensitivity = 0.0015;
-          const rawFactor = Math.exp(-delta * sensitivity);
-          const factor = Math.max(0.01, Math.min(100, rawFactor));
+            const delta = e.evt.deltaY;
+            const sensitivity = 0.0015;
+            const rawFactor = Math.exp(-delta * sensitivity);
+            const factor = Math.max(0.01, Math.min(100, rawFactor));
 
-          const curScaleX = path.texture?.scaleX ?? 1;
-          const curScaleY = path.texture?.scaleY ?? 1;
-          const newScaleX = Math.max(0.01, curScaleX * factor);
-          const newScaleY = Math.max(0.01, curScaleY * factor);
+            const curScaleX = path.texture?.scaleX ?? 1;
+            const curScaleY = path.texture?.scaleY ?? 1;
+            const newScaleX = Math.max(0.01, curScaleX * factor);
+            const newScaleY = Math.max(0.01, curScaleY * factor);
 
-          const world = getWorldPosFromStagePointer(pointer, offset, zoom);
-          const oldOffsetX = path.texture?.offsetX ?? 0;
-          const oldOffsetY = path.texture?.offsetY ?? 0;
+            const world = getWorldPosFromStagePointer(pointer, offset, zoom);
+            const oldOffsetX = path.texture?.offsetX ?? 0;
+            const oldOffsetY = path.texture?.offsetY ?? 0;
 
-          const adjustedOffsetX = (oldOffsetX - world.x) * (newScaleX / curScaleX) + world.x;
-          const adjustedOffsetY = (oldOffsetY - world.y) * (newScaleY / curScaleY) + world.y;
+            const adjustedOffsetX = (oldOffsetX - world.x) * (newScaleX / curScaleX) + world.x;
+            const adjustedOffsetY = (oldOffsetY - world.y) * (newScaleY / curScaleY) + world.y;
+          }}
+        />
+      );
+    }
 
-          updateTextureForPathLive(path.id, {
-            scaleX: newScaleX,
-            scaleY: newScaleY,
-            offsetX: adjustedOffsetX,
-            offsetY: adjustedOffsetY,
-          });
-        }}
-        onMouseUp={() => {
-          // Drag end handled by global mouseup
-        }}
-      />
-    );
-  };
+    // Select tool: always render an invisible overlay to capture hover/click, show outline when hovered or when fully selected
+    if (currentTool === 'select') {
+      const allSelected = path.points.length > 0 && path.points.every((p) => selectedPointIds.includes(p.id));
+      const isHovered = hoveredPathId === path.id;
+
+      const strokeColor = (typeof window !== 'undefined' ? (getComputedStyle(document.documentElement).getPropertyValue('--path-highlight') || 'rgba(0,120,255,0.6)') : 'rgba(0,120,255,0.6)') as string;
+      // Only show outline when hovering to preview selection; do not persist outline when already selected
+      const strokeW = isHovered ? Math.max(1, 2 / zoom) : 0;
+
+      return (
+        <Line
+          key={`fill-overlay-${path.id}`}
+          name={`fill-overlay`}
+          points={sampled}
+          closed
+          fill={'rgba(0,0,0,0.001)'}
+          stroke={strokeW ? strokeColor : undefined}
+          strokeWidth={strokeW}
+          listening={true}
+          onMouseEnter={(e) => {
+            setHoveredPathId(path.id);
+            const stage = e.target.getStage();
+            if (stage) stage.container().style.cursor = 'pointer';
+          }}
+          onMouseLeave={(e) => {
+            if (hoveredPathId === path.id) setHoveredPathId(null);
+            const stage = e.target.getStage();
+            if (stage) stage.container().style.cursor = 'default';
+          }}
+          onMouseDown={(e) => {
+            const ids = path.points.map((p) => p.id);
+            const state = useCanvasState.getState();
+            if (ids.length === 1) state.selectPoint(ids[0]);
+            else {
+              state.setSelectedPointIds(ids);
+              state.deselectPoint();
+            }
+          }}
+        />
+      );
+    }
+
+    return null;
+  }
+
 
   const renderSeamSelectableSegments = () => {
     return paths.flatMap((path) => {
@@ -600,6 +615,26 @@ export function PathsLayer() {
                 ? 'rgba(230,67,67,0.75)'
                 : undefined
             }
+            onMouseEnter={(e) => {
+              setHoveredPathId(path.id);
+              const stage = e.target.getStage();
+              if (stage) stage.container().style.cursor = 'pointer';
+            }}
+            onMouseLeave={(e) => {
+              if (hoveredPathId === path.id) setHoveredPathId(null);
+              const stage = e.target.getStage();
+              if (stage) stage.container().style.cursor = 'default';
+            }}
+            onClick={(e) => {
+              if (currentTool !== 'select') return;
+              const ids = path.points.map((p) => p.id);
+              const state = useCanvasState.getState();
+              if (ids.length === 1) state.selectPoint(ids[0]);
+              else {
+                state.setSelectedPointIds(ids);
+                state.deselectPoint();
+              }
+            }}
           />
 
           {/* Invisible overlay to capture hover/click for selection (works reliably across Konva shapes) */}

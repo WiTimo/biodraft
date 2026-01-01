@@ -12,3 +12,69 @@ body {
   max-width: 100dvw;
   overflow: hidden;
 }
+
+/* Theme variables - light by default; overridden when .theme-dark is present on documentElement */
+:root {
+  --bg: #ffffff;
+  --panel: rgba(255,255,255,0.95);
+  --panel-opaque: #ffffff;
+  --text: #111827;
+  --text-strong: #0f172a;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+  --bg-muted: #f8fafc;
+  --bg-hover: #f3f4f6;
+  --primary-50: #eff6ff;
+  --primary-border: #bfdbfe;
+  --grid: rgba(228,232,238,0.9);
+  --snap: rgba(30,144,255,0.55);
+  --selection-fill: #2196F3;
+  --path-stroke: #000000;
+  --path-highlight: rgba(0,120,255,0.6);
+}
+
+.theme-dark {
+  --bg: #071024;
+  --panel: rgba(8,10,14,0.88);
+  --panel-opaque: #071024;
+  --text: #e6eef8;
+  --text-strong: #ffffff;
+  --muted: #9ca3af;
+  --border: #1f2937;
+  --grid: rgba(255,255,255,0.06);
+  --snap: rgba(30,144,255,0.25);
+  --selection-fill: rgba(96,165,250,0.18);
+  --path-stroke: #ffffff;
+  --path-highlight: rgba(96,165,250,0.45);
+  --bg-muted: #091423;
+  --bg-hover: #0f1724;
+  --primary-50: rgba(96,165,250,0.06);
+  --primary-border: rgba(191,219,254,0.16);
+}
+
+/* Apply background and default text color */
+html, body, #root {
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* Map commonly used Tailwind classes to themed variants in dark mode */
+.theme-dark .bg-white { background-color: var(--panel) !important; }
+.theme-dark .bg-white\/95 { background-color: var(--panel) !important; }
+.theme-dark .bg-white\/50 { background-color: rgba(255,255,255,0.5) !important; }
+.theme-dark .bg-gray-50 { background-color: var(--bg-muted) !important; }
+.theme-dark .bg-gray-200 { background-color: var(--bg-hover) !important; }
+.theme-dark .bg-gray-100 { background-color: var(--bg-hover) !important; }
+.theme-dark .bg-blue-50 { background-color: var(--primary-50) !important; }
+
+.theme-dark .border-gray-200 { border-color: var(--border) !important; }
+.theme-dark .border-gray-300 { border-color: var(--border) !important; }
+.theme-dark .text-gray-800, .theme-dark .text-gray-900, .theme-dark .text-gray-700 { color: var(--text) !important; }
+.theme-dark .text-gray-600, .theme-dark .text-gray-500 { color: var(--muted) !important; }
+
+.theme-dark .hover\:bg-gray-50:hover { background-color: var(--bg-hover) !important; }
+.theme-dark .hover\:bg-gray-100:hover { background-color: var(--bg-hover) !important; }
+.theme-dark .shadow-lg, .theme-dark .shadow-xl { box-shadow: 0 6px 18px rgba(0,0,0,0.45); }
+
+/* Ensure icons that use currentColor adapt */
+.theme-dark svg { color: var(--text); }

@@ -49,7 +49,7 @@ export function PenSegmentPreview() {
           );
           ctx.strokeShape(shape);
         }}
-        stroke="rgba(0,0,0,0.5)"
+        stroke={(typeof window !== 'undefined' ? getComputedStyle(document.documentElement).getPropertyValue('--path-stroke') : 'rgba(0,0,0,0.5)') as string}
         strokeWidth={strokeWidth}
         // Keep stroke size stable by dividing by zoom and disabling stroke scaling
         strokeScaleEnabled={false}
@@ -58,15 +58,21 @@ export function PenSegmentPreview() {
 
       {/* Optional visual snap highlight */}
       {(snapGuides.x !== null || snapGuides.y !== null) && (
-        <Circle
-          x={snappedX}
-          y={snappedY}
-          radius={6 / zoom}
-          stroke="deepskyblue"
-          strokeWidth={1.5 / zoom}
-          strokeScaleEnabled={false}
-          listening={false}
-        />
+        (() => {
+          const cs = getComputedStyle(document.documentElement);
+          const snapColor = (cs.getPropertyValue('--snap') || 'deepskyblue').trim();
+          return (
+            <Circle
+              x={snappedX}
+              y={snappedY}
+              radius={6 / zoom}
+              stroke={snapColor}
+              strokeWidth={1.5 / zoom}
+              strokeScaleEnabled={false}
+              listening={false}
+            />
+          );
+        })()
       )}
     </>
   );

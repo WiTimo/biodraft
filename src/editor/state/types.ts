@@ -73,7 +73,7 @@ export interface HistorySlice {
   redo: () => void;
   resetCanvas: () => void;
   // Clear the canvas without reloading the page (used for soft resets like regenerating default human)
-  clearCanvas: () => void;
+  clearCanvas: (preserveManImages?: boolean) => void;
   cleanupEmptyPaths: () => void;
 }
 
@@ -121,6 +121,10 @@ export interface ViewportSlice {
   setShowTopRuler: (v: boolean) => void;
   gridEnabled: boolean;
   setGridEnabled: (v: boolean) => void;
+
+  // Theme (light / dark / follow system)
+  theme: 'light' | 'dark' | 'system';
+  setTheme: (t: 'light' | 'dark' | 'system') => void;
 
   // Units used for rulers and human params
   units: 'metric' | 'imperial';

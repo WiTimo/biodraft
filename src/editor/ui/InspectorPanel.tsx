@@ -2,6 +2,7 @@ import { useMemo, useRef } from 'react';
 
 import { useCanvasState } from '../state/CanvasState';
 import type { BackgroundImage, PathTexture } from '../state/types';
+import Icon from './Icon';
 
 function Field({
   label,
@@ -286,7 +287,7 @@ export function InspectorPanel() {
                       onClick={() => clearTextureForPath(texturePath.id)}
                     >
                       <span className="inline-flex items-center justify-center gap-2">
-                        <img src="/svg/eraser.svg" className="h-4 w-4" />
+                        <Icon src="/svg/eraser.svg" className="h-4 w-4" />
                         Remove
                       </span>
                     </button>

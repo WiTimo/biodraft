@@ -314,7 +314,7 @@ export function SelectionTransformer({ isVisible }: { isVisible: boolean }) {
       <Line
         points={[...cornerPoints, cornerPoints[0]].flatMap((p) => [p.x, p.y])}
         closed
-        stroke="deepskyblue"
+        stroke={(getComputedStyle(document.documentElement).getPropertyValue('--snap') || 'deepskyblue').trim()}
         strokeWidth={1.5 / zoom}
         listening={false}
       />
@@ -325,7 +325,7 @@ export function SelectionTransformer({ isVisible }: { isVisible: boolean }) {
           x={p.x}
           y={p.y}
           radius={handleRadius}
-          fill="#2196F3"
+          fill={(getComputedStyle(document.documentElement).getPropertyValue('--selection-fill') || '#2196F3').trim()}
           draggable
           name="transform-handle"
           onMouseEnter={(e) => {

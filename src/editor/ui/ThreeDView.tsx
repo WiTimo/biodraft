@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useCanvasState } from "../state/CanvasState";
 import type { CanvasPresent } from "../state/types";
+import Icon from './Icon';
 
 const FRONT_IMAGE_ID = "static-man";
 const BACK_IMAGE_ID = "static-man-back";
@@ -301,7 +302,7 @@ export function ThreeDView() {
           name="Reload View"
           onClick={handleReload}
         >
-          <img src="/svg/reset.svg" alt="Reload View" />
+          <Icon src="/svg/reset.svg" alt="Reload View" />
         </button>
       </div>
     </>

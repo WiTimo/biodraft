@@ -43,6 +43,10 @@ export const createViewportSlice: CanvasStateCreator<ViewportSlice> = (set, _get
   gridEnabled: true,
   setGridEnabled: (v: boolean) => set({ gridEnabled: v }),
 
+  // Theme
+  theme: 'system',
+  setTheme: (t: 'light' | 'dark' | 'system') => set({ theme: t }),
+
   // Units & metric unit (used by rulers and defaults)
   units: 'metric',
   setUnits: (u: 'metric' | 'imperial') => set({ units: u }),

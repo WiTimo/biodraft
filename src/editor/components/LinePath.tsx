@@ -27,7 +27,10 @@ export function LinePath({
   const [img] = useImage(texture?.src || '', 'anonymous');
   const zoom = useCanvasState(s => s.zoom);
 
-  const strokeColor = highlighted ? (highlightColor ?? 'rgba(0,120,255,0.6)') : 'black';
+  const cs = typeof window !== 'undefined' ? getComputedStyle(document.documentElement) : null;
+  const defaultPath = (cs?.getPropertyValue('--path-stroke') || 'black').trim();
+  const defaultHighlight = (cs?.getPropertyValue('--path-highlight') || 'rgba(0,120,255,0.6)').trim();
+  const strokeColor = highlighted ? (highlightColor ?? defaultHighlight) : defaultPath;
   const strokeW = highlighted ? Math.min(4, 3 / zoom) : 2 / zoom;
 
   return (

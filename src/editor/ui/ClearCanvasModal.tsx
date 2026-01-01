@@ -47,8 +47,8 @@ export default function ClearCanvasModal({ open, onClose }: { open: boolean; onC
   if (!open) return null;
 
   const onDeleteOnly = () => {
-    // Simple delete (soft clear)
-    clearCanvas();
+    // Simple delete (soft clear) - preserve generated human images if present
+    clearCanvas(true);
     onClose();
   };
 

@@ -115,28 +115,34 @@ export function RulersOverlay({
     if (topCtx) topCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
     if (leftCtx) leftCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
+    // Resolve themed colors from CSS variables
+    const cs = getComputedStyle(document.documentElement);
+    const panelOpaque = (cs.getPropertyValue('--panel-opaque') || '#ffffff').trim();
+    const borderColor = (cs.getPropertyValue('--border') || '#ddd').trim();
+    const textColor = (cs.getPropertyValue('--muted') || '#333').trim();
+
     // Clear + background
     if (topCtx) {
       topCtx.clearRect(0, 0, topWidth, topHeight);
-      topCtx.fillStyle = '#ffffff';
+      topCtx.fillStyle = panelOpaque;
       topCtx.fillRect(0, 0, topWidth, topHeight);
     }
     if (leftCtx) {
       leftCtx.clearRect(0, 0, leftWidth, leftHeight);
-      leftCtx.fillStyle = '#ffffff';
+      leftCtx.fillStyle = panelOpaque;
       leftCtx.fillRect(0, 0, leftWidth, leftHeight);
     }
 
     // Styles
     if (topCtx) {
-      topCtx.strokeStyle = '#ddd';
-      topCtx.fillStyle = '#333';
+      topCtx.strokeStyle = borderColor;
+      topCtx.fillStyle = textColor;
       topCtx.font = '11px sans-serif';
       topCtx.textAlign = 'center';
     }
     if (leftCtx) {
-      leftCtx.strokeStyle = '#ddd';
-      leftCtx.fillStyle = '#333';
+      leftCtx.strokeStyle = borderColor;
+      leftCtx.fillStyle = textColor;
       leftCtx.font = '11px sans-serif';
       leftCtx.textAlign = 'right';
     }
@@ -277,9 +283,9 @@ export function RulersOverlay({
             top: 0,
             width: rulerSize,
             height: rulerSize,
-            background: '#ffffff',
-            borderRight: '1px solid #ddd',
-            borderBottom: '1px solid #ddd',
+            background: 'var(--panel-opaque)',
+            borderRight: '1px solid var(--border)',
+            borderBottom: '1px solid var(--border)',
             zIndex: 4500,
             pointerEvents: 'none',
             display: 'flex',
@@ -287,7 +293,7 @@ export function RulersOverlay({
             justifyContent: 'center',
           }}
         >
-          <div style={{ fontSize: 11, color: '#333', fontWeight: 600, userSelect: 'none' }}>
+          <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, userSelect: 'none' }}>
             {units === 'metric' ? metricUnit : 'in'}
           </div>
         </div>

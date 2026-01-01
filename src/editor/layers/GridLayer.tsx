@@ -1,5 +1,6 @@
 import { Layer, Line } from 'react-konva';
 import { useMemo } from 'react';
+import { useCanvasState } from '../state/CanvasState';
 
 import { getStep } from '../utils/grid';
 
@@ -49,13 +50,17 @@ export function GridLayer({
     return nextLines;
   }, [basePixelGridSize, height, offset.x, offset.y, width, zoom]);
 
+  const theme = useCanvasState((s) => s.theme); // cause re-render when theme changes
+  const cs = typeof window !== 'undefined' ? getComputedStyle(document.documentElement) : null;
+  const gridColor = (cs?.getPropertyValue('--grid') || '#e8e8e8').trim();
+
   return (
     <Layer listening={false}>
       {lines.map((l) => (
         <Line
           key={l.key}
           points={l.points}
-          stroke="#e8e8e8"
+          stroke={gridColor}
           strokeWidth={1 / zoom}
           listening={false}
         />

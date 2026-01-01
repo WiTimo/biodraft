@@ -90,17 +90,25 @@ export const createHistorySlice: CanvasStateCreator<HistorySlice> = (set, _get, 
   },
 
   // Clear canvas without reloading (useful when applying default human images after generation)
-  clearCanvas: () => {
-    set(() => ({
-      present: clonePresent(INITIAL_PRESENT),
-      past: [],
-      future: [],
-      selectedPointId: null,
-      selectedPointIds: [],
-      selectedBackgroundId: null,
-      selectionRect: null,
-      selectionStart: null,
-    }) as Partial<CanvasState>);
+  clearCanvas: (preserveManImages: boolean = false) => {
+    set((state) => {
+      const newPresent = clonePresent(INITIAL_PRESENT);
+      if (preserveManImages) {
+        const { man } = splitManImages(state.present.backgroundImages ?? []);
+        newPresent.backgroundImages = [...man, ...(newPresent.backgroundImages ?? [])];
+      }
+
+      return {
+        present: newPresent,
+        past: [],
+        future: [],
+        selectedPointId: null,
+        selectedPointIds: [],
+        selectedBackgroundId: null,
+        selectionRect: null,
+        selectionStart: null,
+      } as Partial<CanvasState>;
+    });
   },
   cleanupEmptyPaths: () => {
     set((state) => {

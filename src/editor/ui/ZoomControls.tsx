@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import SettingsModal from './SettingsModal';
 import ClearCanvasModal from './ClearCanvasModal';
+import Icon from './Icon';
 
 interface ZoomControlsProps {
     zoom: number;
@@ -35,21 +36,21 @@ export default function ZoomControls({ zoom, baseZoom, onZoomChange, onReset }: 
                     className="ml-2 text-sm px-2 py-1 cursor-pointer"
                     title="Reset Zoom"
                 >
-                    <img src="/svg/reset.svg" className="h-5 w-5" />
+                    <Icon src="/svg/reset.svg" className="h-5 w-5" />
                 </button>
                 <button
                     onClick={() => setShowClearModal(true)}
                     className="ml-2 text-sm px-2 py-1 text-red-500 cursor-pointer"
                     title="Clear Saved Canvas"
                 >
-                    <img src="/svg/delete.svg" className="h-5 w-5" />
+                    <Icon src="/svg/delete.svg" className="h-5 w-5" />
                 </button>
                 <button
                     onClick={() => setSettingsOpen(true)}
                     className="ml-2 text-sm px-2 py-1 cursor-pointer"
                     title="Settings"
                 >
-                    <img src="/svg/settings.svg" className="h-5 w-5" />
+                    <Icon src="/svg/settings.svg" className="h-5 w-5" />
                 </button>
             </div>
 

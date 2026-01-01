@@ -5,6 +5,7 @@ import { useCanvasState } from './state/CanvasState';
 import { ThreeDView } from './ui/ThreeDView';
 import { Toolbar } from './ui/Toolbar';
 import { CanvasStage } from './components/CanvasStage';
+import Icon from './ui/Icon';
 
 import { useStaticManImages } from './hooks/useStaticManImages';
 import { useCanvasKeyboardShortcuts } from './hooks/useCanvasKeyboardShortcuts';
@@ -97,7 +98,7 @@ export function Canvas() {
       {threeDEnabled &&
         (isResizing ? (
           <div className="h-full grid place-items-center overflow-hidden rounded-r-2xl bg-black" style={{ width: splitWidth }}>
-            <img src="/svg/loader.svg" className="h-14 w-14 select-none" />
+            <Icon src="/svg/loader.svg" className="h-14 w-14 select-none" />
           </div>
         ) : (
           <div className="h-full overflow-hidden rounded-r-2xl" style={{ width: splitWidth }}>
@@ -116,7 +117,7 @@ export function Canvas() {
       <div className="h-full relative overflow-hidden" style={stageContainerStyle}>
         <InspectorPanel />
 
-        <div className="absolute inset-0" style={{ background: '#ffffff' }}>
+        <div className="absolute inset-0" style={{ background: 'var(--panel)' }}>
           {/* Rulers overlay */}
           <RulersOverlay
             width={Math.max(0, viewportSize.width)}
@@ -167,7 +168,7 @@ export function Canvas() {
             cursor: 'pointer',
           }}
         >
-          <img src="/svg/toggle3d.svg" className="h-10 w-10" />
+          <Icon src="/svg/toggle3d.svg" className="h-10 w-10" />
         </button>
 
         <Toolbar

@@ -5,8 +5,9 @@ import { cmToIn, inToCm, kgToLb, lbToKg, formatNumber, validateHeight, validateW
 export default function SettingsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [tab, setTab] = useState<'general' | 'keybinds'>('general');
 
-  // General settings (UI-only for now)
-  const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('light');
+  // General settings
+  const theme = useCanvasState((s) => s.theme);
+  const setTheme = useCanvasState((s) => s.setTheme);
   const units = useCanvasState((s) => s.units);
   const setUnits = useCanvasState((s) => s.setUnits);
   const metricUnit = useCanvasState((s) => s.metricUnit);
@@ -163,7 +164,7 @@ export default function SettingsModal({ open, onClose }: { open: boolean; onClos
                       <div className="flex items-center justify-between">
                         <div>
                           <div className="text-sm font-semibold text-gray-800">Appearance</div>
-                          <div className="text-xs text-gray-500">Choose theme for the app</div>
+                          <div className="text-xs text-gray-500">Choose theme for the app (applies immediately)</div>
                         </div>
                       </div>
 

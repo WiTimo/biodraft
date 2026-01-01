@@ -40,6 +40,8 @@ export const useCanvasState = create<CanvasState>()(
         showLeftRuler: state.showLeftRuler,
         showTopRuler: state.showTopRuler,
         gridEnabled: state.gridEnabled,
+        // Persist theme
+        theme: state.theme,
         // Persist units & metric unit
         units: state.units,
         metricUnit: state.metricUnit,

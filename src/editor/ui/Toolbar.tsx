@@ -6,6 +6,9 @@ import type { Segment, SegmentPortion, Tool } from '../state/types';
 import { BiomeshManModal } from './BiomeshManModal';
 import { importFromJson, exportToJson, importFromDxf, exportToDxf } from '../utils/importExport';
 import ZoomControls from './ZoomControls';
+import Icon from './Icon';
+// Icon handles SVG color substitution for dark-mode (#000 -> #fff)
+
 
 function seamPartToSegment(part: Segment | SegmentPortion): Segment {
   return Array.isArray(part) ? part : part.segment;
@@ -51,7 +54,7 @@ function ToolButton({
           : "border-transparent bg-white hover:border-gray-200")
       }
     >
-      <img src={iconSrc} className="h-full w-full" />
+      <Icon src={iconSrc} className="h-full w-full" />
     </button>
   );
 }
@@ -86,7 +89,7 @@ function ActionButton({
       disabled={disabled}
       className={`${base} ${toneCls}`}
     >
-      <img src={iconSrc} className="h-full w-full" />
+      <Icon src={iconSrc} className="h-full w-full" />
     </button>
   );
 }
@@ -109,7 +112,7 @@ function FileMenuItem({
       className="w-full flex items-start gap-2 rounded-md px-2 py-2 text-left hover:bg-gray-50"
       title={title}
     >
-      <img src={iconSrc} className="h-5 w-5 mt-0.5" />
+      <Icon src={iconSrc} className="h-5 w-5 mt-0.5" />
       <div className="flex flex-col">
         <div className="text-sm font-medium text-gray-900">{title}</div>
         {description ? <div className="text-xs text-gray-500">{description}</div> : null}
@@ -325,7 +328,7 @@ export function Toolbar({ onResetView, defaultZoom }: { onResetView?: () => void
                 aria-expanded={fileMenuOpen}
                 title="Open import/export menu"
               >
-                <img src="/svg/export.svg" className="h-5 w-5" />
+                <Icon src="/svg/export.svg" className="h-5 w-5" />
                 <span className="text-gray-900">File</span>
               </button>
 
