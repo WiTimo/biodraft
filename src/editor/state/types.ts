@@ -220,8 +220,8 @@ export interface SelectionSlice {
   deleteSelectedPoints: () => void;
   mousePosition: { x: number; y: number } | null;
   setMousePosition: (pos: { x: number; y: number } | null) => void;
-  snapGuides: { x: number | null; y: number | null };
-  setSnapGuides: (guides: { x: number | null; y: number | null }) => void;
+  snapGuides: { x: number | null; y: number | null; xs?: number[]; ys?: number[] };
+  setSnapGuides: (guides: { x: number | null; y: number | null; xs?: number[]; ys?: number[] }) => void;
 }
 
 export interface ClipboardSlice {

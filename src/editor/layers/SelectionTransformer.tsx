@@ -35,6 +35,7 @@ export function SelectionTransformer({ isVisible }: { isVisible: boolean }) {
   const updateTextureForPathLive = useCanvasState((s) => s.updateTextureForPathLive);
   const zoom = useCanvasState((s) => s.zoom);
   const isShiftPressed = useCanvasState((s) => s.isShiftPressed);
+  const setSnapGuides = useCanvasState((s) => s.setSnapGuides);
   
 
   const dragStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -242,6 +243,8 @@ export function SelectionTransformer({ isVisible }: { isVisible: boolean }) {
               y: p.y,
             })),
             originalTextures,
+            originalCenter: { ...center },
+            originalBounds: { minX, maxX, minY, maxY },
           };
         }}
         onDragMove={(e) => {
@@ -261,11 +264,16 @@ export function SelectionTransformer({ isVisible }: { isVisible: boolean }) {
             }
             if (lockedAxisRef.current === "x") {
               dy = 0;
+              const orig = (dragState.current as any).originalBounds;
+              setSnapGuides({ x: null, y: null, ys: [orig.minY, orig.maxY] });
             } else {
               dx = 0;
+              const orig = (dragState.current as any).originalBounds;
+              setSnapGuides({ x: null, y: null, xs: [orig.minX, orig.maxX] });
             }
           } else {
             lockedAxisRef.current = null;
+            setSnapGuides({ x: null, y: null });
           }
 
           const moveSnapshot = dragState.current as { originalPoints: { id: string; x: number; y: number }[] };
@@ -306,6 +314,7 @@ export function SelectionTransformer({ isVisible }: { isVisible: boolean }) {
           dragStartRef.current = null;
           dragState.current = null;
           lockedAxisRef.current = null;
+          setSnapGuides({ x: null, y: null });
           e.target.getStage()?.container().style.setProperty('cursor', 'default')
         }}
       />

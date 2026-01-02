@@ -11,6 +11,8 @@ import { SeamLayer } from '../layers/SeamLayer';
 import { SelectionTransformer } from '../layers/SelectionTransformer';
 import { getStep } from '../utils/grid';
 import { useCanvasState } from '../state/CanvasState';
+import { resolveContext, getMenuItems } from '../utils/contextMenuUtils';
+import type { ContextMenuItem } from '../ui/ContextMenu';
 
 const MM_PER_WORLD_UNIT = 10;
 const BASE_PIXEL_GRID_SIZE = 30; // same base size GridLayer uses
@@ -22,9 +24,11 @@ interface CanvasStageProps {
   setIsPanning: (value: boolean) => void;
   width: number;
   height: number;
+  onContextMenu: (x: number, y: number, items: ContextMenuItem[]) => void;
+  onResetView: () => void;
 }
 
-export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning, width, height }: CanvasStageProps) {
+export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning, width, height, onContextMenu, onResetView }: CanvasStageProps) {
   const present = useCanvasState((state) => state.present);
   const currentTool = useCanvasState((state) => state.currentTool);
   const zoom = useCanvasState((state) => state.zoom);
@@ -624,9 +628,60 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
     const state = useCanvasState.getState();
     if (state.currentTool === 'pen') {
       // Finish the path being drawn (if any)
-      state.finishCurrentPath?.();
+      if (state.currentPathId) {
+        state.finishCurrentPath?.();
+        return;
+      }
     }
-  }, []);
+
+    const stage = event.target.getStage();
+    if (!stage) return;
+    const pointer = stage.getPointerPosition();
+    if (!pointer) return;
+
+    const context = resolveContext(stage, pointer, state);
+
+    const items = getMenuItems(context, state, {
+      resetView: onResetView,
+      zoomIn: () => state.setZoom(state.zoom * 1.2),
+      zoomOut: () => state.setZoom(state.zoom / 1.2),
+      fitScreen: () => {
+        const paths = state.present.paths;
+        if (paths.length === 0) {
+          onResetView();
+          return;
+        }
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        paths.forEach(p => p.points.forEach(pt => {
+          minX = Math.min(minX, pt.x);
+          maxX = Math.max(maxX, pt.x);
+          minY = Math.min(minY, pt.y);
+          maxY = Math.max(maxY, pt.y);
+        }));
+
+        const contentW = maxX - minX;
+        const contentH = maxY - minY;
+        if (!Number.isFinite(contentW) || !Number.isFinite(contentH)) return;
+
+        const margin = 50;
+        const scaleX = (width - margin * 2) / contentW;
+        const scaleY = (height - margin * 2) / contentH;
+        const newZoom = Math.min(scaleX, scaleY, 20); // cap max zoom
+
+        const centerX = (minX + maxX) / 2;
+        const centerY = (minY + maxY) / 2;
+        
+        state.setZoom(newZoom);
+        state.setOffset({
+           x: width / 2 - centerX * newZoom,
+           y: height / 2 - centerY * newZoom
+        });
+      },
+      toggleGrid: () => state.setGridEnabled(!state.gridEnabled),
+    });
+
+    onContextMenu(event.evt.clientX, event.evt.clientY, items);
+  }, [onContextMenu, onResetView, width, height]);
 
   const isTransformVisible = selectedPointIds.length > 0;
   const showPenPreview = currentTool === 'pen' && !isDraggingNewPoint && !useCanvasState.getState().isDraggingHandle;
@@ -675,10 +730,16 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
         {snapGuides.x !== null && (
           <Line points={[snapGuides.x, -10000, snapGuides.x, 10000]} stroke={snapColor} strokeWidth={1 / zoom} listening={false} />
         )}
+        {snapGuides.xs?.map((x, i) => (
+          <Line key={`snap-x-${i}`} points={[x, -10000, x, 10000]} stroke={snapColor} strokeWidth={1 / zoom} listening={false} />
+        ))}
 
         {snapGuides.y !== null && (
           <Line points={[-10000, snapGuides.y, 10000, snapGuides.y]} stroke={snapColor} strokeWidth={1 / zoom} listening={false} />
         )}
+        {snapGuides.ys?.map((y, i) => (
+          <Line key={`snap-y-${i}`} points={[-10000, y, 10000, y]} stroke={snapColor} strokeWidth={1 / zoom} listening={false} />
+        ))}
 
         <SelectionTransformer isVisible={isTransformVisible} />
       </Layer>

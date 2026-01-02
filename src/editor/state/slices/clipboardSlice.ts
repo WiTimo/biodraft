@@ -41,7 +41,7 @@ export const createClipboardSlice: CanvasStateCreator<ClipboardSlice> = (set, ge
     const { clipboard, present, saveState } = get();
     if (!clipboard || clipboard.length === 0) return;
 
-    const offsetAmount = 30;
+    const offsetAmount = 0;
     const newPaths = clipboard.map((path) => {
       const newPoints = path.points.map((point) => ({
         ...point,

@@ -287,6 +287,7 @@ export function PathsLayer() {
       return (
         <Line
           key={`fill-overlay-${path.id}`}
+          id={path.id}
           name={`fill-overlay`}
           points={sampled}
           closed
@@ -393,6 +394,7 @@ export function PathsLayer() {
       return (
         <Line
           key={`fill-overlay-${path.id}`}
+          id={path.id}
           name={`fill-overlay`}
           points={sampled}
           closed
@@ -659,6 +661,8 @@ export function PathsLayer() {
         <Group key={path.id}>
           <LinePath
             key={`linepath-${path.id}`}
+            id={path.id}
+            name="pattern-path"
             points={path.points}
             closed={path.closed}
             texture={path.texture ?? null}

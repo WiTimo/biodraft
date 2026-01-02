@@ -5,6 +5,7 @@ import { useCanvasState } from './state/CanvasState';
 import { ThreeDView } from './ui/ThreeDView';
 import { Toolbar } from './ui/Toolbar';
 import { CanvasStage } from './components/CanvasStage';
+import { ContextMenu, type ContextMenuItem } from './ui/ContextMenu';
 import Icon from './ui/Icon';
 
 import { useStaticManImages } from './hooks/useStaticManImages';
@@ -26,6 +27,7 @@ export function Canvas() {
   const [isSpacePressed, setIsSpacePressed] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
   const [viewportSize, setViewportSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; items: ContextMenuItem[] } | null>(null);
 
   const threeDEnabled = useCanvasState((state) => state.threeDEnabled);
   const toggle3D = useCanvasState((state) => state.toggle3D);
@@ -82,6 +84,10 @@ export function Canvas() {
     setZoom(defaultZoom);
     setOffset({ x: vpWidth / 2, y: vpHeight / 2 });
   }, [defaultZoom, setOffset, setZoom, viewportSize.height, viewportSize.width]);
+
+  const handleContextMenu = useCallback((x: number, y: number, items: ContextMenuItem[]) => {
+    setContextMenu({ x, y, items });
+  }, []);
 
   useLayoutEffect(() => {
     if (initialCentered.current) return;
@@ -148,6 +154,8 @@ export function Canvas() {
               setIsPanning={setIsPanning}
               width={viewportSize.width}
               height={viewportSize.height}
+              onContextMenu={handleContextMenu}
+              onResetView={handleResetView}
             />
           </div>
         </div>
@@ -175,6 +183,15 @@ export function Canvas() {
           defaultZoom={defaultZoom}
           onResetView={handleResetView}
         />
+
+        {contextMenu && (
+          <ContextMenu
+            x={contextMenu.x}
+            y={contextMenu.y}
+            items={contextMenu.items}
+            onClose={() => setContextMenu(null)}
+          />
+        )}
       </div>
     </div>
   );
