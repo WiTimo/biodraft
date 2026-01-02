@@ -13,6 +13,9 @@ export const createToolSlice: CanvasStateCreator<ToolSlice> = (set, get, _api) =
     state.deselectPoint();
     state.deselectBackgroundImages();
     state.setSeamDeleteMode(false);
+    state.setSeamSelection([]);
+    state.clearPendingSeamPortions();
+    state.setSelectedSeamSegment(null);
 
     set({
       selectionRect: null,

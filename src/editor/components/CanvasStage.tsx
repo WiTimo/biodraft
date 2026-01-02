@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState, useEffect } from 'react';
 import { Stage, Layer, Rect, Line } from 'react-konva';
 import Konva from 'konva';
 
@@ -54,6 +54,17 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
   const pendingSelectionStart = useRef<{ x: number; y: number } | null>(null);
 
   const { backgroundImages, paths } = present;
+
+  const cancelSelection = useCallback(() => {
+    pendingSelectionStart.current = null;
+    setSelectionStart(null);
+    setSelectionRect(null);
+    setIsDraggingNewPoint(false);
+    setNewPointId(null);
+    setLastPointerPos(null);
+    setSnapGuides({ x: null, y: null });
+    useCanvasState.getState().endHandleMove();
+  }, [setSelectionStart, setSelectionRect, setIsDraggingNewPoint, setNewPointId, setLastPointerPos, setSnapGuides]);
 
   const toWorld = useCallback(
     (pointer: { x: number; y: number }) => ({
@@ -140,6 +151,8 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
       const worldPosition = toWorld(pointer);
       const state = useCanvasState.getState();
 
+      // If user switched tools to something other than seam, ensure seam selection is cleared
+
       if (targetName?.includes('transform-handle')) return;
 
       const isStageClick = target === stage;
@@ -154,11 +167,30 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
       }
 
       if (currentTool === 'seam') {
-        const clickedOutsideSegment = !targetName?.includes('seam-segment');
-        if (clickedOutsideSegment) {
+        const isStageClick = target === stage;
+        // More robust check: find the topmost shape under the pointer and walk ancestors
+        const hit = stage.getIntersection(pointer);
+        const isOnSeam = (() => {
+          let node: any = hit;
+          while (node) {
+            try {
+              const name = typeof node.name === 'function' ? node.name() : '';
+              if (name && name.includes('seam-segment')) return true;
+            } catch {
+              // ignore
+            }
+            node = node && node.getParent ? node.getParent() : null;
+          }
+          // Fallback: check previous target name
+          return !!(targetName && targetName.includes('seam-segment'));
+        })();
+
+        if (!isOnSeam || isStageClick) {
           setSeamSelection([]);
           setSelectedSeamSegment(null);
           setSeamDeleteMode(false);
+          // Also clear pending portions when clicking background
+          state.clearPendingSeamPortions();
         }
         return;
       }
@@ -170,8 +202,11 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
         if (isClickingOnEmpty && !clickedInsideBox) {
           pendingSelectionStart.current = worldPosition;
           setSelectionRect(null);
-          clearSelectedPointIds();
-          deselectPoint();
+          
+          if (!event.evt.shiftKey) {
+            clearSelectedPointIds();
+            deselectPoint();
+          }
         }
         return;
       }
@@ -270,6 +305,42 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
       toWorld,
     ],
   );
+
+  // Clear seam selection when switching away from the seam tool
+  useEffect(() => {
+    if (currentTool !== 'seam') {
+      setSeamSelection([]);
+      setSelectedSeamSegment(null);
+      setSeamDeleteMode(false);
+    }
+  }, [currentTool, setSeamSelection, setSelectedSeamSegment, setSeamDeleteMode]);
+
+  // Clear seam selection when clicking strictly outside the canvas area (DOM-level clicks).
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      try {
+        const stage = stageRef?.current;
+        // If no stage yet, nothing to do
+        if (!stage) return;
+
+        const rect = stage.container().getBoundingClientRect();
+        
+        // Only trigger if click is outside stage DOM
+        if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) {
+          setSeamSelection([]);
+          setSelectedSeamSegment(null);
+          setSeamDeleteMode(false);
+          useCanvasState.getState().clearPendingSeamPortions();
+          return;
+        }
+      } catch {
+        // ignore errors in global handler
+      }
+    };
+
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [stageRef, setSeamSelection, setSelectedSeamSegment, setSeamDeleteMode]);
 
   const handleMouseMove = useCallback(
     (event: Konva.KonvaEventObject<MouseEvent>) => {
@@ -394,7 +465,7 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
     ],
   );
 
-  const handleMouseUp = useCallback(() => {
+  const handleMouseUp = useCallback((e?: Konva.KonvaEventObject<MouseEvent>) => {
     if (isPanning) {
       setIsPanning(false);
       document.body.style.cursor = 'default';
@@ -427,10 +498,20 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
         )
         .map((point) => point.id);
 
-      if (selected.length === 1) {
-        state.selectPoint(selected[0]);
+      const isShift = e?.evt?.shiftKey;
+      let finalSelected = selected;
+
+      if (isShift) {
+        const existing = [...state.selectedPointIds];
+        if (state.selectedPointId) existing.push(state.selectedPointId);
+        finalSelected = Array.from(new Set([...existing, ...selected]));
+      }
+
+      if (finalSelected.length === 1 && !isShift) {
+        state.selectPoint(finalSelected[0]);
+        state.clearSelectedPointIds();
       } else {
-        state.setSelectedPointIds(selected);
+        state.setSelectedPointIds(finalSelected);
         state.deselectPoint();
       }
 
@@ -443,6 +524,37 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
     setMousePosition(null);
     setSnapGuides({ x: null, y: null });
   }, [setMousePosition, setSnapGuides]);
+
+  useEffect(() => {
+    const onGlobalMouseUp = () => {
+      handleMouseUp();
+    };
+
+    const onBlur = () => cancelSelection();
+
+    const onMouseLeaveDoc = (e: MouseEvent) => {
+      // If leaving the document window
+      if (e.relatedTarget === null) {
+        cancelSelection();
+      }
+    };
+
+    const onVisibilityChange = () => {
+      if (document.hidden) cancelSelection();
+    };
+
+    window.addEventListener('mouseup', onGlobalMouseUp);
+    window.addEventListener('blur', onBlur);
+    document.addEventListener('mouseout', onMouseLeaveDoc);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      window.removeEventListener('mouseup', onGlobalMouseUp);
+      window.removeEventListener('blur', onBlur);
+      document.removeEventListener('mouseout', onMouseLeaveDoc);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [cancelSelection, handleMouseUp]);
 
   const handleWheel = useCallback(
     (event: Konva.KonvaEventObject<WheelEvent>) => {
@@ -516,7 +628,7 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
     }
   }, []);
 
-  const isTransformVisible = selectedPointIds.length > 0 && !selectionStart;
+  const isTransformVisible = selectedPointIds.length > 0;
   const showPenPreview = currentTool === 'pen' && !isDraggingNewPoint && !useCanvasState.getState().isDraggingHandle;
 
   const cs = typeof window !== 'undefined' ? getComputedStyle(document.documentElement) : null;

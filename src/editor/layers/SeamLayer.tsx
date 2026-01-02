@@ -90,6 +90,7 @@ export function SeamLayer() {
           // Connection line from start to start (clickable)
           <Line
             key={`seam-connection-${i}-start`}
+            name="seam-segment"
             points={[start1.x, start1.y, start2.x, start2.y]}
             stroke={"rgba(255, 165, 0, 0.6)"}
             strokeWidth={3 / useCanvasState.getState().zoom}
@@ -104,6 +105,10 @@ export function SeamLayer() {
                 state.setSeamDeleteMode(false);
                 return;
               }
+
+              // Select this seam
+              state.setSeamSelection([portion1.segment || portion1, portion2.segment || portion2]);
+
               handleSwapSeam(i);
             }}
             onMouseEnter={(e) => {
@@ -129,6 +134,7 @@ export function SeamLayer() {
           // Connection line from end to end (clickable)
           <Line
             key={`seam-connection-${i}-end`}
+            name="seam-segment"
             points={[end1.x, end1.y, end2.x, end2.y]}
             stroke={"rgba(255, 165, 0, 0.6)"}
             strokeWidth={3 / useCanvasState.getState().zoom}
@@ -143,6 +149,10 @@ export function SeamLayer() {
                 state.setSeamDeleteMode(false);
                 return;
               }
+
+              // Select this seam
+              state.setSeamSelection([portion1.segment || portion1, portion2.segment || portion2]);
+
               handleSwapSeam(i);
             }}
             onMouseEnter={(e) => {
@@ -179,6 +189,7 @@ export function SeamLayer() {
         return [
           <Line
             key={`seam-${i}-1`}
+            name="seam-segment"
             points={getLine(pA1, pA2)}
             stroke={"orange"}
             strokeWidth={2 / useCanvasState.getState().zoom}
@@ -191,7 +202,11 @@ export function SeamLayer() {
                 state.removeSeam(s1, s2);
                 state.setSeamSelection([]);
                 state.setSeamDeleteMode(false);
+                return;
               }
+
+              // Select this seam
+              state.setSeamSelection([portion1 as [string, string], portion2 as [string, string]]);
             }}
             onMouseEnter={(e) => {
               const line = e.target as unknown as KonvaLine;
@@ -210,6 +225,7 @@ export function SeamLayer() {
           />,
           <Line
             key={`seam-${i}-2`}
+            name="seam-segment"
             points={getLine(pB1, pB2)}
             stroke={"orange"}
             strokeWidth={2 / useCanvasState.getState().zoom}
@@ -222,7 +238,11 @@ export function SeamLayer() {
                 state.removeSeam(s1, s2);
                 state.setSeamSelection([]);
                 state.setSeamDeleteMode(false);
+                return;
               }
+
+              // Select this seam
+              state.setSeamSelection([portion1 as [string, string], portion2 as [string, string]]);
             }}
             onMouseEnter={(e) => {
               const line = e.target as unknown as KonvaLine;

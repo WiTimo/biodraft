@@ -413,10 +413,30 @@ export function PathsLayer() {
           onMouseDown={(e) => {
             const ids = path.points.map((p) => p.id);
             const state = useCanvasState.getState();
-            if (ids.length === 1) state.selectPoint(ids[0]);
-            else {
-              state.setSelectedPointIds(ids);
-              state.deselectPoint();
+            const isShift = e.evt.shiftKey;
+
+            if (isShift) {
+              const existing = [...state.selectedPointIds];
+              if (state.selectedPointId) existing.push(state.selectedPointId);
+
+              const currentSelected = new Set(existing);
+              const isAlreadySelected = ids.every((id) => currentSelected.has(id));
+
+              if (isAlreadySelected) {
+                const newSelected = existing.filter((id) => !ids.includes(id));
+                state.setSelectedPointIds(newSelected);
+                state.deselectPoint();
+              } else {
+                const newSelected = Array.from(new Set([...existing, ...ids]));
+                state.setSelectedPointIds(newSelected);
+                state.deselectPoint();
+              }
+            } else {
+              if (ids.length === 1) state.selectPoint(ids[0]);
+              else {
+                state.setSelectedPointIds(ids);
+                state.deselectPoint();
+              }
             }
           }}
         />
@@ -499,7 +519,44 @@ export function PathsLayer() {
               setDragCurrentT(t);
             }}
             onClick={() => {
-              // drag-based seaming only
+              // Handle click selection for existing seams
+              const state = useCanvasState.getState();
+
+              if (state.seamDeleteMode) {
+                // If in delete mode, remove the seam that includes this segment (if any)
+                const seamToRemove = seams.find(([partA, partB]) => {
+                  const segA = seamPartToSegment(partA as any);
+                  const segB = seamPartToSegment(partB as any);
+                  return segmentsEqual(segA, segment) || segmentsEqual(segB, segment);
+                });
+
+                if (seamToRemove) {
+                  const [partA, partB] = seamToRemove;
+                  state.removeSeam(seamPartToSegment(partA as any), seamPartToSegment(partB as any));
+                  state.setSeamSelection([]);
+                  setSelectedSeamSegment(null);
+                }
+
+                state.setSeamDeleteMode(false);
+                return;
+              }
+
+              // If this segment is part of a seam, select that seam (two segments)
+              const matchingSeam = seams.find(([partA, partB]) => {
+                const segA = seamPartToSegment(partA as any);
+                const segB = seamPartToSegment(partB as any);
+                return segmentsEqual(segA, segment) || segmentsEqual(segB, segment);
+              });
+
+              if (matchingSeam) {
+                const [partA, partB] = matchingSeam;
+                state.setSeamSelection([seamPartToSegment(partA as any), seamPartToSegment(partB as any)]);
+                setSelectedSeamSegment(null);
+              } else {
+                // Not part of a seam -> clear selection
+                state.setSeamSelection([]);
+                setSelectedSeamSegment(null);
+              }
             }}
             onContextMenu={(e) => {
               if (currentTool !== 'seam') return;
@@ -629,10 +686,31 @@ export function PathsLayer() {
               if (currentTool !== 'select') return;
               const ids = path.points.map((p) => p.id);
               const state = useCanvasState.getState();
-              if (ids.length === 1) state.selectPoint(ids[0]);
-              else {
-                state.setSelectedPointIds(ids);
-                state.deselectPoint();
+              // e is from Konva (passed via LinePath), so e.evt exists
+              const isShift = e?.evt?.shiftKey;
+
+              if (isShift) {
+                const existing = [...state.selectedPointIds];
+                if (state.selectedPointId) existing.push(state.selectedPointId);
+
+                const currentSelected = new Set(existing);
+                const isAlreadySelected = ids.every((id) => currentSelected.has(id));
+
+                if (isAlreadySelected) {
+                  const newSelected = existing.filter((id) => !ids.includes(id));
+                  state.setSelectedPointIds(newSelected);
+                  state.deselectPoint();
+                } else {
+                  const newSelected = Array.from(new Set([...existing, ...ids]));
+                  state.setSelectedPointIds(newSelected);
+                  state.deselectPoint();
+                }
+              } else {
+                if (ids.length === 1) state.selectPoint(ids[0]);
+                else {
+                  state.setSelectedPointIds(ids);
+                  state.deselectPoint();
+                }
               }
             }}
           />
