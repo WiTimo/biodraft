@@ -364,8 +364,23 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
         if (state.isAltPressed && state.gridEnabled) {
           const snapped = snapWorldToVisibleGrid(worldPosition);
           setSnapGuides({ x: snapped.x, y: snapped.y });
+
+          // If the user is currently dragging a newly placed point, move its handles using the snapped position
+          if (isDraggingNewPoint && newPointId) {
+            const path = paths.find((candidate) => candidate.points.some((point) => point.id === newPointId));
+            const point = path?.points.find((candidate) => candidate.id === newPointId);
+            if (point) {
+              const dx = snapped.x - point.x;
+              const dy = snapped.y - point.y;
+              moveHandle(newPointId, 'handleOut', dx, dy);
+              moveHandle(newPointId, 'handleIn', -dx, -dy);
+            }
+          }
+
+          // Do not proceed with other pen snapping behavior when ALT+Grid is active
           return;
         }
+
         // If ALT is pressed but grid disabled, don't set grid snap guides; fall through to normal snapping behavior
         if (state.isAltPressed && !state.gridEnabled) {
           setSnapGuides({ x: null, y: null });
