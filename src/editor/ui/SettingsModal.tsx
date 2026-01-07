@@ -74,9 +74,9 @@ export default function SettingsModal({ open, onClose }: { open: boolean; onClos
   // update validation on input change
   useEffect(() => {
     const hh = validateHeight(formHuman.units as 'metric' | 'imperial', formHuman.height);
-    setHeightError(hh.valid ? null : (hh.error ? t(hh.error.key, hh.error.params as any) : ''));
+    setHeightError(hh.valid ? null : (hh.error ? String(t(hh.error.key, hh.error.params as any)) : ''));
     const ww = validateWeight(formHuman.units as 'metric' | 'imperial', formHuman.weight);
-    setWeightError(ww.valid ? null : (ww.error ? t(ww.error.key, ww.error.params as any) : ''));
+    setWeightError(ww.valid ? null : (ww.error ? String(t(ww.error.key, ww.error.params as any)) : ''));
   }, [formHuman.height, formHuman.units, formHuman.weight]);
 
   const canSave = !(heightError || weightError);

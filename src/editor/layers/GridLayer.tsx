@@ -50,7 +50,8 @@ export function GridLayer({
     return nextLines;
   }, [basePixelGridSize, height, offset.x, offset.y, width, zoom]);
 
-  const theme = useCanvasState((s) => s.theme); // cause re-render when theme changes
+  // ensure grid re-renders when theme changes
+  useCanvasState((s) => s.theme);
   const cs = typeof window !== 'undefined' ? getComputedStyle(document.documentElement) : null;
   const gridColor = (cs?.getPropertyValue('--grid') || '#e8e8e8').trim();
 

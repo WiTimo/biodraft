@@ -422,6 +422,55 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
         setSnapGuides({ x: snapX, y: snapY });
       }
 
+      // If a selection drag was started (via double-click or pending click-drag), move selected points/textures here
+      const stateNow = useCanvasState.getState();
+      if (stateNow.selectionDragPendingStart && stateNow.selectionDragOriginalPoints === null) {
+        // user clicked and may be starting to drag; convert small movement into an active drag
+        const worldPointer = toWorld(pointer);
+        const dx0 = worldPointer.x - stateNow.selectionDragPendingStart.x;
+        const dy0 = worldPointer.y - stateNow.selectionDragPendingStart.y;
+        const movedScreenDist = Math.sqrt((dx0 * zoom) ** 2 + (dy0 * zoom) ** 2);
+        if (movedScreenDist > 4) {
+          // Build originalPoints snapshot from currently selected point ids
+          const selectedIds = stateNow.selectedPointIds;
+          const originalPoints: Array<{ id: string; x: number; y: number }> = [];
+          for (const p of stateNow.present.paths.flatMap((pp) => pp.points)) {
+            if (selectedIds.includes(p.id)) originalPoints.push({ id: p.id, x: p.x, y: p.y });
+          }
+
+          // Build original textures
+          const originalTextures: Array<{ pathId: string; offsetX: number; offsetY: number }> = [];
+          for (const pp of stateNow.present.paths) {
+            const allSelected = pp.points.length > 0 && pp.points.every((pt) => selectedIds.includes(pt.id));
+            if (allSelected && pp.texture) {
+              originalTextures.push({ pathId: pp.id, offsetX: pp.texture.offsetX ?? 0, offsetY: pp.texture.offsetY ?? 0 });
+            }
+          }
+
+          stateNow.startSelectionDrag(stateNow.selectionDragPendingStart, originalPoints, originalTextures);
+          // ensure cursor reflects grab
+          const stage = (event && event.target && event.target.getStage) ? event.target.getStage() : null;
+          if (stage) stage.container().style.cursor = 'grabbing';
+        }
+      }
+
+      if (stateNow.selectionDragActive && stateNow.selectionDragStart && stateNow.selectionDragOriginalPoints) {
+        const worldPointer = toWorld(pointer);
+        const dx = worldPointer.x - stateNow.selectionDragStart.x;
+        const dy = worldPointer.y - stateNow.selectionDragStart.y;
+
+        // Update points positions relative to their original snapshot
+        const updates = stateNow.selectionDragOriginalPoints.map((orig) => ({ id: orig.id, x: orig.x + dx, y: orig.y + dy }));
+        stateNow.updatePointsBatch(updates as any);
+
+        // Update textures for fully-selected paths
+        for (const t of stateNow.selectionDragOriginalTextures || []) {
+          stateNow.updateTextureForPathLive(t.pathId, { offsetX: t.offsetX + dx, offsetY: t.offsetY + dy });
+        }
+
+        return;
+      }
+
       if (isPanning && lastPointerPos) {
         const dx = pointer.x - lastPointerPos.x;
         const dy = pointer.y - lastPointerPos.y;
@@ -499,6 +548,15 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
     setSnapGuides({ x: null, y: null });
 
     const state = useCanvasState.getState();
+    // End any selection drag that may have been started via double-click
+    if (state.selectionDragActive) {
+      state.endSelectionDrag();
+      const stage = (e && e.target && e.target.getStage) ? e.target.getStage() : null;
+      if (stage) stage.container().style.cursor = 'default';
+    }
+
+    // Also clear pending selection drag starts (click without movement)
+    if (state.selectionDragPendingStart) state.setSelectionDragPendingStart(null);
 
     if (currentTool === 'select' && selectionStart && selectionRect) {
       const { x, y, width, height } = selectionRect;

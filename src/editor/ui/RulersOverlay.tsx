@@ -34,9 +34,6 @@ export function RulersOverlay({
   const topCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const leftCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  const topCanvasExists = showTop && !!topCanvasRef;
-  const leftCanvasExists = showLeft && !!leftCanvasRef;
-
 
   const units = useCanvasState((s) => s.units);
   const metricUnit = useCanvasState((s) => s.metricUnit);

@@ -230,6 +230,20 @@ export interface SelectionSlice {
   setMousePosition: (pos: { x: number; y: number } | null) => void;
   snapGuides: { x: number | null; y: number | null; xs?: number[]; ys?: number[] };
   setSnapGuides: (guides: { x: number | null; y: number | null; xs?: number[]; ys?: number[] }) => void;
+
+  // Dragging an existing selection that was started from a double-click on a path
+  selectionDragActive: boolean;
+  selectionDragStart: { x: number; y: number } | null; // world coords
+  selectionDragOriginalPoints: Array<{ id: string; x: number; y: number }> | null;
+  selectionDragOriginalTextures: Array<{ pathId: string; offsetX: number; offsetY: number }> | null;
+  selectionDragPendingStart: { x: number; y: number } | null;
+  setSelectionDragPendingStart: (start: { x: number; y: number } | null) => void;
+  startSelectionDrag: (
+    start: { x: number; y: number },
+    originalPoints: Array<{ id: string; x: number; y: number }>,
+    originalTextures?: Array<{ pathId: string; offsetX: number; offsetY: number }>,
+  ) => void;
+  endSelectionDrag: () => void;
 }
 
 export interface ClipboardSlice {

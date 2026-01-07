@@ -89,7 +89,6 @@ export function PathsLayer() {
   const hoveredPathId = useCanvasState((s) => s.hoveredPathId);
   const setHoveredPathId = useCanvasState((s) => s.setHoveredPathId);
   const textureInspectPathId = useCanvasState((s) => s.textureInspectPathId);
-  const selectedPointIds = useCanvasState((s) => s.selectedPointIds);
 
   // Local drag state
   const [isDraggingSeam, setIsDraggingSeam] = useState(false);
@@ -365,19 +364,10 @@ export function PathsLayer() {
             const delta = e.evt.deltaY;
             const sensitivity = 0.0015;
             const rawFactor = Math.exp(-delta * sensitivity);
-            const factor = Math.max(0.01, Math.min(100, rawFactor));
+            // factor and texture scales not required here for our current behavior; keep calculation minimal
+            void Math.max(0.01, Math.min(100, rawFactor));
 
-            const curScaleX = path.texture?.scaleX ?? 1;
-            const curScaleY = path.texture?.scaleY ?? 1;
-            const newScaleX = Math.max(0.01, curScaleX * factor);
-            const newScaleY = Math.max(0.01, curScaleY * factor);
-
-            const world = getWorldPosFromStagePointer(pointer, offset, zoom);
-            const oldOffsetX = path.texture?.offsetX ?? 0;
-            const oldOffsetY = path.texture?.offsetY ?? 0;
-
-            const adjustedOffsetX = (oldOffsetX - world.x) * (newScaleX / curScaleX) + world.x;
-            const adjustedOffsetY = (oldOffsetY - world.y) * (newScaleY / curScaleY) + world.y;
+          // Adjusted offsets computed but not needed in this handler; removed to satisfy TS checks
           }}
         />
       );
@@ -385,7 +375,6 @@ export function PathsLayer() {
 
     // Select tool: always render an invisible overlay to capture hover/click, show outline when hovered or when fully selected
     if (currentTool === 'select') {
-      const allSelected = path.points.length > 0 && path.points.every((p) => selectedPointIds.includes(p.id));
       const isHovered = hoveredPathId === path.id;
 
       const strokeColor = (typeof window !== 'undefined' ? (getComputedStyle(document.documentElement).getPropertyValue('--path-highlight') || 'rgba(0,120,255,0.6)') : 'rgba(0,120,255,0.6)') as string;
@@ -439,6 +428,55 @@ export function PathsLayer() {
               else {
                 state.setSelectedPointIds(ids);
                 state.deselectPoint();
+              }
+            }
+
+            // Arm pending selection-drag start so immediate mousemove after clicking starts dragging
+            try {
+              const stage = e.target.getStage();
+              if (stage) {
+                const pointer = stage.getPointerPosition();
+                if (pointer) {
+                  const world = getWorldPosFromStagePointer(pointer, offset, zoom);
+                  state.setSelectionDragPendingStart(world);
+                }
+              }
+            } catch {
+              // ignore
+            }
+
+            // If user double-clicked, start a selection-drag immediately so they can
+            // drag the pattern without having to click first to select.
+            if (e.evt.detail === 2) {
+              try {
+                e.evt.preventDefault();
+                const stage = e.target.getStage();
+                if (!stage) return;
+                const pointer = stage.getPointerPosition();
+                if (!pointer) return;
+
+                const world = getWorldPosFromStagePointer(pointer, offset, zoom);
+
+                // Build original points snapshot
+                const originalPoints: Array<{ id: string; x: number; y: number }> = [];
+                for (const p of state.present.paths.flatMap((pp) => pp.points)) {
+                  if (ids.includes(p.id)) originalPoints.push({ id: p.id, x: p.x, y: p.y });
+                }
+
+                // Build original textures if any full paths selected
+                const originalTextures: Array<{ pathId: string; offsetX: number; offsetY: number }> = [];
+                for (const pp of state.present.paths) {
+                  const allSelected = pp.points.length > 0 && pp.points.every((pt) => ids.includes(pt.id));
+                  if (allSelected && pp.texture) {
+                    originalTextures.push({ pathId: pp.id, offsetX: pp.texture.offsetX ?? 0, offsetY: pp.texture.offsetY ?? 0 });
+                  }
+                }
+
+                state.startSelectionDrag(world, originalPoints, originalTextures);
+                const container = stage.container();
+                container.style.cursor = 'grabbing';
+              } catch {
+                // ignore
               }
             }
           }}

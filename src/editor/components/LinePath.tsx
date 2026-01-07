@@ -4,6 +4,8 @@ import { useCanvasState } from '../state/CanvasState';
 import type { PathTexture } from '../state/types';
 
 export function LinePath({
+  id,
+  name,
   points,
   closed = false,
   texture,
@@ -13,6 +15,8 @@ export function LinePath({
   highlighted = false,
   highlightColor,
 }: {
+  id?: string;
+  name?: string;
   points: any[];
   closed?: boolean;
   texture?: PathTexture | null;
@@ -35,6 +39,8 @@ export function LinePath({
 
   return (
     <Shape
+      id={id}
+      name={name}
       sceneFunc={(ctx, shape) => {
         ctx.beginPath();
         ctx.moveTo(points[0].x, points[0].y);
