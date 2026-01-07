@@ -8,6 +8,7 @@ import { GridLayer } from '../layers/GridLayer';
 import { PathsLayer } from '../layers/PathsLayer';
 import { PointsLayer } from '../layers/PointsLayer';
 import { SeamLayer } from '../layers/SeamLayer';
+import { CutLayer } from '../layers/CutLayer';
 import { SelectionTransformer } from '../layers/SelectionTransformer';
 import { getStep } from '../utils/grid';
 import { useCanvasState } from '../state/CanvasState';
@@ -129,6 +130,7 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
     if (currentTool === 'pen') return `url(${penCursor}) 0 0, auto`;
     if (currentTool === 'select') return `url(${selectCursor}) 8 4, auto`;
     if (currentTool === 'texture') return `url(${selectCursor}) 8 4, auto`;
+    if (currentTool === 'cut') return `url(${selectCursor}) 8 4, auto`;
     return 'default';
   }, [currentTool, isPanning, isSpacePressed, theme]);
 
@@ -714,6 +716,7 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
         <PathsLayer />
         <SeamLayer />
         <PointsLayer />
+        <CutLayer />
         {showPenPreview && <PenSegmentPreview />}
 
         {selectionRect && selectionStart && currentTool === 'select' && (

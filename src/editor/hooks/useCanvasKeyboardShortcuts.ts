@@ -52,12 +52,16 @@ export function useCanvasKeyboardShortcuts({
         KeyE: 'pen',
         KeyG: 'background',
         KeyS: 'seam',
+        KeyX: 'cut',
       } as const;
 
-      const selectedTool = toolKeys[event.code as keyof typeof toolKeys];
-      if (selectedTool) {
-        event.preventDefault();
-        state.setTool(selectedTool);
+      // Don't let Ctrl/Cmd combos accidentally switch tools (e.g. Ctrl+C/Ctrl+Z etc.)
+      if (!(event.ctrlKey || event.metaKey)) {
+        const selectedTool = toolKeys[event.code as keyof typeof toolKeys];
+        if (selectedTool) {
+          event.preventDefault();
+          state.setTool(selectedTool);
+        }
       }
 
       if (event.key === 'Escape') {

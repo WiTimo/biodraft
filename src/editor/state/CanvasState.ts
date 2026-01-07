@@ -10,6 +10,7 @@ import { createSelectionSlice } from './slices/selectionSlice';
 import { createClipboardSlice } from './slices/clipboardSlice';
 import { createSeamSlice } from './slices/seamSlice';
 import { createTextureSlice } from './slices/textureSlice';
+import { createCutSlice } from './slices/cutSlice';
 
 const createCanvasState: CanvasStateCreator<CanvasState> = (set, get, api) => ({
   ...createHistorySlice(set, get, api),
@@ -21,6 +22,7 @@ const createCanvasState: CanvasStateCreator<CanvasState> = (set, get, api) => ({
   ...createClipboardSlice(set, get, api),
   ...createSeamSlice(set, get, api),
   ...createTextureSlice(set, get, api),
+  ...createCutSlice(set, get, api),
 });
 
 export const useCanvasState = create<CanvasState>()(

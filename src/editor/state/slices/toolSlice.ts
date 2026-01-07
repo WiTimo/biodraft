@@ -9,6 +9,7 @@ export const createToolSlice: CanvasStateCreator<ToolSlice> = (set, get, _api) =
     set({ currentTool: tool });
 
     const state = get();
+    state.clearCutPicks?.();
     state.clearSelectedPointIds();
     state.deselectPoint();
     state.deselectBackgroundImages();

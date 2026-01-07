@@ -245,6 +245,7 @@ export function Toolbar({ onResetView, defaultZoom }: { onResetView?: () => void
           <ToolbarSection title={t('toolbar.sections.pattern')}>
             <ToolButton tool="select" currentTool={currentTool} onClick={() => setTool('select')} title={t('tools.select')} iconSrc="/svg/pointer.svg" hotkey="W" />
             <ToolButton tool="pen" currentTool={currentTool} onClick={() => setTool('pen')} title={t('tools.pen')} iconSrc="/svg/pen.svg" hotkey="E" />
+            <ToolButton tool="cut" currentTool={currentTool} onClick={() => setTool('cut')} title={t('tools.cut')} iconSrc="/svg/cut.svg" hotkey="X" />
           </ToolbarSection>
 
           <ToolbarSection title={t('toolbar.sections.seams')}>

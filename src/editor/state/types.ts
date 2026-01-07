@@ -62,7 +62,15 @@ export interface CanvasPresent {
   seams: SegmentSeam[];
 }
 
-export type Tool = 'pen' | 'background' | 'select' | 'seam' | 'texture';
+export type Tool = 'pen' | 'background' | 'select' | 'seam' | 'texture' | 'cut';
+
+export interface CutPick {
+  pathId: string;
+  segment: Segment;
+  t: number; // 0-1 parametric position along the segment
+  x: number;
+  y: number;
+}
 
 export interface HistorySlice {
   present: CanvasPresent;
@@ -262,6 +270,13 @@ export interface TextureSlice {
   updateTextureForPath: (pathId: string, partial: Partial<PathTexture>) => void;
 }
 
+export interface CutSlice {
+  cutPick1: CutPick | null;
+  cutPick2: CutPick | null;
+  addCutPick: (pick: CutPick) => void;
+  clearCutPicks: () => void;
+}
+
 export type CanvasState = HistorySlice &
   ToolSlice &
   ViewportSlice &
@@ -270,7 +285,8 @@ export type CanvasState = HistorySlice &
   SelectionSlice &
   ClipboardSlice &
   SeamSlice &
-  TextureSlice;
+  TextureSlice &
+  CutSlice;
 
 export type CanvasStateCreator<T> = StateCreator<
   CanvasState,

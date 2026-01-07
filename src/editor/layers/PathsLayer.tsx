@@ -64,6 +64,7 @@ function getSegmentOverlayColor(opts: {
   if (isPending2) return 'rgba(0,150,255,0.3)';
   if (isSelected) return 'rgba(0,0,255,0.5)';
   if (currentTool === 'seam') return 'rgba(0,0,255,0.05)';
+  if (currentTool === 'cut') return 'rgba(0,0,0,0.001)';
   return 'transparent';
 }
 
@@ -478,6 +479,28 @@ export function PathsLayer() {
             strokeWidth={12 / zoom}
             name="seam-segment"
             onMouseDown={(e) => {
+              if (currentTool === 'cut') {
+                e.evt.preventDefault();
+
+                const stage = e.target.getStage();
+                if (!stage) return;
+                const pointerPos = stage.getPointerPosition();
+                if (!pointerPos) return;
+
+                const world = getWorldPosFromStagePointer(pointerPos, offset, zoom);
+                const t = calculateTFromMouse(world.x, world.y, a, a.handleOut, b.handleIn, b);
+                const pos = evaluateBezier(a, a.handleOut, b.handleIn, b, t);
+
+                useCanvasState.getState().addCutPick({
+                  pathId: path.id,
+                  segment,
+                  t,
+                  x: pos.x,
+                  y: pos.y,
+                });
+                return;
+              }
+
               if (currentTool !== 'seam') return;
               e.evt.preventDefault();
 
@@ -521,6 +544,7 @@ export function PathsLayer() {
               setDragCurrentT(t);
             }}
             onClick={() => {
+              if (currentTool !== 'seam') return;
               // Handle click selection for existing seams
               const state = useCanvasState.getState();
 
@@ -594,7 +618,17 @@ export function PathsLayer() {
               }
             }}
             onMouseEnter={(e) => {
-              if (currentTool !== 'seam') return;
+              if (currentTool !== 'seam' && currentTool !== 'cut') return;
+
+              if (currentTool === 'cut') {
+                const line = e.target as KonvaLine;
+                line.stroke('rgba(0,120,255,0.25)');
+                line.strokeWidth(16 / zoom);
+                const stage = e.target.getStage();
+                if (stage) stage.container().style.cursor = 'pointer';
+                e.target.getLayer()?.batchDraw();
+                return;
+              }
 
               setSelectedSeamSegment(segment);
               const state = useCanvasState.getState();
@@ -612,7 +646,17 @@ export function PathsLayer() {
               e.target.getLayer()?.batchDraw();
             }}
             onMouseLeave={(e) => {
-              if (currentTool !== 'seam') return;
+              if (currentTool !== 'seam' && currentTool !== 'cut') return;
+
+              if (currentTool === 'cut') {
+                const line = e.target as KonvaLine;
+                line.stroke(baseColor);
+                line.strokeWidth(12 / zoom);
+                const stage = e.target.getStage();
+                if (stage) stage.container().style.cursor = 'default';
+                e.target.getLayer()?.batchDraw();
+                return;
+              }
 
               setSelectedSeamSegment(null);
               if (!isSelected) {
@@ -624,7 +668,8 @@ export function PathsLayer() {
               }
               e.target.getLayer()?.batchDraw();
             }}
-            listening={currentTool === 'seam'}
+            hitStrokeWidth={Math.max(16, 24 / zoom)}
+            listening={currentTool === 'seam' || currentTool === 'cut'}
           />
         );
       };
@@ -724,7 +769,7 @@ export function PathsLayer() {
         </Group>
       ))}
 
-      {currentTool === 'seam' ? renderSeamSelectableSegments() : null}
+      {(currentTool === 'seam' || currentTool === 'cut') ? renderSeamSelectableSegments() : null}
 
       {/* Preview line during drag */}
       {renderDragPreview()}
