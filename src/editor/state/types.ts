@@ -117,6 +117,13 @@ export interface ViewportSlice {
   setIsShiftPressed: (value: boolean) => void;
   isAltPressed: boolean;
   setIsAltPressed: (value: boolean) => void;
+
+  // Keyboard-driven panning via Space or middle-mouse: globally exposed so
+  // components can suppress interactions when the user is panning.
+  isSpacePressed: boolean;
+  setIsSpacePressed: (value: boolean) => void;
+  isPanning: boolean;
+  setIsPanning: (value: boolean) => void;
   isSimulationMode: boolean;
   setIsSimulationMode: (value: boolean) => void;
   manImageCenters: Record<string, { x: number; y: number }>;

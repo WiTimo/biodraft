@@ -63,13 +63,15 @@ export const HandleCircle = React.memo(function HandleCircle({
     fill="transparent"
     stroke="transparent"
     hitStrokeWidth={worldHitStroke}
-    draggable={currentTool === 'select' || currentTool === 'pen'}
+    draggable={(currentTool === 'select' || currentTool === 'pen') && !useCanvasState.getState().isSpacePressed && !useCanvasState.getState().isPanning}
     name="handle"
     onDragStart={(e) => {
       if (currentTool !== 'select' && currentTool !== 'pen') {
         e.cancelBubble = true;
         return;
       }
+      // Prevent handle drag when panning
+      if (useCanvasState.getState().isSpacePressed || useCanvasState.getState().isPanning) return;
       startHandleMove(pointId);
     }}
     onDragMove={(e) => {

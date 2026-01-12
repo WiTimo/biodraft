@@ -309,7 +309,10 @@ export function PathsLayer() {
             if (!isDraggingTexture) useCanvasState.getState().setTextureInteractionActive(false);
           }}
           onMouseDown={(e) => {
+            // Prevent texture dragging when panning (space/middle-mouse)
             const state = useCanvasState.getState();
+            if (state.isSpacePressed || (e.evt && e.evt.button === 1)) return;
+
             state.setTextureInspectPathId(state.textureInspectPathId === path.id ? null : path.id);
 
             e.evt.preventDefault();
@@ -403,31 +406,33 @@ export function PathsLayer() {
             if (stage) stage.container().style.cursor = 'default';
           }}
           onMouseDown={(e) => {
+            // If user is holding space or using middle mouse (panning), do not start selection or drag interactions here.
+            const st = useCanvasState.getState();
+            if (st.isSpacePressed || (e.evt && e.evt.button === 1)) return;
             const ids = path.points.map((p) => p.id);
-            const state = useCanvasState.getState();
             const isShift = e.evt.shiftKey;
 
             if (isShift) {
-              const existing = [...state.selectedPointIds];
-              if (state.selectedPointId) existing.push(state.selectedPointId);
+              const existing = [...st.selectedPointIds];
+              if (st.selectedPointId) existing.push(st.selectedPointId);
 
               const currentSelected = new Set(existing);
               const isAlreadySelected = ids.every((id) => currentSelected.has(id));
 
               if (isAlreadySelected) {
                 const newSelected = existing.filter((id) => !ids.includes(id));
-                state.setSelectedPointIds(newSelected);
-                state.deselectPoint();
+                st.setSelectedPointIds(newSelected);
+                st.deselectPoint();
               } else {
                 const newSelected = Array.from(new Set([...existing, ...ids]));
-                state.setSelectedPointIds(newSelected);
-                state.deselectPoint();
+                st.setSelectedPointIds(newSelected);
+                st.deselectPoint();
               }
             } else {
-              if (ids.length === 1) state.selectPoint(ids[0]);
+              if (ids.length === 1) st.selectPoint(ids[0]);
               else {
-                state.setSelectedPointIds(ids);
-                state.deselectPoint();
+                st.setSelectedPointIds(ids);
+                st.deselectPoint();
               }
             }
 
@@ -438,7 +443,7 @@ export function PathsLayer() {
                 const pointer = stage.getPointerPosition();
                 if (pointer) {
                   const world = getWorldPosFromStagePointer(pointer, offset, zoom);
-                  state.setSelectionDragPendingStart(world);
+                  st.setSelectionDragPendingStart(world);
                 }
               }
             } catch {
@@ -459,20 +464,20 @@ export function PathsLayer() {
 
                 // Build original points snapshot
                 const originalPoints: Array<{ id: string; x: number; y: number }> = [];
-                for (const p of state.present.paths.flatMap((pp) => pp.points)) {
+                for (const p of st.present.paths.flatMap((pp) => pp.points)) {
                   if (ids.includes(p.id)) originalPoints.push({ id: p.id, x: p.x, y: p.y });
                 }
 
                 // Build original textures if any full paths selected
                 const originalTextures: Array<{ pathId: string; offsetX: number; offsetY: number }> = [];
-                for (const pp of state.present.paths) {
+                for (const pp of st.present.paths) {
                   const allSelected = pp.points.length > 0 && pp.points.every((pt) => ids.includes(pt.id));
                   if (allSelected && pp.texture) {
                     originalTextures.push({ pathId: pp.id, offsetX: pp.texture.offsetX ?? 0, offsetY: pp.texture.offsetY ?? 0 });
                   }
                 }
 
-                state.startSelectionDrag(world, originalPoints, originalTextures);
+                st.startSelectionDrag(world, originalPoints, originalTextures);
                 const container = stage.container();
                 container.style.cursor = 'grabbing';
               } catch {
@@ -517,6 +522,10 @@ export function PathsLayer() {
             strokeWidth={12 / zoom}
             name="seam-segment"
             onMouseDown={(e) => {
+              // Ignore seam segment interaction when panning (space/middle-mouse)
+              const st = useCanvasState.getState();
+              if (st.isSpacePressed || (e.evt && e.evt.button === 1)) return;
+
               if (currentTool === 'cut') {
                 e.evt.preventDefault();
 

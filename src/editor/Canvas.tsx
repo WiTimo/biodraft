@@ -24,8 +24,10 @@ Konva.showWarnings = false;
 export function Canvas() {
   const stageRef = useRef<Konva.Stage>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
-  const [isSpacePressed, setIsSpacePressed] = useState(false);
-  const [isPanning, setIsPanning] = useState(false);
+  const isSpacePressed = useCanvasState((s) => s.isSpacePressed);
+  const isPanning = useCanvasState((s) => s.isPanning);
+  const setIsSpacePressed = useCanvasState((s) => s.setIsSpacePressed);
+  const setIsPanning = useCanvasState((s) => s.setIsPanning);
   const [viewportSize, setViewportSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; items: ContextMenuItem[] } | null>(null);
 

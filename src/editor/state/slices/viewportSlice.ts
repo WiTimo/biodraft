@@ -25,6 +25,12 @@ export const createViewportSlice: CanvasStateCreator<ViewportSlice> = (set, _get
   isAltPressed: false,
   setIsAltPressed: (isAltPressed) => set({ isAltPressed }),
 
+  // Space/middle-mouse state used for panning
+  isSpacePressed: false,
+  setIsSpacePressed: (isSpacePressed) => set({ isSpacePressed }),
+  isPanning: false,
+  setIsPanning: (isPanning) => set({ isPanning }),
+
   isSimulationMode: false,
   setIsSimulationMode: (isSimulationMode) => set({ isSimulationMode }),
 
