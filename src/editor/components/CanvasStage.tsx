@@ -8,6 +8,7 @@ import { GridLayer } from '../layers/GridLayer';
 import { PathsLayer } from '../layers/PathsLayer';
 import { PointsLayer } from '../layers/PointsLayer';
 import { SeamLayer } from '../layers/SeamLayer';
+import { CutLayer } from '../layers/CutLayer';
 import { SelectionTransformer } from '../layers/SelectionTransformer';
 import { getStep } from '../utils/grid';
 import { useCanvasState } from '../state/CanvasState';
@@ -129,6 +130,7 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
     if (currentTool === 'pen') return `url(${penCursor}) 0 0, auto`;
     if (currentTool === 'select') return `url(${selectCursor}) 8 4, auto`;
     if (currentTool === 'texture') return `url(${selectCursor}) 8 4, auto`;
+    if (currentTool === 'cut') return `url(${selectCursor}) 8 4, auto`;
     return 'default';
   }, [currentTool, isPanning, isSpacePressed, theme]);
 
@@ -362,8 +364,23 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
         if (state.isAltPressed && state.gridEnabled) {
           const snapped = snapWorldToVisibleGrid(worldPosition);
           setSnapGuides({ x: snapped.x, y: snapped.y });
+
+          // If the user is currently dragging a newly placed point, move its handles using the snapped position
+          if (isDraggingNewPoint && newPointId) {
+            const path = paths.find((candidate) => candidate.points.some((point) => point.id === newPointId));
+            const point = path?.points.find((candidate) => candidate.id === newPointId);
+            if (point) {
+              const dx = snapped.x - point.x;
+              const dy = snapped.y - point.y;
+              moveHandle(newPointId, 'handleOut', dx, dy);
+              moveHandle(newPointId, 'handleIn', -dx, -dy);
+            }
+          }
+
+          // Do not proceed with other pen snapping behavior when ALT+Grid is active
           return;
         }
+
         // If ALT is pressed but grid disabled, don't set grid snap guides; fall through to normal snapping behavior
         if (state.isAltPressed && !state.gridEnabled) {
           setSnapGuides({ x: null, y: null });
@@ -403,6 +420,55 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
         }
 
         setSnapGuides({ x: snapX, y: snapY });
+      }
+
+      // If a selection drag was started (via double-click or pending click-drag), move selected points/textures here
+      const stateNow = useCanvasState.getState();
+      if (stateNow.selectionDragPendingStart && stateNow.selectionDragOriginalPoints === null) {
+        // user clicked and may be starting to drag; convert small movement into an active drag
+        const worldPointer = toWorld(pointer);
+        const dx0 = worldPointer.x - stateNow.selectionDragPendingStart.x;
+        const dy0 = worldPointer.y - stateNow.selectionDragPendingStart.y;
+        const movedScreenDist = Math.sqrt((dx0 * zoom) ** 2 + (dy0 * zoom) ** 2);
+        if (movedScreenDist > 4) {
+          // Build originalPoints snapshot from currently selected point ids
+          const selectedIds = stateNow.selectedPointIds;
+          const originalPoints: Array<{ id: string; x: number; y: number }> = [];
+          for (const p of stateNow.present.paths.flatMap((pp) => pp.points)) {
+            if (selectedIds.includes(p.id)) originalPoints.push({ id: p.id, x: p.x, y: p.y });
+          }
+
+          // Build original textures
+          const originalTextures: Array<{ pathId: string; offsetX: number; offsetY: number }> = [];
+          for (const pp of stateNow.present.paths) {
+            const allSelected = pp.points.length > 0 && pp.points.every((pt) => selectedIds.includes(pt.id));
+            if (allSelected && pp.texture) {
+              originalTextures.push({ pathId: pp.id, offsetX: pp.texture.offsetX ?? 0, offsetY: pp.texture.offsetY ?? 0 });
+            }
+          }
+
+          stateNow.startSelectionDrag(stateNow.selectionDragPendingStart, originalPoints, originalTextures);
+          // ensure cursor reflects grab
+          const stage = (event && event.target && event.target.getStage) ? event.target.getStage() : null;
+          if (stage) stage.container().style.cursor = 'grabbing';
+        }
+      }
+
+      if (stateNow.selectionDragActive && stateNow.selectionDragStart && stateNow.selectionDragOriginalPoints) {
+        const worldPointer = toWorld(pointer);
+        const dx = worldPointer.x - stateNow.selectionDragStart.x;
+        const dy = worldPointer.y - stateNow.selectionDragStart.y;
+
+        // Update points positions relative to their original snapshot
+        const updates = stateNow.selectionDragOriginalPoints.map((orig) => ({ id: orig.id, x: orig.x + dx, y: orig.y + dy }));
+        stateNow.updatePointsBatch(updates as any);
+
+        // Update textures for fully-selected paths
+        for (const t of stateNow.selectionDragOriginalTextures || []) {
+          stateNow.updateTextureForPathLive(t.pathId, { offsetX: t.offsetX + dx, offsetY: t.offsetY + dy });
+        }
+
+        return;
       }
 
       if (isPanning && lastPointerPos) {
@@ -482,6 +548,15 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
     setSnapGuides({ x: null, y: null });
 
     const state = useCanvasState.getState();
+    // End any selection drag that may have been started via double-click
+    if (state.selectionDragActive) {
+      state.endSelectionDrag();
+      const stage = (e && e.target && e.target.getStage) ? e.target.getStage() : null;
+      if (stage) stage.container().style.cursor = 'default';
+    }
+
+    // Also clear pending selection drag starts (click without movement)
+    if (state.selectionDragPendingStart) state.setSelectionDragPendingStart(null);
 
     if (currentTool === 'select' && selectionStart && selectionRect) {
       const { x, y, width, height } = selectionRect;
@@ -714,6 +789,7 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
         <PathsLayer />
         <SeamLayer />
         <PointsLayer />
+        <CutLayer />
         {showPenPreview && <PenSegmentPreview />}
 
         {selectionRect && selectionStart && currentTool === 'select' && (

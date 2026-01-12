@@ -62,7 +62,15 @@ export interface CanvasPresent {
   seams: SegmentSeam[];
 }
 
-export type Tool = 'pen' | 'background' | 'select' | 'seam' | 'texture';
+export type Tool = 'pen' | 'background' | 'select' | 'seam' | 'texture' | 'cut';
+
+export interface CutPick {
+  pathId: string;
+  segment: Segment;
+  t: number; // 0-1 parametric position along the segment
+  x: number;
+  y: number;
+}
 
 export interface HistorySlice {
   present: CanvasPresent;
@@ -222,6 +230,20 @@ export interface SelectionSlice {
   setMousePosition: (pos: { x: number; y: number } | null) => void;
   snapGuides: { x: number | null; y: number | null; xs?: number[]; ys?: number[] };
   setSnapGuides: (guides: { x: number | null; y: number | null; xs?: number[]; ys?: number[] }) => void;
+
+  // Dragging an existing selection that was started from a double-click on a path
+  selectionDragActive: boolean;
+  selectionDragStart: { x: number; y: number } | null; // world coords
+  selectionDragOriginalPoints: Array<{ id: string; x: number; y: number }> | null;
+  selectionDragOriginalTextures: Array<{ pathId: string; offsetX: number; offsetY: number }> | null;
+  selectionDragPendingStart: { x: number; y: number } | null;
+  setSelectionDragPendingStart: (start: { x: number; y: number } | null) => void;
+  startSelectionDrag: (
+    start: { x: number; y: number },
+    originalPoints: Array<{ id: string; x: number; y: number }>,
+    originalTextures?: Array<{ pathId: string; offsetX: number; offsetY: number }>,
+  ) => void;
+  endSelectionDrag: () => void;
 }
 
 export interface ClipboardSlice {
@@ -229,6 +251,11 @@ export interface ClipboardSlice {
   setClipboard: (paths: Path[]) => void;
   copySelectedPoints: () => void;
   pasteClipboardPoints: () => void;
+
+  // Pattern-level copy/paste: copy a pattern's transform/texture/position
+  patternClipboard: Path | null;
+  copyPatternValues: (pathId: string) => void;
+  pastePatternValues: (targetPathId: string, mode: 'front' | 'back') => void;
 }
 
 export interface SeamSlice {
@@ -262,6 +289,13 @@ export interface TextureSlice {
   updateTextureForPath: (pathId: string, partial: Partial<PathTexture>) => void;
 }
 
+export interface CutSlice {
+  cutPick1: CutPick | null;
+  cutPick2: CutPick | null;
+  addCutPick: (pick: CutPick) => void;
+  clearCutPicks: () => void;
+}
+
 export type CanvasState = HistorySlice &
   ToolSlice &
   ViewportSlice &
@@ -270,7 +304,8 @@ export type CanvasState = HistorySlice &
   SelectionSlice &
   ClipboardSlice &
   SeamSlice &
-  TextureSlice;
+  TextureSlice &
+  CutSlice;
 
 export type CanvasStateCreator<T> = StateCreator<
   CanvasState,

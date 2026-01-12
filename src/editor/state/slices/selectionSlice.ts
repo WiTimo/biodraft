@@ -87,4 +87,18 @@ export const createSelectionSlice: CanvasStateCreator<SelectionSlice> = (set, ge
 
   snapGuides: { x: null, y: null },
   setSnapGuides: (guides) => set({ snapGuides: guides }),
+
+  // Selection drag for double-click-drag behaviour
+  selectionDragActive: false,
+  selectionDragStart: null,
+  selectionDragOriginalPoints: null,
+  selectionDragOriginalTextures: null,
+  selectionDragPendingStart: null,
+  setSelectionDragPendingStart: (start) => set({ selectionDragPendingStart: start }),
+  startSelectionDrag: (start, originalPoints, originalTextures = []) => {
+    const { saveState } = get();
+    saveState();
+    set({ selectionDragActive: true, selectionDragStart: start, selectionDragOriginalPoints: originalPoints, selectionDragOriginalTextures: originalTextures, selectionDragPendingStart: null });
+  },
+  endSelectionDrag: () => set({ selectionDragActive: false, selectionDragStart: null, selectionDragOriginalPoints: null, selectionDragOriginalTextures: null }),
 });

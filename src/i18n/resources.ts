@@ -22,6 +22,7 @@ export const resources = {
       tools: {
         select: 'Select',
         pen: 'Pen',
+        cut: 'Cut',
         seam: 'Seam',
         texture: 'Texture',
         background: 'Background',
@@ -219,6 +220,7 @@ export const resources = {
       tools: {
         select: 'Auswählen',
         pen: 'Stift',
+        cut: 'Schneiden',
         seam: 'Naht',
         texture: 'Textur',
         background: 'Hintergrund',
@@ -395,7 +397,7 @@ export const resources = {
         on: 'ACTIVADO',
         off: 'DESACTIVADO',
       },
-      tools: { select: 'Seleccionar', pen: 'Pluma', seam: 'Costura', texture: 'Textura', background: 'Fondo' },
+      tools: { select: 'Seleccionar', pen: 'Pluma', cut: 'Cortar', seam: 'Costura', texture: 'Textura', background: 'Fondo' },
       settings: {
         tabs: { general: 'General', keybinds: 'Atajos' },
         title: 'Configuración',
@@ -545,7 +547,7 @@ export const resources = {
         on: 'ACTIVÉ',
         off: 'DÉSACTIVÉ',
       },
-      tools: { select: 'Sélection', pen: 'Stylet', seam: 'Couture', texture: 'Texture', background: 'Arrière-plan' },
+      tools: { select: 'Sélection', pen: 'Stylet', cut: 'Couper', seam: 'Couture', texture: 'Texture', background: 'Arrière-plan' },
       settings: {
         tabs: { general: 'Général', keybinds: 'Raccourcis' },
         title: 'Paramètres',
@@ -672,7 +674,7 @@ export const resources = {
         on: 'LIGADO',
         off: 'DESLIGADO',
       },
-      tools: { select: 'Selecionar', pen: 'Caneta', seam: 'Costura', texture: 'Textura', background: 'Fundo' },
+      tools: { select: 'Selecionar', pen: 'Caneta', cut: 'Cortar', seam: 'Costura', texture: 'Textura', background: 'Fundo' },
       settings: {
         tabs: { general: 'Geral', keybinds: 'Atalhos' },
         title: 'Configurações',
@@ -793,7 +795,7 @@ export const resources = {
         on: 'ON',
         off: 'OFF',
       },
-      tools: { select: 'Seleziona', pen: 'Penna', seam: 'Cucitura', texture: 'Texture', background: 'Sfondo' },
+      tools: { select: 'Seleziona', pen: 'Penna', cut: 'Taglia', seam: 'Cucitura', texture: 'Texture', background: 'Sfondo' },
       settings: {
         tabs: { general: 'Generale', keybinds: 'Scorciatoie' },
         title: 'Impostazioni',
@@ -862,7 +864,7 @@ export const resources = {
   ru: {
     translation: {
       common: { close: 'Закрыть', cancel: 'Отмена', save: 'Сохранить', file: 'Файл', settings: 'Настройки', status: 'Статус', generate: 'Сгенерировать', delete: 'Удалить', remove: 'Убрать', add: 'Добавить', reset: 'Сбросить', zoom: 'Масштаб', edit: 'Редакт.', live: 'Live', on: 'ВКЛ', off: 'ВЫКЛ' },
-      tools: { select: 'Выбор', pen: 'Перо', seam: 'Шов', texture: 'Текстура', background: 'Фон' },
+      tools: { select: 'Выбор', pen: 'Перо', cut: 'Разрез', seam: 'Шов', texture: 'Текстура', background: 'Фон' },
       settings: {
         tabs: { general: 'Общие', keybinds: 'Клавиши' },
         title: 'Настройки',
@@ -914,7 +916,7 @@ export const resources = {
   hi: {
     translation: {
       common: { close: 'बंद करें', cancel: 'रद्द करें', save: 'सहेजें', file: 'फ़ाइल', settings: 'सेटिंग्स', status: 'स्थिति', generate: 'जनरेट करें', delete: 'हटाएँ', remove: 'निकालें', add: 'जोड़ें', reset: 'रीसेट', zoom: 'ज़ूम', edit: 'एडिट', live: 'लाइव', on: 'चालू', off: 'बंद' },
-      tools: { select: 'चुनें', pen: 'पेन', seam: 'सीम', texture: 'टेक्सचर', background: 'बैकग्राउंड' },
+      tools: { select: 'चुनें', pen: 'पेन', cut: 'कट', seam: 'सीम', texture: 'टेक्सचर', background: 'बैकग्राउंड' },
       settings: {
         tabs: { general: 'सामान्य', keybinds: 'शॉर्टकट' },
         title: 'सेटिंग्स',
@@ -966,7 +968,7 @@ export const resources = {
   ja: {
     translation: {
       common: { close: '閉じる', cancel: 'キャンセル', save: '保存', file: 'ファイル', settings: '設定', status: 'ステータス', generate: '生成', delete: '削除', remove: '削除', add: '追加', reset: 'リセット', zoom: 'ズーム', edit: '編集', live: 'ライブ', on: 'オン', off: 'オフ' },
-      tools: { select: '選択', pen: 'ペン', seam: 'シーム', texture: 'テクスチャ', background: '背景' },
+      tools: { select: '選択', pen: 'ペン', cut: 'カット', seam: 'シーム', texture: 'テクスチャ', background: '背景' },
       settings: {
         tabs: { general: '一般', keybinds: 'キー割り当て' },
         title: '設定',
@@ -1010,7 +1012,7 @@ export const resources = {
   ko: {
     translation: {
       common: { close: '닫기', cancel: '취소', save: '저장', file: '파일', settings: '설정', status: '상태', generate: '생성', delete: '삭제', remove: '제거', add: '추가', reset: '재설정', zoom: '줌', edit: '편집', live: '라이브', on: '켜짐', off: '꺼짐' },
-      tools: { select: '선택', pen: '펜', seam: '심', texture: '텍스처', background: '배경' },
+      tools: { select: '선택', pen: '펜', cut: '자르기', seam: '심', texture: '텍스처', background: '배경' },
       settings: {
         tabs: { general: '일반', keybinds: '단축키' },
         title: '설정',
@@ -1054,7 +1056,7 @@ export const resources = {
   zh: {
     translation: {
       common: { close: '关闭', cancel: '取消', save: '保存', file: '文件', settings: '设置', status: '状态', generate: '生成', delete: '删除', remove: '移除', add: '添加', reset: '重置', zoom: '缩放', edit: '编辑', live: '实时', on: '开启', off: '关闭' },
-      tools: { select: '选择', pen: '钢笔', seam: '缝线', texture: '纹理', background: '背景' },
+      tools: { select: '选择', pen: '钢笔', cut: '裁剪', seam: '缝线', texture: '纹理', background: '背景' },
       settings: {
         tabs: { general: '常规', keybinds: '快捷键' },
         title: '设置',
@@ -1098,7 +1100,7 @@ export const resources = {
   ar: {
     translation: {
       common: { close: 'إغلاق', cancel: 'إلغاء', save: 'حفظ', file: 'ملف', settings: 'الإعدادات', status: 'الحالة', generate: 'توليد', delete: 'حذف', remove: 'إزالة', add: 'إضافة', reset: 'إعادة ضبط', zoom: 'تكبير', edit: 'تحرير', live: 'مباشر', on: 'تشغيل', off: 'إيقاف' },
-      tools: { select: 'تحديد', pen: 'قلم', seam: 'درزة', texture: 'ملمس', background: 'خلفية' },
+      tools: { select: 'تحديد', pen: 'قلم', cut: 'قص', seam: 'درزة', texture: 'ملمس', background: 'خلفية' },
       settings: {
         tabs: { general: 'عام', keybinds: 'اختصارات' },
         title: 'الإعدادات',

@@ -11,6 +11,7 @@ import {
   type SharedPointGroup,
 } from './shared';
 import i18n from '../../../i18n';
+import { toast } from '../../../ui/toast/toastStore';
 
 /**
  * Clean up empty paths from the canvas state.
@@ -47,7 +48,7 @@ export function exportToJson() {
   const validPaths = filterEmptyPaths(paths);
 
   if (validPaths.length === 0) {
-    alert(i18n.t('importExport.noPatternsToExport'));
+    toast.error(i18n.t('importExport.noPatternsToExport'));
     return;
   }
 

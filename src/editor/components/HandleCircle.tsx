@@ -2,6 +2,8 @@ import { useCanvasState } from '../state/CanvasState';
 import { useEffect, useState } from 'react';
 import { Circle, Line } from 'react-konva';
 import React from 'react';
+import { getStep } from '../utils/grid';
+
 
 interface HandleCircleProps {
   pointX: number;
@@ -71,22 +73,71 @@ export const HandleCircle = React.memo(function HandleCircle({
       startHandleMove(pointId);
     }}
     onDragMove={(e) => {
-      const newX = e.target.x();
-      const newY = e.target.y();
-      setPos({ x: newX, y: newY });
+      const newXraw = e.target.x();
+      const newYraw = e.target.y();
+
+      // If ALT is pressed and grid snapping is enabled, snap the handle movement to the visible grid
+      const altPressed = e.evt.altKey || e.evt.metaKey;
+      const state = useCanvasState.getState();
+
+      let newX = newXraw;
+      let newY = newYraw;
+
+      if (altPressed && state.gridEnabled) {
+        // Match CanvasStage's snapWorldToVisibleGrid logic
+        const MM_PER_WORLD_UNIT = 10;
+        const BASE_PIXEL_GRID_SIZE = 30;
+        const rawWorldStep = BASE_PIXEL_GRID_SIZE / zoom;
+        const rawMmStep = rawWorldStep * MM_PER_WORLD_UNIT;
+        const mmStep = getStep(rawMmStep);
+        const worldStep = mmStep / MM_PER_WORLD_UNIT;
+
+        newX = Math.round(newXraw / worldStep) * worldStep;
+        newY = Math.round(newYraw / worldStep) * worldStep;
+
+        // Update the visible position of the handle while dragging
+        setPos({ x: newX, y: newY });
+
+        // Also set snap guides for visual feedback
+        state.setSnapGuides({ x: newX, y: newY });
+      } else {
+        setPos({ x: newX, y: newY });
+      }
 
       const dx = newX - pointX;
       const dy = newY - pointY;
-      const altPressed = e.evt.altKey || e.evt.metaKey;
+
       moveHandle(pointId, type, dx, dy, false, altPressed);
     }}
     onDragEnd={(e) => {
-      const finalDx = e.target.x() - pointX;
-      const finalDy = e.target.y() - pointY;
+      const rawX = e.target.x();
+      const rawY = e.target.y();
       const altPressed = e.evt.altKey || e.evt.metaKey;
+      const state = useCanvasState.getState();
+
+      let finalX = rawX;
+      let finalY = rawY;
+
+      if (altPressed && state.gridEnabled) {
+        const MM_PER_WORLD_UNIT = 10;
+        const BASE_PIXEL_GRID_SIZE = 30;
+        const rawWorldStep = BASE_PIXEL_GRID_SIZE / zoom;
+        const rawMmStep = rawWorldStep * MM_PER_WORLD_UNIT;
+        const mmStep = getStep(rawMmStep);
+        const worldStep = mmStep / MM_PER_WORLD_UNIT;
+
+        finalX = Math.round(rawX / worldStep) * worldStep;
+        finalY = Math.round(rawY / worldStep) * worldStep;
+      }
+
       useCanvasState.getState().saveState();
+      const finalDx = finalX - pointX;
+      const finalDy = finalY - pointY;
       moveHandle(pointId, type, finalDx, finalDy, true, altPressed);
       endHandleMove();
+
+      // Clear snap guides set during dragging
+      if (state.gridEnabled) state.setSnapGuides({ x: null, y: null });
     }}
   />
 
