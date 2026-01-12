@@ -1,6 +1,7 @@
 import { Canvas } from './editor/Canvas';
 import LanguageProvider from './editor/ui/LanguageProvider';
 import ThemeProvider from './editor/ui/ThemeProvider';
+import ToastViewport from './ui/toast/ToastViewport';
 
 function App() {
   return (
@@ -8,6 +9,7 @@ function App() {
       <LanguageProvider />
       <ThemeProvider />
       <Canvas />
+      <ToastViewport />
     </main>
   );
 }

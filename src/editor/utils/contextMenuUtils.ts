@@ -3,6 +3,7 @@ import { CanvasState } from '../state/types';
 import { useCanvasState } from '../state/CanvasState';
 import { ContextMenuItem } from '../ui/ContextMenu';
 import { Segment, SegmentSeam } from '../state/types';
+import { toast } from '../../ui/toast/toastStore';
 
 export type ContextType =
   | { type: 'CANVAS' }
@@ -210,8 +211,8 @@ export function getMenuItems(
       }},
       { id: 'desel-all', label: 'Deselect All', onClick: () => useCanvasState.getState().clearSelectedPointIds(), disabled: state.selectedPointIds.length === 0 },
       { id: 'sep2', separator: true },
-      { id: 'add-pat', label: 'Add New Pattern', onClick: () => window.alert('Use Pen tool to create patterns') },
-      { id: 'import', label: 'Import / Load JSON', onClick: () => window.alert('Import coming soon') },
+             { id: 'add-pat', label: 'Add New Pattern', onClick: () => toast.info('Use the Pen tool to create patterns') },
+             { id: 'import', label: 'Import / Load JSON', onClick: () => toast.info('Import coming soon') },
       { id: 'sep3', separator: true },
       { id: 'reset-view', label: 'Reset View', onClick: callbacks.resetView },
       { id: 'zoom-in', label: 'Zoom In', onClick: callbacks.zoomIn },
@@ -229,7 +230,7 @@ export function getMenuItems(
       { id: 'copy-values', label: 'Copy Values', onClick: () => {
          if(path) {
             useCanvasState.getState().copyPatternValues(path.id);
-            window.alert('Pattern values copied');
+                   toast.success('Pattern values copied');
          }
       }},
       { id: 'paste-front', label: 'Paste Front', onClick: () => {
@@ -259,7 +260,7 @@ export function getMenuItems(
          s.setSelectedPointIds(targetIds);
          s.deleteSelectedPoints();
       }},
-      { id: 'rename', label: 'Rename Pattern', onClick: () => window.alert('Rename coming soon') },
+             { id: 'rename', label: 'Rename Pattern', onClick: () => toast.info('Rename coming soon') },
     );
     
     addTransformActions(targetIds);
@@ -268,8 +269,10 @@ export function getMenuItems(
       { id: 'sep2', separator: true },
       { id: 'export', label: 'Copy as JSON', onClick: () => {
          if(path) {
-             navigator.clipboard.writeText(JSON.stringify(path, null, 2));
-             window.alert('Pattern JSON copied to clipboard');
+                    navigator.clipboard
+                      .writeText(JSON.stringify(path, null, 2))
+                      .then(() => toast.success('Pattern JSON copied to clipboard'))
+                      .catch(() => toast.error('Could not copy JSON to clipboard'));
          }
       }},
     );
@@ -286,7 +289,7 @@ export function getMenuItems(
         items.push(
           { id: 'copy-values', label: 'Copy Values', onClick: () => {
             useCanvasState.getState().copyPatternValues(singleFullPath.id);
-            window.alert('Pattern values copied');
+               toast.success('Pattern values copied');
           }},
           { id: 'paste-front', label: 'Paste Front', onClick: () => {
             const s = useCanvasState.getState();
@@ -318,10 +321,10 @@ export function getMenuItems(
 
   } else if (context.type === 'SEAM') {
     items.push(
-      { id: 'sel-seam', label: 'Select Seam Segment', onClick: () => window.alert('Select seam coming soon') },
-      { id: 'remove-seam', label: 'Remove Seam', onClick: () => window.alert('Remove seam via selection/delete key for now') },
-      { id: 'flip-seam', label: 'Flip Seam Mapping', onClick: () => window.alert('Flip seam coming soon') },
-      { id: 'props', label: 'Seam Properties', onClick: () => window.alert('Seam properties coming soon') }
+             { id: 'sel-seam', label: 'Select Seam Segment', onClick: () => toast.info('Select seam coming soon') },
+             { id: 'remove-seam', label: 'Remove Seam', onClick: () => toast.info('Remove seam via selection/delete key for now') },
+             { id: 'flip-seam', label: 'Flip Seam Mapping', onClick: () => toast.info('Flip seam coming soon') },
+             { id: 'props', label: 'Seam Properties', onClick: () => toast.info('Seam properties coming soon') }
     );
   }
 

@@ -1,5 +1,6 @@
 import type { CanvasStateCreator, CutPick, CutSlice, Point, Path, Segment } from '../types';
 import { segmentsEqual } from '../utils';
+import { toast } from '../../../ui/toast/toastStore';
 
 function clamp01(v: number) {
   if (!Number.isFinite(v)) return 0;
@@ -279,7 +280,7 @@ export const createCutSlice: CanvasStateCreator<CutSlice> = (set, get, _api) => 
     }
 
     if (!target.closed) {
-      window.alert('Cut tool: please pick points on a CLOSED pattern border.');
+      toast.warning('Cut tool: please pick points on a CLOSED pattern border.');
       set({ cutPick1: null, cutPick2: null });
       return;
     }
@@ -289,7 +290,7 @@ export const createCutSlice: CanvasStateCreator<CutSlice> = (set, get, _api) => 
 
     const result = splitClosedPathIntoTwo(target, p1, p2);
     if (!result) {
-      window.alert('Cut tool: could not cut there (try two distinct points that create two valid patterns).');
+          toast.error('Cut tool: could not cut there (try two distinct points that create two valid patterns).');
       set({ cutPick1: null, cutPick2: null });
       return;
     }
