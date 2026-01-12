@@ -1,1 +1,1 @@
-Paste Front / Back broke
+When pressing space and then dragging the camera, we are also able to drag patterns when clicking on them and dragging (with the hand drag icon). That should not be the case

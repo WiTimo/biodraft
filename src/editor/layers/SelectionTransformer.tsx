@@ -43,6 +43,22 @@ export function SelectionTransformer({ isVisible }: { isVisible: boolean }) {
 
   const dragState = useRef<Record<string, unknown> | null>(null);
 
+  const rotateStateRef = useRef<
+    | null
+    | {
+        center: { x: number; y: number };
+        startAngle: number;
+        originalPoints: Array<{
+          id: string;
+          x: number;
+          y: number;
+          handleIn: { dx: number; dy: number };
+          handleOut: { dx: number; dy: number };
+        }>;
+        originalTextures: Array<{ pathId: string; rotation: number }>;
+      }
+  >(null);
+
   const selectedPoints = useMemo(() => {
     if (!isVisible || selectedIds.length === 0) return [];
     return paths.flatMap((p) => p.points).filter((pt) => selectedIds.includes(pt.id));
@@ -144,6 +160,112 @@ export function SelectionTransformer({ isVisible }: { isVisible: boolean }) {
   const handleScreenRadius = Math.min(HANDLE_SCREEN_MAX, Math.max(HANDLE_SCREEN_MIN, HANDLE_SCREEN_BASE));
   const handleRadius = handleScreenRadius / zoom;
 
+  // Rotate handle geometry (kept constant in screen pixels)
+  const ROTATE_HANDLE_OFFSET_SCREEN = 26; // px above box
+  const ROTATE_HANDLE_RADIUS_SCREEN = 6; // px
+  const rotateHandleOffset = ROTATE_HANDLE_OFFSET_SCREEN / zoom;
+  const rotateHandleRadius = ROTATE_HANDLE_RADIUS_SCREEN / zoom;
+  const rotateHandle = { x: center.x, y: minY - rotateHandleOffset };
+
+  const onRotateDragStart = (e: any) => {
+    const stage = e.target.getStage();
+    const pointer = stage?.getPointerPosition();
+    if (!pointer) return;
+
+    const zoomNow = useCanvasState.getState().zoom;
+    const offsetNow = useCanvasState.getState().offset;
+    const worldPointer = toWorldPos(pointer, zoomNow, offsetNow);
+
+    const startAngle = Math.atan2(worldPointer.y - center.y, worldPointer.x - center.x);
+
+    const selectedIdsSet = new Set(selectedIds);
+    const originalTextures: Array<{ pathId: string; rotation: number }> = [];
+    for (const p of paths) {
+      const allSelected = p.points.every((pt: any) => selectedIdsSet.has(pt.id));
+      if (!allSelected || !p.texture) continue;
+      originalTextures.push({ pathId: p.id, rotation: p.texture.rotation ?? 0 });
+    }
+
+    rotateStateRef.current = {
+      center: { ...center },
+      startAngle,
+      originalPoints: selectedPoints.map((p) => ({
+        id: p.id,
+        x: p.x,
+        y: p.y,
+        handleIn: { ...p.handleIn },
+        handleOut: { ...p.handleOut },
+      })),
+      originalTextures,
+    };
+
+    saveState();
+    stage?.container().style.setProperty('cursor', 'grabbing');
+  };
+
+  const onRotateDragMove = (e: any) => {
+    const state = rotateStateRef.current;
+    if (!state) return;
+
+    const stage = e.target.getStage();
+    const pointer = stage?.getPointerPosition();
+    if (!pointer) return;
+
+    const zoomNow = useCanvasState.getState().zoom;
+    const offsetNow = useCanvasState.getState().offset;
+    const worldPointer = toWorldPos(pointer, zoomNow, offsetNow);
+
+    const currentAngle = Math.atan2(worldPointer.y - state.center.y, worldPointer.x - state.center.x);
+    let delta = currentAngle - state.startAngle;
+
+    // Snap rotation when shift is pressed (15° increments)
+    if (useCanvasState.getState().isShiftPressed) {
+      const step = Math.PI / 12;
+      delta = Math.round(delta / step) * step;
+    }
+
+    const cos = Math.cos(delta);
+    const sin = Math.sin(delta);
+
+    const updates = state.originalPoints.map((orig) => {
+      const dx = orig.x - state.center.x;
+      const dy = orig.y - state.center.y;
+
+      const rx = dx * cos - dy * sin;
+      const ry = dx * sin + dy * cos;
+
+      const hin = orig.handleIn;
+      const hout = orig.handleOut;
+      const rHin = { dx: hin.dx * cos - hin.dy * sin, dy: hin.dx * sin + hin.dy * cos };
+      const rHout = { dx: hout.dx * cos - hout.dy * sin, dy: hout.dx * sin + hout.dy * cos };
+
+      return {
+        id: orig.id,
+        x: state.center.x + rx,
+        y: state.center.y + ry,
+        handleIn: rHin,
+        handleOut: rHout,
+      };
+    });
+
+    updatePointsBatch(updates);
+
+    // Rotate textures for any fully-selected path
+    const deltaDeg = (delta * 180) / Math.PI;
+    for (const t of state.originalTextures) {
+      updateTextureForPathLive(t.pathId, { rotation: (t.rotation ?? 0) + deltaDeg });
+    }
+
+    // Keep the handle visually stationary (selection box recomputes from state)
+    e.target.x(rotateHandle.x);
+    e.target.y(rotateHandle.y);
+  };
+
+  const onRotateDragEnd = (e: any) => {
+    rotateStateRef.current = null;
+    e.target.getStage()?.container().style.setProperty('cursor', 'default');
+  };
+
   const onHandleDragStart = (_: any, cornerIndex: number) => {
     const corner = cornerPoints[cornerIndex];
     const centerVec = { x: corner.x - center.x, y: corner.y - center.y };
@@ -200,6 +322,35 @@ export function SelectionTransformer({ isVisible }: { isVisible: boolean }) {
 
   return (
     <>
+      {/* Rotate handle */}
+      <Line
+        points={[center.x, minY, rotateHandle.x, rotateHandle.y]}
+        stroke={(getComputedStyle(document.documentElement).getPropertyValue('--snap') || 'deepskyblue').trim()}
+        strokeWidth={1.5 / zoom}
+        listening={false}
+      />
+      <Circle
+        x={rotateHandle.x}
+        y={rotateHandle.y}
+        radius={rotateHandleRadius}
+        fill={(getComputedStyle(document.documentElement).getPropertyValue('--selection-fill') || '#2196F3').trim()}
+        stroke={(getComputedStyle(document.documentElement).getPropertyValue('--snap') || 'deepskyblue').trim()}
+        strokeWidth={1 / zoom}
+        draggable
+        name="rotate-handle"
+        onMouseEnter={(e) => {
+          const stage = e.target.getStage();
+          if (stage) stage.container().style.cursor = 'grab';
+        }}
+        onMouseLeave={(e) => {
+          const stage = e.target.getStage();
+          if (stage) stage.container().style.cursor = 'default';
+        }}
+        onDragStart={onRotateDragStart}
+        onDragMove={onRotateDragMove}
+        onDragEnd={onRotateDragEnd}
+      />
+
       <Rect
         x={minX}
         y={minY}
