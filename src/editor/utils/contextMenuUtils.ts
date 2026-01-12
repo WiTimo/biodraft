@@ -224,6 +224,29 @@ export function getMenuItems(
     const path = state.present.paths.find(p => p.id === context.pathId);
     const targetIds = path ? path.points.map(p => p.id) : [];
 
+    // Put copy/paste pattern-value actions at the top
+    items.push(
+      { id: 'copy-values', label: 'Copy Values', onClick: () => {
+         if(path) {
+            useCanvasState.getState().copyPatternValues(path.id);
+            window.alert('Pattern values copied');
+         }
+      }},
+      { id: 'paste-front', label: 'Paste Front', onClick: () => {
+         const s = useCanvasState.getState();
+         if(path && s.patternClipboard) {
+            s.pastePatternValues(path.id, 'front');
+         }
+      }, disabled: !useCanvasState.getState().patternClipboard},
+      { id: 'paste-back', label: 'Paste Back', onClick: () => {
+         const s = useCanvasState.getState();
+         if(path && s.patternClipboard) {
+            s.pastePatternValues(path.id, 'back');
+         }
+      }, disabled: !useCanvasState.getState().patternClipboard},
+      { id: 'sep-top', separator: true },
+    );
+
     items.push(
       { id: 'dup', label: 'Duplicate Pattern', onClick: () => {
         const s = useCanvasState.getState();
@@ -253,6 +276,29 @@ export function getMenuItems(
   } else if (context.type === 'SELECTION') {
       const state = useCanvasState.getState();
       const targetIds = state.selectedPointIds;
+
+      // Detect if selection is exactly one full pattern (all points of a single path)
+      const matchingPaths = state.present.paths.filter((p) => p.points.every(pt => targetIds.includes(pt.id)) && p.points.length > 0);
+      const singleFullPath = matchingPaths.length === 1 ? matchingPaths[0] : null;
+
+      // If selection corresponds to a single pattern, expose Copy Values / Paste Front / Paste Back at the top
+      if (singleFullPath) {
+        items.push(
+          { id: 'copy-values', label: 'Copy Values', onClick: () => {
+            useCanvasState.getState().copyPatternValues(singleFullPath.id);
+            window.alert('Pattern values copied');
+          }},
+          { id: 'paste-front', label: 'Paste Front', onClick: () => {
+            const s = useCanvasState.getState();
+            if (s.patternClipboard) s.pastePatternValues(singleFullPath.id, 'front');
+          }, disabled: !useCanvasState.getState().patternClipboard},
+          { id: 'paste-back', label: 'Paste Back', onClick: () => {
+            const s = useCanvasState.getState();
+            if (s.patternClipboard) s.pastePatternValues(singleFullPath.id, 'back');
+          }, disabled: !useCanvasState.getState().patternClipboard},
+          { id: 'sep-top', separator: true }
+        );
+      }
       
       items.push(
           { id: 'dup-sel', label: 'Duplicate Selection', onClick: () => {

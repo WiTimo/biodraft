@@ -251,6 +251,11 @@ export interface ClipboardSlice {
   setClipboard: (paths: Path[]) => void;
   copySelectedPoints: () => void;
   pasteClipboardPoints: () => void;
+
+  // Pattern-level copy/paste: copy a pattern's transform/texture/position
+  patternClipboard: Path | null;
+  copyPatternValues: (pathId: string) => void;
+  pastePatternValues: (targetPathId: string, mode: 'front' | 'back') => void;
 }
 
 export interface SeamSlice {

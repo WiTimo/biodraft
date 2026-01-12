@@ -21,7 +21,7 @@ export function LinePath({
   closed?: boolean;
   texture?: PathTexture | null;
   onClick?: (e?: any) => void;
-  onMouseEnter?: (e?: any) => void;
+  onMouseEnter?: (e?: any) => void; 
   onMouseLeave?: (e?: any) => void;
   highlighted?: boolean;
   highlightColor?: string;
