@@ -118,6 +118,10 @@ export interface ViewportSlice {
   isAltPressed: boolean;
   setIsAltPressed: (value: boolean) => void;
 
+  // Ctrl modifier used to temporarily disable helpers (snap guides / grid snapping)
+  isCtrlPressed: boolean;
+  setIsCtrlPressed: (value: boolean) => void;
+
   // Keyboard-driven panning via Space or middle-mouse: globally exposed so
   // components can suppress interactions when the user is panning.
   isSpacePressed: boolean;

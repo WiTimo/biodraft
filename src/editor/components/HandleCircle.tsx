@@ -1,8 +1,9 @@
 import { useCanvasState } from '../state/CanvasState';
 import { useEffect, useState } from 'react';
-import { Circle, Line } from 'react-konva';
+import { Circle, Label, Line, Tag, Text } from 'react-konva';
 import React from 'react';
 import { getStep } from '../utils/grid';
+import { distanceCm, formatWorldLengthCm, type DisplayUnits } from '../utils/measurementUtils';
 
 
 interface HandleCircleProps {
@@ -26,6 +27,11 @@ export const HandleCircle = React.memo(function HandleCircle({
   const isVisible = pointId === selectedPointId;
   const [pos, setPos] = useState({ x: pointX + dx, y: pointY + dy });
   const zoom = useCanvasState((s) => s.zoom);
+  const units = useCanvasState((s) => s.units);
+  const metricUnit = useCanvasState((s) => s.metricUnit);
+
+  const displayUnits: DisplayUnits =
+    units === 'metric' ? { system: 'metric', metricUnit: metricUnit === 'mm' ? 'mm' : 'cm' } : { system: 'imperial' };
 
   // Keep handle visuals consistent with point circles: compute a screen-space
   // radius and convert to world units by dividing by zoom, so they visually
@@ -46,14 +52,68 @@ export const HandleCircle = React.memo(function HandleCircle({
 
   if (!isVisible) return null;
 
+  const handleLenCm = distanceCm({ x: pointX, y: pointY }, { x: pos.x, y: pos.y });
+  const handleLenLabel = formatWorldLengthCm(handleLenCm, displayUnits);
+  const midX = (pointX + pos.x) / 2;
+  const midY = (pointY + pos.y) / 2;
+  const vx = pos.x - pointX;
+  const vy = pos.y - pointY;
+  const vmag = Math.sqrt(vx * vx + vy * vy) || 1;
+  const nx = -vy / vmag;
+  const ny = vx / vmag;
+  const labelOffset = 8 / zoom;
+
+  const fontSize = Math.min(7, Math.max(5, 6 / zoom));
+  const padding = Math.min(2, Math.max(0.5, 1 / zoom));
+  const tagOpacity = 0.4;
+
+  const labelStyle = (() => {
+    if (typeof window === 'undefined') {
+      return {
+        fill: 'rgba(255,255,255,0.92)',
+        stroke: 'rgba(0,0,0,0.12)',
+        text: 'rgba(0,0,0,0.85)',
+      };
+    }
+    const cs = getComputedStyle(document.documentElement);
+    return {
+      fill: (cs.getPropertyValue('--panel-opaque') || 'rgba(255,255,255,0.92)').trim(),
+      stroke: (cs.getPropertyValue('--border') || 'rgba(0,0,0,0.12)').trim(),
+      text: (cs.getPropertyValue('--fg') || 'rgba(0,0,0,0.85)').trim(),
+    };
+  })();
+
   return (
     <>
       <Line
         points={[pointX, pointY, pos.x, pos.y]}
-        stroke="gray"
+        stroke={'rgba(0,0,0,0.45)'}
         strokeWidth={worldStrokeWidth}
         listening={false}
       />
+
+      {handleLenLabel && (
+        <Label
+          x={midX + nx * labelOffset}
+          y={midY + ny * labelOffset}
+          listening={false}
+          opacity={tagOpacity}
+        >
+          <Tag
+            fill={labelStyle.fill}
+            stroke={labelStyle.stroke}
+            strokeWidth={Math.max(0.5, 1 / zoom)}
+            cornerRadius={Math.max(2, 4 / zoom)}
+          />
+          <Text
+            text={handleLenLabel}
+            fontSize={fontSize}
+            padding={padding}
+            fill={labelStyle.text}
+            fontFamily={'ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial'}
+          />
+        </Label>
+      )}
       <>
   {/* Invisible larger hit area */}
   <Circle

@@ -34,8 +34,13 @@ export function useCanvasKeyboardShortcuts({
       const isTyping = !!(active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable));
       if (isTyping) return;
 
-      if (event.code === 'Space' || event.code === 'ControlLeft') {
+      if (event.code === 'Space') {
         setIsSpacePressed(true);
+      }
+
+      // Ctrl pressed -> set dedicated ctrl flag so we can disable helpers while drawing
+      if (event.key === 'Control' || event.code === 'ControlLeft' || event.code === 'ControlRight' || event.ctrlKey) {
+        state.setIsCtrlPressed(true);
       }
 
       if (event.key === 'Shift') {
@@ -130,12 +135,16 @@ export function useCanvasKeyboardShortcuts({
     const handleKeyUp = (event: KeyboardEvent) => {
       const state = useCanvasState.getState();
 
-      if (event.code === 'Space' || event.code === 'ControlLeft') {
+      if (event.code === 'Space') {
         setIsSpacePressed(false);
         if (isPanning) {
           setIsPanning(false);
           document.body.style.cursor = 'default';
         }
+      }
+
+      if (event.key === 'Control' || event.code === 'ControlLeft' || event.code === 'ControlRight') {
+        state.setIsCtrlPressed(false);
       }
 
       if (event.key === 'Shift') {
@@ -156,14 +165,25 @@ export function useCanvasKeyboardShortcuts({
         const alt = (e as PointerEvent).altKey;
         if (alt !== state.isAltPressed) state.setIsAltPressed(alt);
       }
+      // If pointer event reports ctrlKey state different from store, sync it
+      if ((e as PointerEvent).ctrlKey !== undefined) {
+        const ctrl = (e as PointerEvent).ctrlKey;
+        if (ctrl !== state.isCtrlPressed) state.setIsCtrlPressed(ctrl);
+      }
     };
 
     const handleWindowBlur = () => {
-      useCanvasState.getState().setIsAltPressed(false);
+      const state = useCanvasState.getState();
+      state.setIsAltPressed(false);
+      state.setIsCtrlPressed(false);
     };
 
     const handleVisibility = () => {
-      if (document.hidden) useCanvasState.getState().setIsAltPressed(false);
+      if (document.hidden) {
+        const state = useCanvasState.getState();
+        state.setIsAltPressed(false);
+        state.setIsCtrlPressed(false);
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);

@@ -9,6 +9,7 @@ import { PathsLayer } from '../layers/PathsLayer';
 import { PointsLayer } from '../layers/PointsLayer';
 import { SeamLayer } from '../layers/SeamLayer';
 import { CutLayer } from '../layers/CutLayer';
+import { MeasurementsLayer } from '../layers/MeasurementsLayer';
 import { SelectionTransformer } from '../layers/SelectionTransformer';
 import { getStep } from '../utils/grid';
 import { useCanvasState } from '../state/CanvasState';
@@ -360,8 +361,27 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
         const worldPosition = toWorld(pointer);
         const state = useCanvasState.getState();
 
+        // Helpers disabled flag (Ctrl temporarily disables helpers but should not block movement)
+        const helpersDisabled = state.isCtrlPressed;
+        if (helpersDisabled) {
+          setSnapGuides({ x: null, y: null });
+
+          // If the user is currently dragging a newly placed point, move its handles to the raw world position
+          if (isDraggingNewPoint && newPointId) {
+            const path = paths.find((candidate) => candidate.points.some((point) => point.id === newPointId));
+            const point = path?.points.find((candidate) => candidate.id === newPointId);
+            if (point) {
+              const dx = worldPosition.x - point.x;
+              const dy = worldPosition.y - point.y;
+              moveHandle(newPointId, 'handleOut', dx, dy);
+              moveHandle(newPointId, 'handleIn', -dx, -dy);
+            }
+          }
+          // Do NOT return here — allow normal movement code to proceed, but skip helper logic below
+        }
+
         // If ALT is pressed and grid is enabled, snap to the visible grid and show a guide
-        if (state.isAltPressed && state.gridEnabled) {
+        if (!helpersDisabled && state.isAltPressed && state.gridEnabled) {
           const snapped = snapWorldToVisibleGrid(worldPosition);
           setSnapGuides({ x: snapped.x, y: snapped.y });
 
@@ -382,44 +402,50 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
         }
 
         // If ALT is pressed but grid disabled, don't set grid snap guides; fall through to normal snapping behavior
-        if (state.isAltPressed && !state.gridEnabled) {
+        if (!helpersDisabled && state.isAltPressed && !state.gridEnabled) {
           setSnapGuides({ x: null, y: null });
           return;
         }
 
-        const SNAP_RADIUS = 15 / zoom; // Increased from 10 for easier snapping
-        const allPoints = paths.flatMap((path) => path.points);
+        // If helpers are disabled (Ctrl), skip snap-to-point logic but continue normal updates
+        if (!helpersDisabled) {
+          const SNAP_RADIUS = 15 / zoom; // Increased from 10 for easier snapping
+          const allPoints = paths.flatMap((path) => path.points);
 
-        let snapX: number | null = null;
-        let snapY: number | null = null;
-        let closestPoint: any = null;
-        let minDistance = Infinity;
+          let snapX: number | null = null;
+          let snapY: number | null = null;
+          let closestPoint: any = null;
+          let minDistance = Infinity;
 
-        // Find closest point within snap radius
-        for (const point of allPoints) {
-          const dx = worldPosition.x - point.x;
-          const dy = worldPosition.y - point.y;
-          const distance = Math.sqrt(dx * dx + dy * dy);
-          
-          if (distance < SNAP_RADIUS && distance < minDistance) {
-            minDistance = distance;
-            closestPoint = point;
-          }
-        }
-
-        // Snap to closest point if found (snap both X and Y together)
-        if (closestPoint) {
-          snapX = closestPoint.x;
-          snapY = closestPoint.y;
-        } else {
-          // Otherwise, snap to individual axes like before
+          // Find closest point within snap radius
           for (const point of allPoints) {
-            if (Math.abs(worldPosition.x - point.x) < SNAP_RADIUS) snapX = point.x;
-            if (Math.abs(worldPosition.y - point.y) < SNAP_RADIUS) snapY = point.y;
+            const dx = worldPosition.x - point.x;
+            const dy = worldPosition.y - point.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance < SNAP_RADIUS && distance < minDistance) {
+              minDistance = distance;
+              closestPoint = point;
+            }
           }
-        }
 
-        setSnapGuides({ x: snapX, y: snapY });
+          // Snap to closest point if found (snap both X and Y together)
+          if (closestPoint) {
+            snapX = closestPoint.x;
+            snapY = closestPoint.y;
+          } else {
+            // Otherwise, snap to individual axes like before
+            for (const point of allPoints) {
+              if (Math.abs(worldPosition.x - point.x) < SNAP_RADIUS) snapX = point.x;
+              if (Math.abs(worldPosition.y - point.y) < SNAP_RADIUS) snapY = point.y;
+            }
+          }
+
+          setSnapGuides({ x: snapX, y: snapY });
+        } else {
+          // Helpers disabled: ensure guides are cleared
+          setSnapGuides({ x: null, y: null });
+        }
       }
 
       // If a selection drag was started (via double-click or pending click-drag), move selected points/textures here
@@ -788,6 +814,7 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
 
         <PathsLayer />
         <SeamLayer />
+          <MeasurementsLayer />
         <PointsLayer />
         <CutLayer />
         {showPenPreview && <PenSegmentPreview />}

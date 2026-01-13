@@ -25,6 +25,10 @@ export const createViewportSlice: CanvasStateCreator<ViewportSlice> = (set, _get
   isAltPressed: false,
   setIsAltPressed: (isAltPressed) => set({ isAltPressed }),
 
+  // Ctrl modifier used to temporarily disable helpers (snap guides / grid snapping)
+  isCtrlPressed: false,
+  setIsCtrlPressed: (isCtrlPressed) => set({ isCtrlPressed }),
+
   // Space/middle-mouse state used for panning
   isSpacePressed: false,
   setIsSpacePressed: (isSpacePressed) => set({ isSpacePressed }),
