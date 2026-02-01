@@ -38,7 +38,7 @@ function filterEmptyPaths(paths: Path[]) {
 
 export function exportToJson() {
   const state = useCanvasState.getState();
-  const { paths, seams, backgroundImages } = state.present;
+  const { paths, seams, backgroundImages, elasticEdges } = state.present;
   const { manImageCenters } = state;
 
   const splitX = getFrontBackSplitX({ manImageCenters, backgroundImages });
@@ -143,6 +143,7 @@ export function exportToJson() {
           human_bounds,
           patterns: exportData,
           seams: validSeams,
+          elasticEdges: elasticEdges || [],
           sharedPoints: sharedPoints.length,
         },
         null,
@@ -202,12 +203,14 @@ export function importFromJson(file: File) {
     });
 
     const parsedSeams = (parsed.seams || []) as [[string, string], [string, string]][];
+    const parsedElasticEdges = (parsed.elasticEdges || []) as [string, string][];
 
     useCanvasState.setState((prev) => ({
       present: {
         ...prev.present,
         paths: [...prev.present.paths, ...newPaths],
         seams: parsedSeams,
+        elasticEdges: [...(prev.present.elasticEdges || []), ...parsedElasticEdges],
       },
     }));
   };

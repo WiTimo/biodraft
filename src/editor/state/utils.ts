@@ -4,6 +4,7 @@ export const INITIAL_PRESENT: CanvasPresent = {
   paths: [],
   backgroundImages: [],
   seams: [],
+  elasticEdges: [],
 };
 
 export function clonePresent(present: CanvasPresent): CanvasPresent {

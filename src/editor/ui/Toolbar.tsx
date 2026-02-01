@@ -250,6 +250,7 @@ export function Toolbar({ onResetView, defaultZoom }: { onResetView?: () => void
 
           <ToolbarSection title={t('toolbar.sections.seams')}>
             <ToolButton tool="seam" currentTool={currentTool} onClick={() => setTool('seam')} title={t('tools.seam')} iconSrc="/svg/seam.svg" hotkey="S" />
+            <ToolButton tool="rubber" currentTool={currentTool} onClick={() => setTool('rubber')} title={t('tools.rubber') || 'Rubber'} iconSrc="/svg/rubber.svg" hotkey="R" />
             <ActionButton
               title={seamDeleteMode ? t('toolbar.seamDeleteModeOn') : t('toolbar.deleteSeam')}
               iconSrc="/svg/delete.svg"

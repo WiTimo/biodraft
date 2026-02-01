@@ -8,6 +8,7 @@ import { GridLayer } from '../layers/GridLayer';
 import { PathsLayer } from '../layers/PathsLayer';
 import { PointsLayer } from '../layers/PointsLayer';
 import { SeamLayer } from '../layers/SeamLayer';
+import { ElasticLayer } from '../layers/ElasticLayer';
 import { CutLayer } from '../layers/CutLayer';
 import { MeasurementsLayer } from '../layers/MeasurementsLayer';
 import { SelectionTransformer } from '../layers/SelectionTransformer';
@@ -814,6 +815,7 @@ export function CanvasStage({ stageRef, isSpacePressed, isPanning, setIsPanning,
 
         <PathsLayer />
         <SeamLayer />
+        <ElasticLayer />
           <MeasurementsLayer />
         <PointsLayer />
         <CutLayer />

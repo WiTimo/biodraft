@@ -60,9 +60,10 @@ export interface CanvasPresent {
   paths: Path[];
   backgroundImages: BackgroundImage[];
   seams: SegmentSeam[];
+  elasticEdges: Segment[];
 }
 
-export type Tool = 'pen' | 'background' | 'select' | 'seam' | 'texture' | 'cut';
+export type Tool = 'pen' | 'background' | 'select' | 'seam' | 'texture' | 'cut' | 'rubber';
 
 export interface CutPick {
   pathId: string;
@@ -300,6 +301,11 @@ export interface TextureSlice {
   updateTextureForPath: (pathId: string, partial: Partial<PathTexture>) => void;
 }
 
+export interface ElasticSlice {
+  toggleElasticEdge: (segment: Segment) => void;
+  isElasticEdge: (segment: Segment) => boolean;
+}
+
 export interface CutSlice {
   cutPick1: CutPick | null;
   cutPick2: CutPick | null;
@@ -316,7 +322,8 @@ export type CanvasState = HistorySlice &
   ClipboardSlice &
   SeamSlice &
   TextureSlice &
-  CutSlice;
+  CutSlice &
+  ElasticSlice;
 
 export type CanvasStateCreator<T> = StateCreator<
   CanvasState,
