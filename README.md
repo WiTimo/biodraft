@@ -1,5 +1,5 @@
 # BioDraft
-
+ 
 BioDraft is a technical apparel design editor for creating 2D garment pattern geometry, defining seams, applying textures, and preparing pattern data for downstream 3D visualization workflows.
 
 The project combines a browser-based vector editor with an optional render pipeline for generating visual reference assets. It is built for experimentation around fashion tech, digital product development, and the bridge between 2D technical packs and 3D garment visualization.
